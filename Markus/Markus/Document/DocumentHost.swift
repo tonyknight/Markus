@@ -7,7 +7,12 @@ final class DocumentHost: ObservableObject {
     let recents: RecentDocuments
     @Published var isImporterPresented = false
     @Published var errorMessage: String?
+    private(set) var folderSession: FolderSession?
     private var sessionCancellable: AnyCancellable?
+
+    var isFolderTreeVisible: Bool {
+        folderSession != nil
+    }
 
     init() {
         self.session = DocumentSession()
@@ -34,9 +39,31 @@ final class DocumentHost: ObservableObject {
     }
 
     func openPicked(_ url: URL) {
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+            openFolder(url)
+            return
+        }
         do {
             try session.open(url: url)
+            folderSession = nil
             recents.record(url: url)
+            errorMessage = nil
+            objectWillChange.send()
+        } catch {
+            errorMessage = "Could not open file."
+        }
+    }
+
+    func openFolder(_ url: URL) {
+        folderSession = FolderSession(rootURL: url)
+        errorMessage = nil
+        objectWillChange.send()
+    }
+
+    func openTreeFile(_ url: URL) {
+        do {
+            try session.open(url: url)
             errorMessage = nil
             objectWillChange.send()
         } catch {
@@ -49,6 +76,7 @@ final class DocumentHost: ObservableObject {
             let url = try recents.startAccessing(item)
             defer { recents.stopAccessing(url) }
             try session.open(url: url)
+            folderSession = nil
             recents.record(url: url, bookmarkData: item.bookmarkData)
             errorMessage = nil
             objectWillChange.send()
