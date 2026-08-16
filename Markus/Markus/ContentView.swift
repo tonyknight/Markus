@@ -23,7 +23,7 @@ struct ContentView: View {
                             SessionEditorRepresentable(session: host.session)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                             #if os(macOS)
-                            if MacMinimapChrome.showsMinimap {
+                            if MacOnlyChrome.hasMinimapInChrome {
                                 MacMinimapRepresentable(editor: host.session.editor)
                                     .frame(width: 72)
                             }
