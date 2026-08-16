@@ -25,7 +25,7 @@ subtasks:
   title: Three-destination verify
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -58,7 +58,7 @@ index. Hard gate for v1. Parser lives in `Markus/Markus/Markdown/MarkdownParser.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Block index with fold extents
 RED then GREEN: parser/index reports ATX heading and fenced-code **byte and line ranges**, plus **fold extents** (heading: from end of heading line through next same-or-higher heading; fence: body after the opening fence, keep opening fence visible). Fixture with H2, paragraph, nested H3, fence, following H2.
@@ -71,7 +71,7 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 Files: `Markus/Markus/Markdown/FoldStore.swift`, `Markus/MarkusTests/FoldStoreTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
 - [ ] todo
-
+- [x] done
 ### T03: TextKit 2 hide folds in Source and Preview
 One custom view (AppKit + UIKit wrappers / SwiftUI representable) using TextKit 2. Applying fold extents **hides those source ranges in layout** in both Source (raw text) and Preview (attributed GFM sufficient for headings + fences). Same folds after mode switch. Spike UI may toggle folds via test hooks or a simple control; gutters are not required yet. If layout/caret/undo cannot hide ranges honestly, **stop and report** — do not invent a new stack.
 Files: `Markus/Markus/Editor/FoldingTextView.swift` (and platform wrappers as needed), `Markus/MarkusTests/FoldingTextViewTests.swift`
@@ -91,3 +91,6 @@ and
 
 ### 2026-08-15
 T01: Block index reports ATX/fence byte+line ranges and fold extents (heading through next same-or-higher; fence body after opener). macOS MarkusTests passed.
+
+### 2026-08-15
+T02: FoldStore is shared across Source/Preview; DocumentSave.writeUTF8 writes full NSTextStorage UTF-8 including folded extents. macOS MarkusTests passed.
