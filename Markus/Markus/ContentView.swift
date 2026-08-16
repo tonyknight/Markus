@@ -64,6 +64,11 @@ struct ContentView: View {
                 .disabled(host.session.fileURL == nil || !host.session.isDirty)
             }
             ToolbarItem(placement: .automatic) {
+                Button("Settings") {
+                    host.isSettingsPresented = true
+                }
+            }
+            ToolbarItem(placement: .automatic) {
                 Menu("Recents") {
                     if host.recents.items.isEmpty {
                         Text("No Recents")
@@ -103,6 +108,22 @@ struct ContentView: View {
                 }
             case .failure:
                 host.errorMessage = "Could not open folder."
+            }
+        }
+        .sheet(isPresented: $host.isSettingsPresented) {
+            NavigationStack {
+                ThemePickerView(host: host)
+                    .navigationTitle("Settings")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                host.isSettingsPresented = false
+                            }
+                        }
+                    }
             }
         }
         .alert("Open Failed", isPresented: Binding(

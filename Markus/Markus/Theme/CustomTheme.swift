@@ -5,7 +5,7 @@ import AppKit
 import UIKit
 #endif
 
-enum CustomTextStyle: String, CaseIterable, Equatable {
+enum CustomTextStyle: String, CaseIterable, Equatable, Hashable {
     case auto
     case light
     case dark

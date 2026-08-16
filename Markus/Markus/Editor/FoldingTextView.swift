@@ -474,6 +474,7 @@ final class FoldingTextView: PlatformView {
     var onTextDidChange: (() -> Void)?
     var mode: EditorMode { session.mode }
     var tokens: ThemeTokens { session.tokens }
+    var canvasBackground: PlatformColorType { session.tokens.background }
 
     convenience init(foldStore: FoldStore = FoldStore()) {
         self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: foldStore)
@@ -515,12 +516,18 @@ final class FoldingTextView: PlatformView {
         contentStorage.textStorage = documentTextStorage
         session.attach(layoutManager: textLayoutManager, contentStorage: contentStorage)
         updateTextContainerForGutter()
+        paintCanvasBackground()
+    }
+
+    private func paintCanvasBackground() {
         #if os(macOS)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        layer?.backgroundColor = session.tokens.background.cgColor
+        needsDisplay = true
         #else
-        backgroundColor = .systemBackground
+        backgroundColor = session.tokens.background
         isOpaque = true
+        setNeedsDisplay()
         #endif
     }
 
@@ -531,7 +538,7 @@ final class FoldingTextView: PlatformView {
     override var undoManager: UndoManager? { editingUndoManager }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.textBackgroundColor.setFill()
+        session.tokens.background.setFill()
         dirtyRect.fill()
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         drawGutter(in: context)
@@ -589,6 +596,7 @@ final class FoldingTextView: PlatformView {
 
     func setTheme(_ tokens: ThemeTokens) {
         session.setTheme(tokens, textStorage: documentTextStorage)
+        paintCanvasBackground()
     }
 
     func applyFolds() {

@@ -5,11 +5,14 @@ import Foundation
 final class DocumentHost: ObservableObject {
     let session: DocumentSession
     let recents: RecentDocuments
+    let themeStore: ThemeStore
     @Published var isImporterPresented = false
     @Published var isFolderImporterPresented = false
+    @Published var isSettingsPresented = false
     @Published var errorMessage: String?
     private(set) var folderSession: FolderSession?
     private var sessionCancellable: AnyCancellable?
+    private var themeCancellable: AnyCancellable?
 
     var isFolderTreeVisible: Bool {
         folderSession != nil
@@ -18,25 +21,79 @@ final class DocumentHost: ObservableObject {
     init() {
         self.session = DocumentSession()
         self.recents = RecentDocuments()
-        observeSession()
+        self.themeStore = ThemeStore()
+        observe()
+        applyDisplayedTheme()
     }
 
     init(session: DocumentSession, recents: RecentDocuments) {
         self.session = session
         self.recents = recents
-        observeSession()
+        self.themeStore = ThemeStore()
+        observe()
+        applyDisplayedTheme()
+    }
+
+    init(session: DocumentSession, recents: RecentDocuments, themeStore: ThemeStore) {
+        self.session = session
+        self.recents = recents
+        self.themeStore = themeStore
+        observe()
+        applyDisplayedTheme()
     }
 
     init(recents: RecentDocuments) {
         self.session = DocumentSession()
         self.recents = recents
-        observeSession()
+        self.themeStore = ThemeStore()
+        observe()
+        applyDisplayedTheme()
     }
 
-    private func observeSession() {
+    init(recents: RecentDocuments, themeStore: ThemeStore) {
+        self.session = DocumentSession()
+        self.recents = recents
+        self.themeStore = themeStore
+        observe()
+        applyDisplayedTheme()
+    }
+
+    private func observe() {
         sessionCancellable = session.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
+        themeCancellable = themeStore.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    func applyTheme(_ selection: ThemeSelection) {
+        themeStore.select(selection)
+        applyDisplayedTheme()
+    }
+
+    func previewTheme(_ selection: ThemeSelection?) {
+        if let selection {
+            themeStore.beginHover(selection)
+        } else {
+            themeStore.endHover()
+        }
+        applyDisplayedTheme()
+    }
+
+    func setCustomBackground(_ color: PlatformColorType) {
+        themeStore.setCustomBackground(color)
+        applyDisplayedTheme()
+    }
+
+    func setCustomTextStyle(_ style: CustomTextStyle) {
+        themeStore.setCustomTextStyle(style)
+        applyDisplayedTheme()
+    }
+
+    private func applyDisplayedTheme() {
+        session.editor.setTheme(themeStore.displayedTokens)
+        objectWillChange.send()
     }
 
     func openPicked(_ url: URL) {
