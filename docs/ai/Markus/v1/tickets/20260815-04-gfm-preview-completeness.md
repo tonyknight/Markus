@@ -25,7 +25,7 @@ subtasks:
   title: Three-destination verify
   status: todo
 plan_status: in-progress
-current_task: T03
+current_task: T04
 ---
 ## Description
 
@@ -54,7 +54,7 @@ Requirements R1, R9 tokens (picker UI is ticket 08).
 ## Implementation plan
 
 Status: in-progress
-Current task: T03
+Current task: T04
 
 ### T01: Parser GFM fixture events
 Keep `MarkdownParser.parse` returning heading/fence `MarkdownBlock`s so `BlockIndex` still folds. Add a sourcepos walk that emits **preview spans** (byte ranges) for GFM the fixture requires: ATX headings, tables, task-list items, strikethrough, footnotes, fenced code, plus inlines needed to paint Preview (`link`, `inlineCode`). Do not invent a second Markdown dialect; cmark-gfm remains the source of truth (N2). Footnotes stay enabled (`CMARK_OPT_FOOTNOTES` + extension).
@@ -74,7 +74,7 @@ Introduce `ThemeTokens` matching the Requirements data model: `heading`, `body`,
 Files: `Markus/Markus/Theme/ThemeTokens.swift` (or equivalent), renderer + `FoldingTextView` wiring, tests
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
 - [ ] todo
-- [ ] done
+- [x] done
 ### T04: Three-destination verify
 Shared parser/preview/fold code must pass all three destinations.
 Verify:
@@ -93,3 +93,6 @@ T01 GREEN: previewSpans emit GFM fixture kinds; parse still returns heading/fenc
 
 ### 2026-08-15
 T02 GREEN: Preview paints GFM span attributes on the same NSTextStorage; folds still hide via layout fragments.
+
+### 2026-08-15
+T03 GREEN: ThemeTokens default palette; swapping heading/link recolors Preview ranges; no picker UI.

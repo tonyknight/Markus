@@ -50,14 +50,16 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     let foldStore: FoldStore
     private(set) var blocks: [Block] = []
     private(set) var mode: EditorMode
+    private(set) var tokens: ThemeTokens
     private(set) var collapsedFragmentCount = 0
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
     private weak var textStorage: NSTextStorage?
 
-    init(foldStore: FoldStore = FoldStore(), mode: EditorMode = .preview) {
+    init(foldStore: FoldStore = FoldStore(), mode: EditorMode = .preview, tokens: ThemeTokens = .default) {
         self.foldStore = foldStore
         self.mode = mode
+        self.tokens = tokens
     }
 
     func attach(layoutManager: NSTextLayoutManager, contentStorage: NSTextContentStorage) {
@@ -76,6 +78,13 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
     func setMode(_ mode: EditorMode, textStorage: NSTextStorage) {
         self.mode = mode
+        self.textStorage = textStorage
+        applyStyling(to: textStorage)
+        invalidateLayout()
+    }
+
+    func setTheme(_ tokens: ThemeTokens, textStorage: NSTextStorage) {
+        self.tokens = tokens
         self.textStorage = textStorage
         applyStyling(to: textStorage)
         invalidateLayout()
@@ -145,17 +154,17 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         case .source:
             let source = [
                 NSAttributedString.Key.font: PlatformFont.monospaced(size: 14),
-                NSAttributedString.Key.foregroundColor: PlatformColor.label,
+                NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(source, range: full)
         case .preview:
             let body = [
                 NSAttributedString.Key.font: PlatformFont.body(size: 16),
-                NSAttributedString.Key.foregroundColor: PlatformColor.label,
+                NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(body, range: full)
             let spans = MarkdownParser().previewSpans(textStorage.string)
-            MarkdownPreviewRenderer.apply(spans: spans, to: textStorage)
+            MarkdownPreviewRenderer.apply(spans: spans, to: textStorage, tokens: tokens)
         }
         textStorage.endEditing()
     }
@@ -357,6 +366,10 @@ final class FoldingTextView: PlatformView {
 
     func setMode(_ mode: EditorMode) {
         session.setMode(mode, textStorage: documentTextStorage)
+    }
+
+    func setTheme(_ tokens: ThemeTokens) {
+        session.setTheme(tokens, textStorage: documentTextStorage)
     }
 
     func applyFolds() {
