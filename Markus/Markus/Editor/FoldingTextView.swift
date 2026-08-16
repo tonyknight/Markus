@@ -473,6 +473,7 @@ final class FoldingTextView: PlatformView {
     }
     var onTextDidChange: (() -> Void)?
     var mode: EditorMode { session.mode }
+    var tokens: ThemeTokens { session.tokens }
 
     convenience init(foldStore: FoldStore = FoldStore()) {
         self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: foldStore)
