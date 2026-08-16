@@ -205,7 +205,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             ]
             textStorage.setAttributes(body, range: full)
             let spans = MarkdownParser().previewSpans(textStorage.string)
-            MarkdownPreviewRenderer.apply(spans: spans, to: textStorage, tokens: tokens)
+            MarkdownPreviewRenderer.apply(spans: spans, to: textStorage, tokens: tokens, zoomScale: zoomScale)
         }
         textStorage.endEditing()
     }
@@ -501,7 +501,77 @@ final class FoldingTextView: PlatformView {
             selectedUTF16Range = NSRange(location: range.location, length: 0)
         }
         lastJumpedPackedY = y(forSourceLine: line)
+        if let packedY = lastJumpedPackedY {
+            scrollPackedYOnScreen(packedY)
+        }
     }
+
+    private(set) var scrollOrigin = CGPoint.zero
+
+    func viewportContainsPackedY(_ y: CGFloat) -> Bool {
+        let vis = visiblePackedRect()
+        return y >= vis.minY && y <= vis.maxY
+    }
+
+    func scrollPackedYOnScreen(_ packedY: CGFloat) {
+        let lineHeight = sourceLineHeight(forSourceLine: sourceLine(atY: packedY) ?? 1) ?? 20
+        let target = CGRect(x: 0, y: packedY, width: max(bounds.width, 1), height: max(lineHeight, 1))
+        #if os(macOS)
+        if let scroll = enclosingScrollView {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: packedY))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            if !scroll.documentVisibleRect.intersects(target) {
+                scrollToVisible(target)
+            }
+            scrollOrigin = CGPoint(x: 0, y: scroll.documentVisibleRect.minY)
+            return
+        }
+        #else
+        if let scroll = enclosingPlatformScrollView {
+            let visibleHeight = max(scroll.bounds.height, 1)
+            let contentHeight = max(scroll.contentSize.height, layoutHeight, visibleHeight)
+            let maxOrigin = max(0, contentHeight - visibleHeight)
+            let originY = min(max(0, packedY), maxOrigin)
+            scroll.setContentOffset(CGPoint(x: 0, y: originY), animated: false)
+            scrollOrigin = scroll.contentOffset
+            return
+        }
+        #endif
+        let visibleHeight = max(bounds.height, 1)
+        let contentHeight = max(layoutHeight, visibleHeight)
+        let maxOrigin = max(0, contentHeight - visibleHeight)
+        var originY = min(max(0, packedY), maxOrigin)
+        if packedY < originY {
+            originY = max(0, packedY)
+        }
+        scrollOrigin = CGPoint(x: 0, y: originY)
+    }
+
+    private func visiblePackedRect() -> CGRect {
+        #if os(macOS)
+        if let scroll = enclosingScrollView {
+            return scroll.documentVisibleRect
+        }
+        #else
+        if let scroll = enclosingPlatformScrollView {
+            return CGRect(origin: scroll.contentOffset, size: scroll.bounds.size)
+        }
+        #endif
+        return CGRect(origin: scrollOrigin, size: bounds.size)
+    }
+
+    #if os(iOS)
+    private var enclosingPlatformScrollView: UIScrollView? {
+        var view: UIView? = superview
+        while let current = view {
+            if let scroll = current as? UIScrollView {
+                return scroll
+            }
+            view = current.superview
+        }
+        return nil
+    }
+    #endif
 
     @discardableResult
     func find(_ query: String) -> NSRange? {

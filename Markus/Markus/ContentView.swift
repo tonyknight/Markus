@@ -44,6 +44,12 @@ struct ContentView: View {
                 .sheet(isPresented: $host.isOutlinePresented) {
                     OutlineSheet(host: host)
                 }
+                .sheet(isPresented: $host.isFindPresented) {
+                    FindReplaceSheet(host: host)
+                }
+                .sheet(isPresented: $host.isGoToLinePresented) {
+                    GoToLineSheet(host: host)
+                }
                 .alert("Open Failed", isPresented: Binding(
                     get: { host.errorMessage != nil },
                     set: { if !$0 { host.errorMessage = nil } }
@@ -120,17 +126,11 @@ private struct DocumentToolbar: ToolbarContent {
             DocumentModePicker(host: host)
         }
         #endif
-        ToolbarItem(placement: .automatic) {
+        ToolbarItemGroup(placement: .automatic) {
             Button("Open") { host.isImporterPresented = true }
-        }
-        ToolbarItem(placement: .automatic) {
             Button("Open Folder") { host.isFolderImporterPresented = true }
-        }
-        ToolbarItem(placement: .automatic) {
             Button("Save") { host.save() }
                 .disabled(!host.canSave)
-        }
-        ToolbarItem(placement: .automatic) {
             Button("Revert") { host.revert() }
                 .disabled(host.session.fileURL == nil || !host.session.isDirty)
         }
@@ -157,7 +157,11 @@ private struct DocumentToolbar: ToolbarContent {
                 .keyboardShortcut("e", modifiers: [.command])
                 .accessibilityLabel("Toggle Source Preview")
         }
-        ToolbarItem(placement: .automatic) {
+        ToolbarItemGroup(placement: .automatic) {
+            Button("Find") { EditorCommands.presentFind(on: host) }
+                .keyboardShortcut("f", modifiers: [.command])
+            Button("Go to Line") { EditorCommands.presentGoToLine(on: host) }
+                .keyboardShortcut("l", modifiers: [.command])
             Button("Tree") { EditorCommands.focusTree(on: host) }
                 .keyboardShortcut("1", modifiers: [.command])
         }
@@ -175,6 +179,60 @@ private struct DocumentToolbar: ToolbarContent {
                 }
             }
         }
+    }
+}
+
+private struct FindReplaceSheet: View {
+    @ObservedObject var host: DocumentHost
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Find", text: $host.findQuery)
+                TextField("Replace", text: $host.replaceText)
+            }
+            .navigationTitle("Find & Replace")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { host.isFindPresented = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Find") { _ = host.findFromChrome(host.findQuery) }
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button("Replace") { _ = host.replaceFromChrome(host.replaceText) }
+                }
+            }
+        }
+        .frame(minWidth: 360, minHeight: 160)
+    }
+}
+
+private struct GoToLineSheet: View {
+    @ObservedObject var host: DocumentHost
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Line", text: $host.goToLineText)
+            }
+            .navigationTitle("Go to Line")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { host.isGoToLinePresented = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Go") { host.confirmGoToLineFromField() }
+                }
+            }
+        }
+        .frame(minWidth: 280, minHeight: 120)
     }
 }
 
@@ -206,30 +264,49 @@ private struct OutlineSheet: View {
 struct SessionEditorRepresentable: NSViewRepresentable {
     var session: DocumentSession
 
-    func makeNSView(context: Context) -> FoldingTextView {
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        scroll.drawsBackground = false
         let view = session.editor
         view.translatesAutoresizingMaskIntoConstraints = true
-        view.autoresizingMask = [.width, .height]
-        return view
+        view.autoresizingMask = [.width]
+        scroll.documentView = view
+        return scroll
     }
 
-    func updateNSView(_ nsView: FoldingTextView, context: Context) {
-        nsView.ensureLayout()
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        let view = session.editor
+        view.ensureLayout()
+        let width = max(scroll.contentSize.width, 1)
+        let height = max(scroll.contentSize.height, view.layoutHeight)
+        view.setFrameSize(NSSize(width: width, height: height))
     }
 }
 #else
 struct SessionEditorRepresentable: UIViewRepresentable {
     var session: DocumentSession
 
-    func makeUIView(context: Context) -> FoldingTextView {
+    func makeUIView(context: Context) -> UIScrollView {
+        let scroll = UIScrollView()
+        scroll.alwaysBounceVertical = true
         let view = session.editor
         view.translatesAutoresizingMaskIntoConstraints = true
-        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        return view
+        view.autoresizingMask = [.flexibleWidth]
+        scroll.addSubview(view)
+        return scroll
     }
 
-    func updateUIView(_ uiView: FoldingTextView, context: Context) {
-        uiView.ensureLayout()
+    func updateUIView(_ scroll: UIScrollView, context: Context) {
+        let view = session.editor
+        view.ensureLayout()
+        let width = max(scroll.bounds.width, 1)
+        let height = max(scroll.bounds.height, view.layoutHeight)
+        view.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        scroll.contentSize = view.frame.size
     }
 }
 #endif

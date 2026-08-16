@@ -20,4 +20,14 @@ enum EditorCommands {
     static func focusTree(on host: DocumentHost) {
         host.focusTree()
     }
+
+    @MainActor
+    static func presentFind(on host: DocumentHost) {
+        host.presentFind()
+    }
+
+    @MainActor
+    static func presentGoToLine(on host: DocumentHost) {
+        host.presentGoToLine()
+    }
 }

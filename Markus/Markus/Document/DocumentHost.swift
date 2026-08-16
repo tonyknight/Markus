@@ -13,7 +13,13 @@ final class DocumentHost: ObservableObject {
     @Published var isFolderImporterPresented = false
     @Published var isSettingsPresented = false
     @Published var isOutlinePresented = false
+    @Published var isFindPresented = false
+    @Published var isGoToLinePresented = false
     @Published var isTreeFocused = false
+    @Published var isTreeFocusConsumed = false
+    @Published var findQuery = ""
+    @Published var replaceText = ""
+    @Published var goToLineText = ""
     @Published var errorMessage: String?
     private(set) var folderSession: FolderSession?
     private var sessionCancellable: AnyCancellable?
@@ -307,8 +313,56 @@ final class DocumentHost: ObservableObject {
         setMode(mode == .source ? .preview : .source)
     }
 
+    func presentFind() {
+        isFindPresented = true
+        objectWillChange.send()
+    }
+
+    @discardableResult
+    func findFromChrome(_ query: String) -> NSRange? {
+        findQuery = query
+        return find(query)
+    }
+
+    @discardableResult
+    func replaceFromChrome(_ replacement: String) -> Bool {
+        replaceText = replacement
+        return replaceSelection(with: replacement)
+    }
+
+    func presentGoToLine() {
+        isGoToLinePresented = true
+        objectWillChange.send()
+    }
+
+    func confirmGoToLine(_ line: Int) {
+        goToLine(line)
+        isGoToLinePresented = false
+        objectWillChange.send()
+    }
+
+    func confirmGoToLineFromField() {
+        let trimmed = goToLineText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let line = Int(trimmed) {
+            confirmGoToLine(line)
+        }
+    }
+
+    func markTreeFocusConsumed() {
+        guard isFolderTreeVisible, isTreeFocused else { return }
+        isTreeFocusConsumed = true
+        objectWillChange.send()
+    }
+
     func focusTree() {
-        isTreeFocused = true
+        if folderSession == nil {
+            isFolderImporterPresented = true
+            isTreeFocused = false
+            isTreeFocusConsumed = false
+        } else {
+            isTreeFocused = true
+            isTreeFocusConsumed = false
+        }
         objectWillChange.send()
     }
 
