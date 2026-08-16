@@ -14,16 +14,19 @@ depends_on:
 subtasks:
 - id: S1
   title: Block index with fold extents
-  status: todo
+  status: done
 - id: S2
   title: Fold store + full-buffer save
-  status: todo
+  status: done
 - id: S3
   title: TextKit 2 hide folds in Source and Preview
-  status: todo
+  status: done
 - id: S4
   title: Three-destination verify
-  status: todo
+  status: done
+- id: S5
+  title: Own NSTextLayoutManager fragment hide
+  status: done
 plan_status: done
 ---
 ## Description
@@ -41,6 +44,7 @@ decision; if it is janky, stop and reopen design.
 - [ ] Save writes the complete unfolded source
 - [ ] Caret/undo still work in Source after a fold (spike-quality, not polish)
 - [ ] Tests pass on Mac, iPhone simulator, and iPad simulator
+- [ ] Folds hide via owned TextKit 2 **layout fragments**, not collapsed paragraph styles on `NSTextStorage`
 
 ## Context
 
@@ -52,7 +56,8 @@ index. Hard gate for v1. Parser lives in `Markus/Markus/Markdown/MarkdownParser.
 - [ ] Block index
 - [ ] TextKit 2 fold layout in both modes
 - [ ] Shared fold store + full-buffer save
-- [ ] Three-destination verify
+- [x] Three-destination verify
+- [x] Own NSTextLayoutManager fragment hide
 
 ## Implementation plan
 
@@ -86,7 +91,17 @@ and
 `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -only-testing:MarkusTests test`
 - [ ] todo
 - [x] done
-## Notes
+
+### T05: Own NSTextLayoutManager fragment hide
+Replace stock `NSTextView`/`UITextView` as layout owner. A custom view owns `NSTextContentStorage` + `NSTextLayoutManager` + `NSTextContainer`, implements `textLayoutFragmentFor`, and uses `FoldingTextLayoutFragment` (zero height / skip draw) for folded extents. **Remove** `applyCollapsedParagraphStyles` as the hide mechanism. Tests must: (1) `collapsedFragmentCount > 0` when heading+fence are folded, (2) unfold restores Source layout height vs Source unfolded height (same mode), (3) save still full UTF-8, (4) spike-quality insert+undo in Source. Do not wrap STTextView/CodeEditSourceEditor in this ticket.
+Files: `Markus/Markus/Editor/FoldingTextView.swift`, `Markus/MarkusTests/FoldingTextViewTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
+then
+`xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MarkusTests test`
+and
+`xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -only-testing:MarkusTests test`
+- [ ] todo
+- [x] done
 
 ### 2026-08-15
 T01: Block index reports ATX/fence byte+line ranges and fold extents (heading through next same-or-higher; fence body after opener). macOS MarkusTests passed.
@@ -99,3 +114,25 @@ T03: TextKit 2 view hides heading/fence extents in Source and Preview via collap
 
 ### 2026-08-15
 T04: MarkusTests passed on iPhone 17 and iPad Pro 13-inch (M5). iOS insertTextAtCaret uses UIKeyInput.insertText (UITextView.shouldChangeText takes UITextRange, not NSRange). Ticket left in-progress for controller review.
+
+## Review
+
+- **Date:** 2026-08-15
+- **Verdict:** Important — not done
+- **Verify (controller, fresh):** macOS, iPhone 17, and iPad Pro 13-inch (M5) MarkusTests TEST SUCCEEDED.
+- **Findings:**
+  1. **Important:** Fold hide writes collapsed paragraph styles into `NSTextStorage` (`FoldingTextView.swift` `applyCollapsedParagraphStyles`). The TextKit 2 fragment path (`FoldingTextLayoutFragment`) is unused by stock `NSTextView`/`UITextView`. That is not “exclude folded extents in layout.” Disk save is still full UTF-8 (R5 holds).
+  2. **Important:** Tests assert `layoutHeight` drop and `hiddenRangeCount` from the fold store, not actual fragment hide; unfold is untested; Source folded height is compared to unfolded Preview height.
+  3. **Minor:** Preview is styled source; `isRichText = false` can fight attribute-based folds.
+- **Architecture:** Reopened. Do not start ticket 03 until the hide mechanism is agreed.
+
+### 2026-08-15
+Review Important: paragraph-style squash is not layout-exclude. Architecture reopened; ticket not done.
+
+## Notes
+
+### 2026-08-15
+Architecture A agreed: own NSTextLayoutManager; T05 fragment hide; no paragraph-style squash.
+
+### 2026-08-15
+T05: custom NSView/UIView owns NSTextContentStorage + NSTextLayoutManager + NSTextContainer. textLayoutFragmentFor returns FoldingTextLayoutFragment (isCollapsed, zero height, skip draw). applyCollapsedParagraphStyles removed. packed layout height from non-collapsed fragments. collapsedFragmentCount > 0 after heading+fence fold; unfold restores Source height vs Source unfolded; save full UTF-8; insert+undo in Source. Verify MarkusTests TEST SUCCEEDED: macOS, iPhone 17, iPad Pro 13-inch (M5). Ticket left in-progress.

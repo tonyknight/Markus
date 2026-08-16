@@ -78,7 +78,6 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         self.mode = mode
         self.textStorage = textStorage
         applyStyling(to: textStorage)
-        applyCollapsedParagraphStyles(to: textStorage)
         invalidateLayout()
     }
 
@@ -86,7 +85,6 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         collapsedFragmentCount = 0
         if let textStorage {
             applyStyling(to: textStorage)
-            applyCollapsedParagraphStyles(to: textStorage)
         }
         invalidateLayout()
     }
@@ -94,10 +92,11 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     func ensureLayout() {
         guard let layoutManager else { return }
         layoutManager.ensureLayout(for: layoutManager.documentRange)
+        recountCollapsedFragments()
     }
 
     var layoutHeight: CGFloat {
-        layoutManager?.usageBoundsForTextContainer.height ?? 0
+        packedLayoutHeight()
     }
 
     func textLayoutManager(
@@ -107,9 +106,6 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     ) -> NSTextLayoutFragment {
         let fragment = FoldingTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
         fragment.isCollapsed = isElementCollapsed(textElement, layoutManager: textLayoutManager)
-        if fragment.isCollapsed {
-            collapsedFragmentCount += 1
-        }
         return fragment
     }
 
@@ -179,22 +175,55 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         textStorage.endEditing()
     }
 
-    private func applyCollapsedParagraphStyles(to textStorage: NSTextStorage) {
-        let style = NSMutableParagraphStyle()
-        style.minimumLineHeight = 0.01
-        style.maximumLineHeight = 0.01
-        style.lineSpacing = 0
-        style.paragraphSpacing = 0
-        style.paragraphSpacingBefore = 0
-        for range in hiddenUTF16Ranges {
-            guard NSMaxRange(range) <= textStorage.length else { continue }
-            textStorage.addAttribute(.paragraphStyle, value: style, range: range)
-        }
-    }
-
     private func invalidateLayout() {
         guard let layoutManager else { return }
         layoutManager.invalidateLayout(for: layoutManager.documentRange)
+    }
+
+    private func recountCollapsedFragments() {
+        collapsedFragmentCount = 0
+        guard let layoutManager else { return }
+        layoutManager.enumerateTextLayoutFragments(
+            from: layoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            if let folding = fragment as? FoldingTextLayoutFragment, folding.isCollapsed {
+                collapsedFragmentCount += 1
+            }
+            return true
+        }
+    }
+
+    func drawFragments(in context: CGContext) {
+        guard let layoutManager else { return }
+        var y: CGFloat = 0
+        layoutManager.enumerateTextLayoutFragments(
+            from: layoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            let collapsed = (fragment as? FoldingTextLayoutFragment)?.isCollapsed ?? false
+            if !collapsed {
+                fragment.draw(at: CGPoint(x: fragment.layoutFragmentFrame.minX, y: y), in: context)
+                y += fragment.layoutFragmentFrame.height
+            }
+            return true
+        }
+    }
+
+    private func packedLayoutHeight() -> CGFloat {
+        guard let layoutManager else { return 0 }
+        var height: CGFloat = 0
+        layoutManager.enumerateTextLayoutFragments(
+            from: layoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            let collapsed = (fragment as? FoldingTextLayoutFragment)?.isCollapsed ?? false
+            if !collapsed {
+                height += fragment.layoutFragmentFrame.height
+            }
+            return true
+        }
+        return height
     }
 }
 
@@ -237,117 +266,130 @@ enum PlatformColor {
 #if os(macOS)
 typealias PlatformFontType = NSFont
 typealias PlatformColorType = NSColor
+typealias PlatformView = NSView
 #else
 typealias PlatformFontType = UIFont
 typealias PlatformColorType = UIColor
+typealias PlatformView = UIView
 #endif
 
-#if os(macOS)
 @MainActor
-final class FoldingTextView: NSTextView {
-    var session: FoldingSession
+final class FoldingTextView: PlatformView {
+    let session: FoldingSession
+    let contentStorage: NSTextContentStorage
+    let textLayoutManager: NSTextLayoutManager
+    let textContainer: NSTextContainer
+    let documentTextStorage: NSTextStorage
+    private let editingUndoManager = UndoManager()
 
     var foldStore: FoldStore { session.foldStore }
     var blocks: [Block] { session.blocks }
     var layoutHeight: CGFloat { session.layoutHeight }
     var collapsedFragmentCount: Int { session.collapsedFragmentCount }
     var hiddenRangeCount: Int { session.hiddenUTF16RangeCount }
-
-    convenience init(foldStore: FoldStore = FoldStore()) {
-        let contentStorage = NSTextContentStorage()
-        let layoutManager = NSTextLayoutManager()
-        let container = NSTextContainer(size: NSSize(width: 480, height: CGFloat.greatestFiniteMagnitude))
-        layoutManager.textContainer = container
-        contentStorage.addTextLayoutManager(layoutManager)
-        self.init(frame: NSRect(x: 0, y: 0, width: 480, height: 800), textContainer: container)
-        session = FoldingSession(foldStore: foldStore)
-        if let viewManager = textLayoutManager {
-            let content = (viewManager.textContentManager as? NSTextContentStorage) ?? contentStorage
-            if content.textStorage == nil {
-                content.textStorage = textStorage
-            }
-            session.attach(layoutManager: viewManager, contentStorage: content)
-        } else {
-            if contentStorage.textStorage == nil {
-                contentStorage.textStorage = textStorage
-            }
-            session.attach(layoutManager: layoutManager, contentStorage: contentStorage)
-        }
+    var textStorage: NSTextStorage? { documentTextStorage }
+    var string: String {
+        get { documentTextStorage.string }
+        set { loadMarkdown(newValue) }
     }
 
-    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+    convenience init(foldStore: FoldStore = FoldStore()) {
+        self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: foldStore)
+    }
+
+    init(frame: CGRect, foldStore: FoldStore) {
+        contentStorage = NSTextContentStorage()
+        textLayoutManager = NSTextLayoutManager()
+        textContainer = NSTextContainer(size: CGSize(width: 480, height: CGFloat.greatestFiniteMagnitude))
+        documentTextStorage = NSTextStorage()
+        session = FoldingSession(foldStore: foldStore)
+        super.init(frame: frame)
+        completeInit()
+    }
+
+    override init(frame: CGRect) {
+        contentStorage = NSTextContentStorage()
+        textLayoutManager = NSTextLayoutManager()
+        textContainer = NSTextContainer(size: CGSize(width: 480, height: CGFloat.greatestFiniteMagnitude))
+        documentTextStorage = NSTextStorage()
         session = FoldingSession()
-        super.init(frame: frameRect, textContainer: container)
+        super.init(frame: frame)
         completeInit()
     }
 
     required init?(coder: NSCoder) {
+        contentStorage = NSTextContentStorage()
+        textLayoutManager = NSTextLayoutManager()
+        textContainer = NSTextContainer(size: CGSize(width: 480, height: CGFloat.greatestFiniteMagnitude))
+        documentTextStorage = NSTextStorage()
         session = FoldingSession()
         super.init(coder: coder)
         completeInit()
     }
 
     private func completeInit() {
-        isRichText = false
-        allowsUndo = true
-        isEditable = true
-        font = PlatformFont.monospaced(size: 14)
-        minSize = NSSize(width: 0, height: 0)
-        maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        isVerticallyResizable = true
-        isHorizontallyResizable = false
-        textContainer?.containerSize = NSSize(width: 480, height: CGFloat.greatestFiniteMagnitude)
-        textContainer?.widthTracksTextView = false
-        textContainer?.widthTracksTextView = false
-        frame = NSRect(x: 0, y: 0, width: 480, height: 800)
-        attachSession()
+        textLayoutManager.textContainer = textContainer
+        contentStorage.addTextLayoutManager(textLayoutManager)
+        contentStorage.textStorage = documentTextStorage
+        session.attach(layoutManager: textLayoutManager, contentStorage: contentStorage)
+        #if os(macOS)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        #else
+        backgroundColor = .systemBackground
+        isOpaque = true
+        #endif
     }
 
-    private func attachSession() {
-        guard let layoutManager = textLayoutManager,
-              let content = layoutManager.textContentManager as? NSTextContentStorage
-        else {
-            return
-        }
-        session.attach(layoutManager: layoutManager, contentStorage: content)
+    #if os(macOS)
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    override var undoManager: UndoManager? { editingUndoManager }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.textBackgroundColor.setFill()
+        dirtyRect.fill()
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        session.drawFragments(in: context)
     }
+    #else
+    override var canBecomeFirstResponder: Bool { true }
+    override var undoManager: UndoManager? { editingUndoManager }
+
+    override func draw(_ rect: CGRect) {
+        backgroundColor?.setFill()
+        UIRectFill(rect)
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        session.drawFragments(in: context)
+    }
+    #endif
 
     func loadMarkdown(_ markdown: String) {
-        let storage = documentTextStorage
-        session.loadMarkdown(markdown, into: storage)
+        session.loadMarkdown(markdown, into: documentTextStorage)
     }
 
     func setMode(_ mode: EditorMode) {
         session.setMode(mode, textStorage: documentTextStorage)
-        isEditable = (mode == .source)
-    }
-
-    var documentTextStorage: NSTextStorage {
-        if let textStorage {
-            return textStorage
-        }
-        if let storage = (textLayoutManager?.textContentManager as? NSTextContentStorage)?.textStorage {
-            return storage
-        }
-        let storage = NSTextStorage()
-        (textLayoutManager?.textContentManager as? NSTextContentStorage)?.textStorage = storage
-        return storage
     }
 
     func applyFolds() {
-        attachSession()
         session.applyFolds()
     }
 
     func ensureLayout() {
-        attachSession()
         session.ensureLayout()
-        layoutSubtreeIfNeeded()
+        #if os(macOS)
+        needsDisplay = true
+        #else
+        setNeedsDisplay()
+        #endif
     }
 
-    private var hostWindow: NSWindow?
+    private var hostWindow: AnyObject?
 
     func prepareForEditing() {
+        #if os(macOS)
         let window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable],
@@ -358,25 +400,37 @@ final class FoldingTextView: NSTextView {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(self)
         hostWindow = window
+        #else
+        let window = UIWindow(frame: frame)
+        let host = UIViewController()
+        host.view.frame = frame
+        host.view.addSubview(self)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        becomeFirstResponder()
+        hostWindow = window
+        #endif
     }
 
     func insertTextAtCaret(_ string: String) {
         prepareForEditing()
-        let range = NSRange(location: 0, length: 0)
-        setSelectedRange(range)
-        if shouldChangeText(in: range, replacementString: string) {
-            textStorage?.replaceCharacters(in: range, with: string)
-            didChangeText()
+        let nsString = string as NSString
+        let insertRange = NSRange(location: 0, length: 0)
+        documentTextStorage.replaceCharacters(in: insertRange, with: string)
+        let inserted = NSRange(location: 0, length: nsString.length)
+        editingUndoManager.registerUndo(withTarget: documentTextStorage) { storage in
+            storage.replaceCharacters(in: inserted, with: "")
         }
     }
 
     func undoLastChange() -> Bool {
-        guard let undoManager, undoManager.canUndo else { return false }
-        undoManager.undo()
+        guard editingUndoManager.canUndo else { return false }
+        editingUndoManager.undo()
         return true
     }
 }
 
+#if os(macOS)
 struct FoldingTextViewRepresentable: NSViewRepresentable {
     var markdown: String
     var foldStore: FoldStore
@@ -389,105 +443,7 @@ struct FoldingTextViewRepresentable: NSViewRepresentable {
 
     func updateNSView(_ nsView: FoldingTextView, context: Context) {}
 }
-
 #else
-
-@MainActor
-final class FoldingTextView: UITextView {
-    var session: FoldingSession
-
-    var foldStore: FoldStore { session.foldStore }
-    var blocks: [Block] { session.blocks }
-    var layoutHeight: CGFloat { session.layoutHeight }
-    var collapsedFragmentCount: Int { session.collapsedFragmentCount }
-    var hiddenRangeCount: Int { session.hiddenUTF16RangeCount }
-    var string: String {
-        get { text }
-        set { text = newValue }
-    }
-
-    convenience init(foldStore: FoldStore = FoldStore()) {
-        self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), textContainer: nil)
-        session = FoldingSession(foldStore: foldStore)
-        attachSession()
-    }
-
-    override init(frame: CGRect, textContainer: NSTextContainer?) {
-        session = FoldingSession()
-        super.init(frame: frame, textContainer: textContainer)
-        completeInit()
-    }
-
-    required init?(coder: NSCoder) {
-        session = FoldingSession()
-        super.init(coder: coder)
-        completeInit()
-    }
-
-    private func completeInit() {
-        isEditable = true
-        font = PlatformFont.monospaced(size: 14)
-        frame = CGRect(x: 0, y: 0, width: 480, height: 800)
-        textContainer.size = CGSize(width: 480, height: CGFloat.greatestFiniteMagnitude)
-        textContainer.widthTracksTextView = false
-        attachSession()
-    }
-
-    private func attachSession() {
-        guard let layoutManager = textLayoutManager,
-              let content = layoutManager.textContentManager as? NSTextContentStorage
-        else {
-            return
-        }
-        session.attach(layoutManager: layoutManager, contentStorage: content)
-    }
-
-    func loadMarkdown(_ markdown: String) {
-        session.loadMarkdown(markdown, into: textStorage)
-    }
-
-    func setMode(_ mode: EditorMode) {
-        session.setMode(mode, textStorage: textStorage)
-        isEditable = (mode == .source)
-    }
-
-    func applyFolds() {
-        attachSession()
-        session.applyFolds()
-    }
-
-    func ensureLayout() {
-        attachSession()
-        session.ensureLayout()
-        layoutIfNeeded()
-    }
-
-    private var hostWindow: UIWindow?
-
-    func prepareForEditing() {
-        let window = UIWindow(frame: frame)
-        let host = UIViewController()
-        host.view.frame = frame
-        host.view.addSubview(self)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        becomeFirstResponder()
-        hostWindow = window
-    }
-
-    func insertTextAtCaret(_ string: String) {
-        prepareForEditing()
-        selectedRange = NSRange(location: 0, length: 0)
-        insertText(string)
-    }
-
-    func undoLastChange() -> Bool {
-        guard let undoManager, undoManager.canUndo else { return false }
-        undoManager.undo()
-        return true
-    }
-}
-
 struct FoldingTextViewRepresentable: UIViewRepresentable {
     var markdown: String
     var foldStore: FoldStore
@@ -500,5 +456,4 @@ struct FoldingTextViewRepresentable: UIViewRepresentable {
 
     func updateUIView(_ uiView: FoldingTextView, context: Context) {}
 }
-
 #endif
