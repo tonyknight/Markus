@@ -6,6 +6,9 @@ struct FolderTreeNode: Equatable, Identifiable {
     var url: URL
     var isDirectory: Bool
     var children: [FolderTreeNode]
+    var outlineChildren: [FolderTreeNode]? {
+        isDirectory ? children : nil
+    }
 }
 
 enum MarkdownFolderTree {

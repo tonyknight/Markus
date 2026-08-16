@@ -6,20 +6,27 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if host.session.fileURL == nil {
-                    ContentUnavailableView {
-                        Label("Markus", systemImage: "doc.plaintext")
-                    } description: {
-                        Text("Open a Markdown file to preview it.")
-                    }
-                } else {
-                    SessionEditorRepresentable(session: host.session)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack(spacing: 0) {
+                if FolderChrome.showsTree(for: host) {
+                    FolderTreeView(host: host)
+                        .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
                 }
+                VStack(spacing: 0) {
+                    if host.session.fileURL == nil {
+                        ContentUnavailableView {
+                            Label("Markus", systemImage: "doc.plaintext")
+                        } description: {
+                            Text("Open a Markdown file to preview it.")
+                        }
+                    } else {
+                        SessionEditorRepresentable(session: host.session)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle(host.session.fileURL?.lastPathComponent ?? "Markus")
+            .navigationTitle(host.session.fileURL?.lastPathComponent ?? host.folderSession?.rootURL.lastPathComponent ?? "Markus")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -40,6 +47,11 @@ struct ContentView: View {
                 }
             }
             ToolbarItem(placement: .automatic) {
+                Button("Open Folder") {
+                    host.isFolderImporterPresented = true
+                }
+            }
+            ToolbarItem(placement: .automatic) {
                 Button("Save") {
                     host.save()
                 }
@@ -57,7 +69,7 @@ struct ContentView: View {
                         Text("No Recents")
                     } else {
                         ForEach(host.recents.items, id: \.url) { item in
-                            Button(item.url.lastPathComponent) {
+                            Button(item.isFolder ? item.url.lastPathComponent + "/" : item.url.lastPathComponent) {
                                 host.openRecent(item)
                             }
                         }
@@ -77,6 +89,20 @@ struct ContentView: View {
                 }
             case .failure:
                 host.errorMessage = "Could not open file."
+            }
+        }
+        .fileImporter(
+            isPresented: $host.isFolderImporterPresented,
+            allowedContentTypes: FolderChrome.folderContentTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    host.openFolder(url)
+                }
+            case .failure:
+                host.errorMessage = "Could not open folder."
             }
         }
         .alert("Open Failed", isPresented: Binding(

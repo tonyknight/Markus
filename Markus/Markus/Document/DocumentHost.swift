@@ -6,6 +6,7 @@ final class DocumentHost: ObservableObject {
     let session: DocumentSession
     let recents: RecentDocuments
     @Published var isImporterPresented = false
+    @Published var isFolderImporterPresented = false
     @Published var errorMessage: String?
     private(set) var folderSession: FolderSession?
     private var sessionCancellable: AnyCancellable?
