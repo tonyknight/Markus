@@ -10,6 +10,12 @@ import SwiftUI
 enum UTF8NSRange {
     static func nsRange(utf8Bytes: Range<Int>, in string: String) -> NSRange {
         let utf8 = string.utf8
+        guard utf8Bytes.lowerBound >= 0,
+              utf8Bytes.upperBound <= utf8.count,
+              utf8Bytes.lowerBound <= utf8Bytes.upperBound
+        else {
+            return NSRange(location: NSNotFound, length: 0)
+        }
         let lower = utf8.index(utf8.startIndex, offsetBy: utf8Bytes.lowerBound)
         let upper = utf8.index(utf8.startIndex, offsetBy: utf8Bytes.upperBound)
         guard let stringLower = String.Index(lower, within: string),
@@ -102,6 +108,13 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         guard let layoutManager else { return }
         layoutManager.ensureLayout(for: layoutManager.documentRange)
         recountCollapsedFragments()
+    }
+
+    func syncBlocksFromStorage() {
+        guard let textStorage else { return }
+        blocks = BlockIndex.build(markdown: textStorage.string)
+        applyStyling(to: textStorage)
+        invalidateLayout()
     }
 
     var layoutHeight: CGFloat {
@@ -480,6 +493,29 @@ final class FoldingTextView: PlatformView {
             selectedUTF16Range = NSRange(location: range.location, length: 0)
         }
         lastJumpedPackedY = y(forSourceLine: line)
+    }
+
+    @discardableResult
+    func find(_ query: String) -> NSRange? {
+        let found = FindReplace.search(query, in: documentTextStorage, from: selectedUTF16Range.location)
+        if let found {
+            selectedUTF16Range = found
+        }
+        return found
+    }
+
+    @discardableResult
+    func replaceSelection(with replacement: String) -> Bool {
+        let ok = FindReplace.replace(selectedUTF16Range, with: replacement, in: documentTextStorage)
+        if ok {
+            session.syncBlocksFromStorage()
+            onTextDidChange?()
+        }
+        return ok
+    }
+
+    func syncBlocksFromStorage() {
+        session.syncBlocksFromStorage()
     }
 
     var string: String {

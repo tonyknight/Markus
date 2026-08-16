@@ -262,4 +262,14 @@ final class DocumentHost: ObservableObject {
         session.editor.jumpToSourceLine(item.sourceLine)
         objectWillChange.send()
     }
+
+    @discardableResult
+    func find(_ query: String) -> NSRange? {
+        session.editor.find(query)
+    }
+
+    @discardableResult
+    func replaceSelection(with replacement: String) -> Bool {
+        session.editor.replaceSelection(with: replacement)
+    }
 }
