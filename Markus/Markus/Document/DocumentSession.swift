@@ -17,6 +17,8 @@ final class DocumentSession: ObservableObject {
     let editor: FoldingTextView
     private(set) var fileURL: URL?
     private var lastSavedText = ""
+    private var scopedURL: URL?
+    private var isAccessing = false
 
     var textStorage: NSTextStorage {
         editor.documentTextStorage
@@ -31,11 +33,27 @@ final class DocumentSession: ObservableObject {
     }
 
     func open(url: URL) throws {
-        let markdown = try readUTF8(from: url)
-        fileURL = url
-        lastSavedText = markdown
-        editor.loadMarkdown(markdown)
-        objectWillChange.send()
+        releaseAccess()
+        isAccessing = url.startAccessingSecurityScopedResource()
+        scopedURL = url
+        do {
+            let markdown = try readUTF8(from: url)
+            fileURL = url
+            lastSavedText = markdown
+            editor.loadMarkdown(markdown)
+            objectWillChange.send()
+        } catch {
+            releaseAccess()
+            throw error
+        }
+    }
+
+    private func releaseAccess() {
+        if isAccessing, let scopedURL {
+            scopedURL.stopAccessingSecurityScopedResource()
+        }
+        isAccessing = false
+        scopedURL = nil
     }
 
     func save() throws {

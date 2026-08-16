@@ -24,8 +24,7 @@ subtasks:
 - id: S4
   title: Three-destination verify
   status: todo
-plan_status: in-progress
-current_task: T04
+plan_status: done
 ---
 ## Description
 
@@ -56,8 +55,8 @@ Editor: `Markus/Markus/Editor/FoldingTextView.swift`. Save helper:
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T04
+Status: done
+Current task: 
 
 ### T01: Open UTF-8 from URL
 `DocumentSession` loads a file URL as UTF-8 into `NSTextStorage` and
@@ -96,7 +95,7 @@ and
 `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -only-testing:MarkusTests test`
 Files: `Markus/Markus/MarkusApp.swift`, `Markus/Markus/ContentView.swift` as needed
 - [ ] todo
-
+- [x] done
 ## Notes
 
 ### 2026-08-15
@@ -107,3 +106,6 @@ T02: save writes full UTF-8 via DocumentSave even when folded; revert reloads di
 
 ### 2026-08-15
 T03: Recents persist file URLs; iOS records bookmark data; startAccessing fails cleanly on stale bookmarks. macOS MarkusTests TEST SUCCEEDED.
+
+### 2026-08-15
+T04: ContentView fileImporter + DocumentHost displays opened file; Recents/Save/Revert wired. MarkusTests TEST SUCCEEDED on iPhone 17 and iPad Pro 13-inch (M5). Ticket left in-progress.
