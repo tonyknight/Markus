@@ -19,8 +19,16 @@ struct ContentView: View {
                             Text("Open a Markdown file to preview it.")
                         }
                     } else {
-                        SessionEditorRepresentable(session: host.session)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        HStack(spacing: 0) {
+                            SessionEditorRepresentable(session: host.session)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            #if os(macOS)
+                            if MacMinimapChrome.showsMinimap {
+                                MacMinimapRepresentable(editor: host.session.editor)
+                                    .frame(width: 72)
+                            }
+                            #endif
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
