@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var host = DocumentHost()
+    @ObservedObject var host: DocumentHost
 
     var body: some View {
         NavigationStack {
@@ -168,7 +168,7 @@ struct SessionEditorRepresentable: UIViewRepresentable {
 #endif
 
 #Preview {
-    ContentView()
+    AppRootView()
 }
 
 private struct SettingsPane: View {

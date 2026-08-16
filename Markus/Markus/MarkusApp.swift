@@ -9,9 +9,27 @@ import SwiftUI
 
 @main
 struct MarkusApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(MarkusAppDelegate.self) var appDelegate
+    #endif
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        #if os(macOS)
+        Settings {
+            Text("Open a Markdown document to edit.")
         }
+        #else
+        WindowGroup {
+            AppRootView()
+        }
+        #endif
+    }
+}
+
+struct AppRootView: View {
+    @StateObject private var host = DocumentHost()
+
+    var body: some View {
+        ContentView(host: host)
     }
 }
