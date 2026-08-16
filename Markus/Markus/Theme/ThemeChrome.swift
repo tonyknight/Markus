@@ -16,6 +16,14 @@ enum ThemeChrome {
         #endif
     }
 
+    static var presentsSettingsAsModalSheet: Bool {
+        #if os(macOS)
+        false
+        #else
+        true
+        #endif
+    }
+
     static let sampleMarkdown = """
     # Heading
     Body with a [link](https://example.com) and `code`.
@@ -29,6 +37,16 @@ enum ThemeChrome {
     @MainActor
     static func preview(_ selection: ThemeSelection?, on host: DocumentHost) {
         host.previewTheme(selection)
+    }
+
+    @MainActor
+    static func makeCardSampleView(tokens: ThemeTokens) -> FoldingTextView {
+        let view = FoldingTextView()
+        view.loadMarkdown(sampleMarkdown)
+        view.setMode(.preview)
+        view.setTheme(tokens)
+        view.configureAsThemeCardSample()
+        return view
     }
 }
 
@@ -151,11 +169,7 @@ private struct ThemeSampleView: NSViewRepresentable {
     var tokens: ThemeTokens
 
     func makeNSView(context: Context) -> FoldingTextView {
-        let view = FoldingTextView()
-        view.loadMarkdown(ThemeChrome.sampleMarkdown)
-        view.setMode(.preview)
-        view.setTheme(tokens)
-        return view
+        ThemeChrome.makeCardSampleView(tokens: tokens)
     }
 
     func updateNSView(_ nsView: FoldingTextView, context: Context) {
@@ -168,12 +182,7 @@ private struct ThemeSampleView: UIViewRepresentable {
     var tokens: ThemeTokens
 
     func makeUIView(context: Context) -> FoldingTextView {
-        let view = FoldingTextView()
-        view.loadMarkdown(ThemeChrome.sampleMarkdown)
-        view.setMode(.preview)
-        view.setTheme(tokens)
-        view.isUserInteractionEnabled = false
-        return view
+        ThemeChrome.makeCardSampleView(tokens: tokens)
     }
 
     func updateUIView(_ uiView: FoldingTextView, context: Context) {

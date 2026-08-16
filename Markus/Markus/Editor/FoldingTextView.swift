@@ -475,6 +475,17 @@ final class FoldingTextView: PlatformView {
     var mode: EditorMode { session.mode }
     var tokens: ThemeTokens { session.tokens }
     var canvasBackground: PlatformColorType { session.tokens.background }
+    #if os(macOS)
+    var ignoresHits = false
+    #endif
+
+    func configureAsThemeCardSample() {
+        #if os(macOS)
+        ignoresHits = true
+        #else
+        isUserInteractionEnabled = false
+        #endif
+    }
 
     convenience init(foldStore: FoldStore = FoldStore()) {
         self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: foldStore)
@@ -534,8 +545,13 @@ final class FoldingTextView: PlatformView {
     #if os(macOS)
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool { !ignoresHits }
     override var undoManager: UndoManager? { editingUndoManager }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if ignoresHits { return nil }
+        return super.hitTest(point)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         session.tokens.background.setFill()

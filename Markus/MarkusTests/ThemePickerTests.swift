@@ -81,8 +81,21 @@ struct ThemePickerTests {
         #expect(ThemeChrome.hostsPickerInSettings)
         #if os(macOS)
         #expect(ThemeChrome.showsHoverPreview)
+        #expect(!ThemeChrome.presentsSettingsAsModalSheet)
         #else
         #expect(!ThemeChrome.showsHoverPreview)
+        #expect(ThemeChrome.presentsSettingsAsModalSheet)
+        #endif
+    }
+
+    @Test func themeCardSampleViewDoesNotStealHitsOrFirstResponder() {
+        let sample = ThemeChrome.makeCardSampleView(tokens: NamedThemeCatalog.tokens(for: .daylight))
+        #if os(macOS)
+        sample.frame = NSRect(x: 0, y: 0, width: 160, height: 88)
+        #expect(sample.hitTest(NSPoint(x: 80, y: 44)) == nil)
+        #expect(!sample.acceptsFirstResponder)
+        #else
+        #expect(!sample.isUserInteractionEnabled)
         #endif
     }
 

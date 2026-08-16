@@ -24,6 +24,10 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if !ThemeChrome.presentsSettingsAsModalSheet, host.isSettingsPresented {
+                    SettingsPane(host: host)
+                        .frame(minWidth: 380, idealWidth: 400, maxWidth: 480)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(host.session.fileURL?.lastPathComponent ?? host.folderSession?.rootURL.lastPathComponent ?? "Markus")
@@ -110,22 +114,7 @@ struct ContentView: View {
                 host.errorMessage = "Could not open folder."
             }
         }
-        .sheet(isPresented: $host.isSettingsPresented) {
-            NavigationStack {
-                ThemePickerView(host: host)
-                    .navigationTitle("Settings")
-                    #if os(iOS)
-                    .navigationBarTitleDisplayMode(.inline)
-                    #endif
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") {
-                                host.isSettingsPresented = false
-                            }
-                        }
-                    }
-            }
-        }
+        .modifier(SettingsSheetModifier(host: host))
         .alert("Open Failed", isPresented: Binding(
             get: { host.errorMessage != nil },
             set: { if !$0 { host.errorMessage = nil } }
@@ -180,4 +169,39 @@ struct SessionEditorRepresentable: UIViewRepresentable {
 
 #Preview {
     ContentView()
+}
+
+private struct SettingsPane: View {
+    @ObservedObject var host: DocumentHost
+
+    var body: some View {
+        NavigationStack {
+            ThemePickerView(host: host)
+                .navigationTitle("Settings")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            host.isSettingsPresented = false
+                        }
+                    }
+                }
+        }
+    }
+}
+
+private struct SettingsSheetModifier: ViewModifier {
+    @ObservedObject var host: DocumentHost
+
+    func body(content: Content) -> some View {
+        if ThemeChrome.presentsSettingsAsModalSheet {
+            content.sheet(isPresented: $host.isSettingsPresented) {
+                SettingsPane(host: host)
+            }
+        } else {
+            content
+        }
+    }
 }
