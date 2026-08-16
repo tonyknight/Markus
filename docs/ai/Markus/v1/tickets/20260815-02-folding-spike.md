@@ -25,7 +25,7 @@ subtasks:
   title: Three-destination verify
   status: todo
 plan_status: in-progress
-current_task: T03
+current_task: T04
 ---
 ## Description
 
@@ -58,7 +58,7 @@ index. Hard gate for v1. Parser lives in `Markus/Markus/Markdown/MarkdownParser.
 ## Implementation plan
 
 Status: in-progress
-Current task: T03
+Current task: T04
 
 ### T01: Block index with fold extents
 RED then GREEN: parser/index reports ATX heading and fenced-code **byte and line ranges**, plus **fold extents** (heading: from end of heading line through next same-or-higher heading; fence: body after the opening fence, keep opening fence visible). Fixture with H2, paragraph, nested H3, fence, following H2.
@@ -77,7 +77,7 @@ One custom view (AppKit + UIKit wrappers / SwiftUI representable) using TextKit 
 Files: `Markus/Markus/Editor/FoldingTextView.swift` (and platform wrappers as needed), `Markus/MarkusTests/FoldingTextViewTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
 - [ ] todo
-
+- [x] done
 ### T04: Three-destination verify
 Same tests on iPhone and iPad simulators.
 Files: none unless a destination-specific fix is required
@@ -94,3 +94,6 @@ T01: Block index reports ATX/fence byte+line ranges and fold extents (heading th
 
 ### 2026-08-15
 T02: FoldStore is shared across Source/Preview; DocumentSave.writeUTF8 writes full NSTextStorage UTF-8 including folded extents. macOS MarkusTests passed.
+
+### 2026-08-15
+T03: TextKit 2 view hides heading/fence extents in Source and Preview via collapsed paragraph styles on the full NSTextStorage (characters unchanged). NSTextLayoutFragment subclass was not invoked by NSTextView; layout still shrinks; save is full UTF-8; Source insert+undo works with a host window. macOS MarkusTests passed. Viable for v1 with remaining polish: fragment-based hide, caret in collapsed ranges, Preview is styled source not rendered GFM.
