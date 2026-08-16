@@ -5,15 +5,20 @@ import cmark_gfm_extensions
 nonisolated struct MarkdownParser: Sendable {
     func parse(_ markdown: String) -> [MarkdownBlock] {
         let byteCount = markdown.utf8.count
+        let sourceMap = SourceMap(markdown: markdown)
         return markdown.withCString { cString in
-            parseUTF8(cString, byteCount: byteCount)
+            parseUTF8(cString, byteCount: byteCount, sourceMap: sourceMap)
         }
     }
 
-    private func parseUTF8(_ utf8: UnsafePointer<CChar>, byteCount: Int) -> [MarkdownBlock] {
+    private func parseUTF8(
+        _ utf8: UnsafePointer<CChar>,
+        byteCount: Int,
+        sourceMap: SourceMap
+    ) -> [MarkdownBlock] {
         cmark_gfm_core_extensions_ensure_registered()
 
-        let options = CMARK_OPT_DEFAULT | CMARK_OPT_FOOTNOTES
+        let options = CMARK_OPT_DEFAULT | CMARK_OPT_FOOTNOTES | CMARK_OPT_SOURCEPOS
         guard let parser = cmark_parser_new(options) else { return [] }
         defer { cmark_parser_free(parser) }
 
@@ -38,9 +43,15 @@ nonisolated struct MarkdownParser: Sendable {
 
             let node = cmark_iter_get_node(iterator)
             let type = cmark_node_get_type(node)
+            let startLine = Int(cmark_node_get_start_line(node))
+            let endLine = Int(cmark_node_get_end_line(node))
+            guard startLine > 0, endLine >= startLine else { continue }
+            let lines = sourceMap.lineRange(startLine: startLine, endLine: endLine)
+            let bytes = sourceMap.byteRange(startLine: startLine, endLine: endLine)
+
             if type == CMARK_NODE_HEADING {
                 let level = Int(cmark_node_get_heading_level(node))
-                blocks.append(MarkdownBlock(kind: .heading(level: level)))
+                blocks.append(MarkdownBlock(kind: .heading(level: level), bytes: bytes, lines: lines))
             } else if type == CMARK_NODE_CODE_BLOCK {
                 var fenceLength: Int32 = 0
                 var fenceOffset: Int32 = 0
@@ -52,9 +63,9 @@ nonisolated struct MarkdownParser: Sendable {
                     &fenceCharacter
                 ) != 0
                 if isFenced {
-                    blocks.append(MarkdownBlock(kind: .fencedCode))
+                    blocks.append(MarkdownBlock(kind: .fencedCode, bytes: bytes, lines: lines))
                 } else {
-                    blocks.append(MarkdownBlock(kind: .other))
+                    blocks.append(MarkdownBlock(kind: .other, bytes: bytes, lines: lines))
                 }
             }
         }
@@ -70,4 +81,6 @@ nonisolated enum MarkdownBlockKind: Equatable, Sendable {
 
 nonisolated struct MarkdownBlock: Equatable, Sendable {
     var kind: MarkdownBlockKind
+    var bytes: Range<Int>
+    var lines: Range<Int>
 }
