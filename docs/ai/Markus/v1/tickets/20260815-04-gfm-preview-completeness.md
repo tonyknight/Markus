@@ -3,27 +3,27 @@ id: 20260815-04-gfm-preview-completeness
 title: GFM Preview completeness
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-15
 updated: 2026-08-15
-closed:
-notes: ''
+closed: 2026-08-15
+notes: T04 review minors-only; marking done
 parent:
 depends_on:
 - 20260815-03-document-lifecycle
 subtasks:
 - id: S1
   title: Parser GFM fixture events
-  status: todo
+  status: done
 - id: S2
   title: Preview attributed rendering
-  status: todo
+  status: done
 - id: S3
   title: Theme tokens
-  status: todo
+  status: done
 - id: S4
   title: Three-destination verify
-  status: todo
+  status: done
 plan_status: done
 ---
 ## Description
@@ -33,11 +33,11 @@ code, themed tokens. Fixture tests.
 
 ## Acceptance criteria
 
-- [ ] Preview fixture covers headings, tables, task lists, strikethrough, footnotes, fenced code
-- [ ] Rendering matches claimed GFM (no house dialect)
-- [ ] Theme tokens color Markdown elements
-- [ ] Math, Mermaid, and raw HTML are not first-class
-- [ ] Tests pass on Mac, iPhone simulator, and iPad simulator
+- [x] Preview fixture covers headings, tables, task lists, strikethrough, footnotes, fenced code
+- [x] Rendering matches claimed GFM (no house dialect)
+- [x] Theme tokens color Markdown elements
+- [x] Math, Mermaid, and raw HTML are not first-class
+- [x] Tests pass on Mac, iPhone simulator, and iPad simulator
 
 ## Context
 
@@ -45,10 +45,10 @@ Requirements R1, R9 tokens (picker UI is ticket 08).
 
 ## Subtasks
 
-- [ ] GFM fixture tests
-- [ ] Preview attributed rendering
-- [ ] Theme tokens
-- [ ] Three-destination verify
+- [x] GFM fixture tests
+- [x] Preview attributed rendering
+- [x] Theme tokens
+- [x] Three-destination verify
 
 ## Implementation plan
 
@@ -98,3 +98,14 @@ T03 GREEN: ThemeTokens default palette; swapping heading/link recolors Preview r
 
 ### 2026-08-15
 T04 GREEN: MarkusTests TEST SUCCEEDED on iPhone 17 and iPad Pro 13-inch (M5); macOS already green from T03. Ticket left in-progress (not marked done).
+
+## Review
+
+- **Date:** 2026-08-15
+- **Verdict:** Minor only — done
+- **Verify (controller, fresh):** MarkusTests TEST SUCCEEDED on macOS, iPhone 17, iPad Pro 13-inch (M5).
+- **Findings:**
+  1. **Minor:** `ThemeTokens.background` is unused; canvas still uses system text/background colors (ticket 08).
+  2. **Minor:** Fixture covers `$x$` and mermaid, not a raw-HTML negative case.
+  3. **Minor:** T01–T03 are tests+implementation in one commit (no RED SHA).
+  4. **Minor:** Frontmatter subtasks/AC were still unchecked at review (fixed on close).

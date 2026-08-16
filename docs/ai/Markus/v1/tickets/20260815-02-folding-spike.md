@@ -3,10 +3,10 @@ id: 20260815-02-folding-spike
 title: Folding spike
 type: spike
 priority: high
-status: in-progress
+status: done
 created: 2026-08-15
 updated: 2026-08-15
-closed:
+closed: 2026-08-15
 notes: ''
 parent:
 depends_on:
@@ -38,13 +38,13 @@ decision; if it is janky, stop and reopen design.
 
 ## Acceptance criteria
 
-- [ ] Block index from cmark-gfm: ATX headings and fenced code blocks with source byte/line ranges
-- [ ] Fold/unfold a heading section and a fenced block in Preview and Source
-- [ ] Fold state is shared across the mode switch
-- [ ] Save writes the complete unfolded source
-- [ ] Caret/undo still work in Source after a fold (spike-quality, not polish)
-- [ ] Tests pass on Mac, iPhone simulator, and iPad simulator
-- [ ] Folds hide via owned TextKit 2 **layout fragments**, not collapsed paragraph styles on `NSTextStorage`
+- [x] Block index from cmark-gfm: ATX headings and fenced code blocks with source byte/line ranges
+- [x] Fold/unfold a heading section and a fenced block in Preview and Source
+- [x] Fold state is shared across the mode switch
+- [x] Save writes the complete unfolded source
+- [x] Caret/undo still work in Source after a fold (spike-quality, not polish)
+- [x] Tests pass on Mac, iPhone simulator, and iPad simulator
+- [x] Folds hide via owned TextKit 2 **layout fragments**, not collapsed paragraph styles on `NSTextStorage`
 
 ## Context
 
@@ -53,9 +53,9 @@ index. Hard gate for v1. Parser lives in `Markus/Markus/Markdown/MarkdownParser.
 
 ## Subtasks
 
-- [ ] Block index
-- [ ] TextKit 2 fold layout in both modes
-- [ ] Shared fold store + full-buffer save
+- [x] Block index
+- [x] TextKit 2 fold layout in both modes
+- [x] Shared fold store + full-buffer save
 - [x] Three-destination verify
 - [x] Own NSTextLayoutManager fragment hide
 
@@ -136,3 +136,10 @@ Architecture A agreed: own NSTextLayoutManager; T05 fragment hide; no paragraph-
 
 ### 2026-08-15
 T05: custom NSView/UIView owns NSTextContentStorage + NSTextLayoutManager + NSTextContainer. textLayoutFragmentFor returns FoldingTextLayoutFragment (isCollapsed, zero height, skip draw). applyCollapsedParagraphStyles removed. packed layout height from non-collapsed fragments. collapsedFragmentCount > 0 after heading+fence fold; unfold restores Source height vs Source unfolded; save full UTF-8; insert+undo in Source. Verify MarkusTests TEST SUCCEEDED: macOS, iPhone 17, iPad Pro 13-inch (M5). Ticket left in-progress.
+
+## Review (T05)
+
+- **Date:** 2026-08-15
+- **Verdict:** clean
+- **Verify (controller, fresh):** macOS, iPhone 17, iPad Pro 13-inch (M5) MarkusTests TEST SUCCEEDED.
+- **Findings:** None. Owns layout manager; fragment hide is live; paragraph-style squash gone. Spike caret and styled-source Preview are in-scope leftovers for later tickets.
