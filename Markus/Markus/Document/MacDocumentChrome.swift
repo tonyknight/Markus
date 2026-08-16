@@ -12,6 +12,14 @@ enum MacDocumentChrome {
         #endif
     }
 
+    static var standaloneFileOpenCreatesNewDocument: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     static var usesSwiftUITabBar: Bool { false }
 
     #if os(macOS)

@@ -1,5 +1,8 @@
 import Combine
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 
 @MainActor
 final class DocumentHost: ObservableObject {
@@ -17,6 +20,30 @@ final class DocumentHost: ObservableObject {
     var isFolderTreeVisible: Bool {
         folderSession != nil
     }
+
+    var showsEditor: Bool {
+        #if os(macOS)
+        true
+        #else
+        session.fileURL != nil
+        #endif
+    }
+
+    var canSave: Bool {
+        #if os(macOS)
+        true
+        #else
+        session.fileURL != nil
+        #endif
+    }
+
+    #if os(macOS)
+    weak var macDocument: MarkdownDocument?
+
+    func attachMacDocument(_ document: MarkdownDocument) {
+        macDocument = document
+    }
+    #endif
 
     init() {
         self.session = DocumentSession()
@@ -96,6 +123,23 @@ final class DocumentHost: ObservableObject {
         objectWillChange.send()
     }
 
+    func openStandaloneFile(_ url: URL) {
+        #if os(macOS)
+        if MacDocumentChrome.standaloneFileOpenCreatesNewDocument {
+            do {
+                _ = try MacDocumentLaunch.openFile(url)
+                recents.record(url: url)
+                errorMessage = nil
+                objectWillChange.send()
+            } catch {
+                errorMessage = "Could not open file."
+            }
+            return
+        }
+        #endif
+        openPicked(url)
+    }
+
     func openPicked(_ url: URL) {
         var isDir: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
@@ -143,6 +187,16 @@ final class DocumentHost: ObservableObject {
                 openFolder(url, alreadyAccessing: true)
                 recents.record(url: url, bookmarkData: item.bookmarkData, isFolder: true)
             } else {
+                #if os(macOS)
+                if MacDocumentChrome.standaloneFileOpenCreatesNewDocument {
+                    _ = try MacDocumentLaunch.openFile(url)
+                    recents.record(url: url, bookmarkData: item.bookmarkData)
+                    recents.stopAccessing(url)
+                    errorMessage = nil
+                    objectWillChange.send()
+                    return
+                }
+                #endif
                 defer { recents.stopAccessing(url) }
                 try session.open(url: url)
                 clearFolderSession()
@@ -156,6 +210,22 @@ final class DocumentHost: ObservableObject {
     }
 
     func save() {
+        #if os(macOS)
+        if let macDocument {
+            if let url = macDocument.fileURL ?? session.fileURL {
+                do {
+                    try macDocument.write(to: url, ofType: macDocument.fileType ?? "net.daringfireball.markdown")
+                    errorMessage = nil
+                    objectWillChange.send()
+                } catch {
+                    errorMessage = "Could not save file."
+                }
+            } else {
+                _ = NSApp.sendAction(#selector(NSDocument.save(_:)), to: macDocument, from: nil)
+            }
+            return
+        }
+        #endif
         do {
             try session.save()
             errorMessage = nil

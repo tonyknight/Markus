@@ -12,7 +12,7 @@ struct ContentView: View {
                         .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
                 }
                 VStack(spacing: 0) {
-                    if host.session.fileURL == nil {
+                    if !host.showsEditor {
                         ContentUnavailableView {
                             Label("Markus", systemImage: "doc.plaintext")
                         } description: {
@@ -67,7 +67,7 @@ struct ContentView: View {
                 Button("Save") {
                     host.save()
                 }
-                .disabled(host.session.fileURL == nil)
+                .disabled(!host.canSave)
             }
             ToolbarItem(placement: .automatic) {
                 Button("Revert") {
@@ -102,7 +102,7 @@ struct ContentView: View {
             switch result {
             case .success(let urls):
                 if let url = urls.first {
-                    host.openPicked(url)
+                    host.openStandaloneFile(url)
                 }
             case .failure:
                 host.errorMessage = "Could not open file."

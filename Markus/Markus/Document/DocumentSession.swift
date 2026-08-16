@@ -70,7 +70,19 @@ final class DocumentSession: ObservableObject {
         guard let fileURL else { throw DocumentSessionError.noFile }
         let data = DocumentSave.writeUTF8(from: textStorage)
         try data.write(to: fileURL, options: .atomic)
+        markSaved(at: fileURL)
+    }
+
+    func markSaved(at url: URL? = nil) {
+        if let url {
+            fileURL = url
+        }
         lastSavedText = editor.string
+        objectWillChange.send()
+    }
+
+    func markLoaded(_ markdown: String) {
+        lastSavedText = markdown
         objectWillChange.send()
     }
 

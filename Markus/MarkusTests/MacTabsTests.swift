@@ -31,5 +31,95 @@ struct MacTabsTests {
         #expect(second.configuredTabbingMode == .preferred)
         #expect(MarkdownDocument.tabbingIdentifier == MacDocumentChrome.tabbingIdentifier)
     }
+
+    @Test func creatingMarkdownDocumentYieldsWindowController() {
+        let document = MarkdownDocument()
+        #expect(document.windowControllers.isEmpty)
+        document.makeWindowControllers()
+        #expect(document.windowControllers.count == 1)
+        #expect(document.windowControllers.first?.window != nil)
+    }
+
+    @Test func documentControllerOpensUntitledMarkdownDocumentWithWindow() throws {
+        let document = try MacDocumentLaunch.openUntitledDocument()
+        let markdown = try #require(document as? MarkdownDocument)
+        #expect(!markdown.windowControllers.isEmpty)
+        #expect(markdown.host.showsEditor)
+        #expect(markdown.session.fileURL == nil)
+    }
+
+    @Test func untitledAndReadFromDataShowEditorWithoutDiskURL() throws {
+        let untitled = MarkdownDocument()
+        #expect(untitled.session.fileURL == nil)
+        #expect(untitled.host.showsEditor)
+
+        let fromData = MarkdownDocument()
+        try fromData.read(from: Data("# From data\n".utf8), ofType: "net.daringfireball.markdown")
+        #expect(fromData.session.fileURL == nil)
+        #expect(fromData.session.editor.string == "# From data\n")
+        #expect(fromData.host.showsEditor)
+    }
+
+    @Test func openingSecondFileUsesNSDocumentNotSessionReplace() throws {
+        #expect(MacDocumentChrome.standaloneFileOpenCreatesNewDocument)
+        let firstURL = uniqueTempMarkdownURL()
+        let secondURL = uniqueTempMarkdownURL()
+        try Data("# First\n".utf8).write(to: firstURL)
+        try Data("# Second\n".utf8).write(to: secondURL)
+        defer {
+            try? FileManager.default.removeItem(at: firstURL)
+            try? FileManager.default.removeItem(at: secondURL)
+        }
+
+        let recents = RecentDocuments(defaults: UserDefaults(suiteName: "markus.tabs.\(UUID().uuidString)")!)
+        let host = DocumentHost(recents: recents)
+        host.openPicked(firstURL)
+        #expect(host.session.fileURL == firstURL)
+
+        host.openStandaloneFile(secondURL)
+        #expect(host.session.fileURL == firstURL)
+        #expect(host.session.editor.string == "# First\n")
+        #expect(host.recents.items.map(\.url.standardizedFileURL).contains(secondURL.standardizedFileURL))
+    }
+
+    @Test func nsDocumentWriteClearsSessionDirty() throws {
+        let document = MarkdownDocument()
+        document.session.editor.insertTextAtCaret("# Saved\n")
+        #expect(document.session.isDirty)
+
+        let url = uniqueTempMarkdownURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try document.write(to: url, ofType: "net.daringfireball.markdown")
+        #expect(!document.session.isDirty)
+        #expect(document.session.fileURL == url)
+        #expect(document.hasUnautosavedChanges == false)
+    }
+
+    private func uniqueTempMarkdownURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-tabs-\(UUID().uuidString).md")
+    }
+    #else
+    @Test func iOSChromeOpenReplacesSingleSession() throws {
+        #expect(!MacDocumentChrome.standaloneFileOpenCreatesNewDocument)
+        let firstURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-ios-first-\(UUID().uuidString).md")
+        let secondURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-ios-second-\(UUID().uuidString).md")
+        try Data("# First\n".utf8).write(to: firstURL)
+        try Data("# Second\n".utf8).write(to: secondURL)
+        defer {
+            try? FileManager.default.removeItem(at: firstURL)
+            try? FileManager.default.removeItem(at: secondURL)
+        }
+
+        let host = DocumentHost()
+        #expect(!host.showsEditor)
+        host.openStandaloneFile(firstURL)
+        #expect(host.showsEditor)
+        host.openStandaloneFile(secondURL)
+        #expect(host.session.fileURL == secondURL)
+        #expect(host.session.editor.string == "# Second\n")
+    }
     #endif
 }
