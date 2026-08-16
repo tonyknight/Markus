@@ -96,6 +96,13 @@ struct SourceMap: Sendable {
         return byteCount
     }
 
+    /// cmark sourcepos columns are 1-based and inclusive, counted in UTF-8 bytes.
+    func byteRange(startLine: Int, startColumn: Int, endLine: Int, endColumn: Int) -> Range<Int> {
+        let lower = min(byteCount, offset(ofLine: startLine) + startColumn - 1)
+        let upper = min(byteCount, offset(ofLine: endLine) + endColumn)
+        return lower..<max(lower, upper)
+    }
+
     func lineRange(startLine: Int, endLine: Int) -> Range<Int> {
         startLine..<(endLine + 1)
     }
