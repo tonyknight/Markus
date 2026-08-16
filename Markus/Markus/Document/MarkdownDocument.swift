@@ -1,0 +1,179 @@
+#if os(macOS)
+import AppKit
+import Combine
+import SwiftUI
+import UniformTypeIdentifiers
+
+final class MarkusDocumentController: NSDocumentController {
+    override var defaultType: String? {
+        "net.daringfireball.markdown"
+    }
+
+    override func documentClass(forType typeName: String) -> AnyClass? {
+        MarkdownDocument.self
+    }
+
+    override func typeForContents(of url: URL) throws -> String {
+        "net.daringfireball.markdown"
+    }
+}
+
+enum MacDocumentLaunch {
+    @MainActor
+    static func openUntitledDocument() throws -> NSDocument {
+        let controller = NSDocumentController.shared
+        do {
+            let type = controller.defaultType ?? "net.daringfireball.markdown"
+            let document = try controller.makeUntitledDocument(ofType: type)
+            controller.addDocument(document)
+            document.makeWindowControllers()
+            document.showWindows()
+            return document
+        } catch {
+            let document = MarkdownDocument()
+            document.makeWindowControllers()
+            controller.addDocument(document)
+            document.showWindows()
+            return document
+        }
+    }
+
+    @MainActor
+    static func openFile(_ url: URL) throws -> NSDocument {
+        let controller = NSDocumentController.shared
+        if let existing = controller.document(for: url) {
+            existing.showWindows()
+            return existing
+        }
+        let type = controller.defaultType ?? "net.daringfireball.markdown"
+        do {
+            let document = try controller.makeDocument(withContentsOf: url, ofType: type)
+            controller.addDocument(document)
+            document.makeWindowControllers()
+            document.showWindows()
+            return document
+        } catch {
+            let document = MarkdownDocument()
+            try document.read(from: url, ofType: type)
+            document.fileURL = url
+            document.makeWindowControllers()
+            controller.addDocument(document)
+            document.showWindows()
+            return document
+        }
+    }
+}
+
+final class MarkdownDocument: NSDocument {
+    nonisolated(unsafe) let session: DocumentSession
+    nonisolated(unsafe) let host: DocumentHost
+
+    var configuredTabbingMode: NSWindow.TabbingMode {
+        MacDocumentChrome.windowTabbingMode
+    }
+
+    static let tabbingIdentifier = MacDocumentChrome.tabbingIdentifier
+
+    nonisolated override init() {
+        precondition(Thread.isMainThread)
+        let session = MainActor.assumeIsolated { DocumentSession() }
+        self.session = session
+        self.host = MainActor.assumeIsolated { DocumentHost(session: session, recents: RecentDocuments()) }
+        super.init()
+        hasUndoManager = false
+        MainActor.assumeIsolated {
+            self.host.attachMacDocument(self)
+        }
+    }
+
+    nonisolated override class var autosavesInPlace: Bool { true }
+
+    nonisolated override func makeWindowControllers() {
+        MainActor.assumeIsolated {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            MacDocumentChrome.applyPreferredTabbing(to: window)
+            window.contentViewController = NSHostingController(rootView: ContentView(host: host))
+            window.title = fileURL?.lastPathComponent ?? session.fileURL?.lastPathComponent ?? "Untitled"
+            addWindowController(NSWindowController(window: window))
+        }
+    }
+
+    nonisolated override func read(from url: URL, ofType typeName: String) throws {
+        try MainActor.assumeIsolated {
+            try session.open(url: url)
+            host.objectWillChange.send()
+        }
+    }
+
+    nonisolated override func write(to url: URL, ofType typeName: String) throws {
+        try MainActor.assumeIsolated {
+            let data = DocumentSave.writeUTF8(from: session.textStorage)
+            try data.write(to: url, options: .atomic)
+            session.markSaved(at: url)
+            updateChangeCount(.changeCleared)
+        }
+    }
+
+    nonisolated override func data(ofType typeName: String) throws -> Data {
+        MainActor.assumeIsolated {
+            DocumentSave.writeUTF8(from: session.textStorage)
+        }
+    }
+
+    nonisolated override func read(from data: Data, ofType typeName: String) throws {
+        guard let markdown = String(data: data, encoding: .utf8) else {
+            throw DocumentSessionError.unreadable
+        }
+        MainActor.assumeIsolated {
+            session.editor.loadMarkdown(markdown)
+            session.markLoaded(markdown)
+            host.objectWillChange.send()
+        }
+    }
+}
+
+final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
+    private let documentController = MarkusDocumentController()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = true
+        _ = documentController
+        if documentController.documents.isEmpty {
+            _ = try? MacDocumentLaunch.openUntitledDocument()
+        }
+    }
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        if !NSDocumentController.shared.documents.isEmpty {
+            return true
+        }
+        return (try? MacDocumentLaunch.openUntitledDocument()) != nil
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where !url.hasDirectoryPath {
+            _ = try? MacDocumentLaunch.openFile(url)
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            return applicationOpenUntitledFile(sender)
+        }
+        return true
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+}
+#endif

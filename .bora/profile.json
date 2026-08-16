@@ -1,0 +1,9 @@
+{
+  "version": "0.5.5",
+  "profile": "dev",
+  "initialized_at": "2026-08-15T21:57:10.472059+00:00",
+  "config": {
+    "auto_archive": true,
+    "research_log_mode": "full_interaction"
+  }
+}
