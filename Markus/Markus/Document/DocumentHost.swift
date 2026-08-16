@@ -12,6 +12,8 @@ final class DocumentHost: ObservableObject {
     @Published var isImporterPresented = false
     @Published var isFolderImporterPresented = false
     @Published var isSettingsPresented = false
+    @Published var isOutlinePresented = false
+    @Published var isTreeFocused = false
     @Published var errorMessage: String?
     private(set) var folderSession: FolderSession?
     private var sessionCancellable: AnyCancellable?
@@ -271,5 +273,47 @@ final class DocumentHost: ObservableObject {
     @discardableResult
     func replaceSelection(with replacement: String) -> Bool {
         session.editor.replaceSelection(with: replacement)
+    }
+
+    func goToLine(_ line: Int) {
+        session.editor.jumpToSourceLine(line)
+        objectWillChange.send()
+    }
+
+    var statusSourceLine: Int {
+        if let y = session.editor.lastJumpedPackedY, let line = session.editor.sourceLine(atY: y) {
+            return line
+        }
+        return 1
+    }
+
+    var statusText: String {
+        let modeLabel = mode == .source ? "Source" : "Preview"
+        let dirty = session.isDirty ? " •" : ""
+        return "Line \(statusSourceLine)  \(modeLabel)\(dirty)"
+    }
+
+    func setZoomScale(_ scale: CGFloat) {
+        session.editor.setZoomScale(scale)
+        objectWillChange.send()
+    }
+
+    func presentOutline() {
+        isOutlinePresented = true
+        objectWillChange.send()
+    }
+
+    func toggleSourcePreview() {
+        setMode(mode == .source ? .preview : .source)
+    }
+
+    func focusTree() {
+        isTreeFocused = true
+        objectWillChange.send()
+    }
+
+    func foldCurrent() {
+        session.editor.foldCurrent()
+        objectWillChange.send()
     }
 }

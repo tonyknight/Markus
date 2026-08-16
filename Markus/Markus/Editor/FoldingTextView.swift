@@ -57,6 +57,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     private(set) var blocks: [Block] = []
     private(set) var mode: EditorMode
     private(set) var tokens: ThemeTokens
+    private(set) var zoomScale: CGFloat = 1
     private(set) var collapsedFragmentCount = 0
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
@@ -91,6 +92,13 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
     func setTheme(_ tokens: ThemeTokens, textStorage: NSTextStorage) {
         self.tokens = tokens
+        self.textStorage = textStorage
+        applyStyling(to: textStorage)
+        invalidateLayout()
+    }
+
+    func setZoomScale(_ scale: CGFloat, textStorage: NSTextStorage) {
+        zoomScale = max(0.5, min(scale, 3))
         self.textStorage = textStorage
         applyStyling(to: textStorage)
         invalidateLayout()
@@ -186,13 +194,13 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         switch mode {
         case .source:
             let source = [
-                NSAttributedString.Key.font: PlatformFont.monospaced(size: 14),
+                NSAttributedString.Key.font: PlatformFont.monospaced(size: 14 * zoomScale),
                 NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(source, range: full)
         case .preview:
             let body = [
-                NSAttributedString.Key.font: PlatformFont.body(size: 16),
+                NSAttributedString.Key.font: PlatformFont.body(size: 16 * zoomScale),
                 NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(body, range: full)
@@ -527,6 +535,7 @@ final class FoldingTextView: PlatformView {
     var lastJumpedPackedY: CGFloat?
     var mode: EditorMode { session.mode }
     var tokens: ThemeTokens { session.tokens }
+    var zoomScale: CGFloat { session.zoomScale }
     var canvasBackground: PlatformColorType { session.tokens.background }
     #if os(macOS)
     var ignoresHits = false
@@ -666,6 +675,21 @@ final class FoldingTextView: PlatformView {
     func setTheme(_ tokens: ThemeTokens) {
         session.setTheme(tokens, textStorage: documentTextStorage)
         paintCanvasBackground()
+    }
+
+    func setZoomScale(_ scale: CGFloat) {
+        session.setZoomScale(scale, textStorage: documentTextStorage)
+    }
+
+    func foldCurrent() {
+        let preferred = sourceLine(atY: lastJumpedPackedY ?? 0)
+        if let preferred, foldableSourceLines().contains(preferred) {
+            toggleFold(atSourceLine: preferred)
+            return
+        }
+        if let first = foldableSourceLines().first {
+            toggleFold(atSourceLine: first)
+        }
     }
 
     func applyFolds() {
