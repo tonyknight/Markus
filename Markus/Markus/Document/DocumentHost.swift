@@ -76,4 +76,13 @@ final class DocumentHost: ObservableObject {
             errorMessage = "Could not revert file."
         }
     }
+
+    var mode: EditorMode {
+        session.mode
+    }
+
+    func setMode(_ mode: EditorMode) {
+        session.setMode(mode)
+        objectWillChange.send()
+    }
 }

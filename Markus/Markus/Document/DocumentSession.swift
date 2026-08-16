@@ -28,6 +28,10 @@ final class DocumentSession: ObservableObject {
         editor.string != lastSavedText
     }
 
+    var mode: EditorMode {
+        editor.mode
+    }
+
     init(editor: FoldingTextView = FoldingTextView()) {
         self.editor = editor
         self.editor.onTextDidChange = { [weak self] in
@@ -78,6 +82,11 @@ final class DocumentSession: ObservableObject {
     func autosave() throws {
         guard isDirty else { return }
         try save()
+    }
+
+    func setMode(_ mode: EditorMode) {
+        editor.setMode(mode)
+        objectWillChange.send()
     }
 
     private func readUTF8(from url: URL) throws -> String {

@@ -287,6 +287,7 @@ final class FoldingTextView: PlatformView {
         set { loadMarkdown(newValue) }
     }
     var onTextDidChange: (() -> Void)?
+    var mode: EditorMode { session.mode }
 
     convenience init(foldStore: FoldStore = FoldStore()) {
         self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: foldStore)
