@@ -24,8 +24,7 @@ subtasks:
 - id: S4
   title: Three-destination verify
   status: todo
-plan_status: in-progress
-current_task: T04
+plan_status: done
 ---
 ## Description
 
@@ -53,8 +52,8 @@ Requirements R1, R9 tokens (picker UI is ticket 08).
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T04
+Status: done
+Current task: 
 
 ### T01: Parser GFM fixture events
 Keep `MarkdownParser.parse` returning heading/fence `MarkdownBlock`s so `BlockIndex` still folds. Add a sourcepos walk that emits **preview spans** (byte ranges) for GFM the fixture requires: ATX headings, tables, task-list items, strikethrough, footnotes, fenced code, plus inlines needed to paint Preview (`link`, `inlineCode`). Do not invent a second Markdown dialect; cmark-gfm remains the source of truth (N2). Footnotes stay enabled (`CMARK_OPT_FOOTNOTES` + extension).
@@ -84,7 +83,7 @@ and
 (also re-run macOS from T03 if needed)
 Files: tests/fixtures as needed; no WebKit
 - [ ] todo
-- [ ] done
+- [x] done
 
 ## Notes
 
@@ -96,3 +95,6 @@ T02 GREEN: Preview paints GFM span attributes on the same NSTextStorage; folds s
 
 ### 2026-08-15
 T03 GREEN: ThemeTokens default palette; swapping heading/link recolors Preview ranges; no picker UI.
+
+### 2026-08-15
+T04 GREEN: MarkusTests TEST SUCCEEDED on iPhone 17 and iPad Pro 13-inch (M5); macOS already green from T03. Ticket left in-progress (not marked done).
