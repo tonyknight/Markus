@@ -76,6 +76,19 @@ struct ContentView: View {
                 .disabled(host.session.fileURL == nil || !host.session.isDirty)
             }
             ToolbarItem(placement: .automatic) {
+                Menu("Outline") {
+                    if host.outlineItems.isEmpty {
+                        Text("No Headings")
+                    } else {
+                        ForEach(host.outlineItems, id: \.sourceLine) { item in
+                            Button(item.title) {
+                                host.jumpToOutlineItem(item)
+                            }
+                        }
+                    }
+                }
+            }
+            ToolbarItem(placement: .automatic) {
                 Button("Settings") {
                     host.isSettingsPresented = true
                 }

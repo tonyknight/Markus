@@ -467,11 +467,28 @@ final class FoldingTextView: PlatformView {
         ensureLayout()
     }
 
+    func jumpToSourceLine(_ line: Int) {
+        ensureLayout()
+        let markdown = documentTextStorage.string
+        guard line >= 1 else { return }
+        let map = SourceMap(markdown: markdown)
+        guard line <= map.lineStarts.count else { return }
+        let start = map.offset(ofLine: line)
+        let end = min(start + 1, map.byteCount)
+        let range = UTF8NSRange.nsRange(utf8Bytes: start..<max(start, end), in: markdown)
+        if range.location != NSNotFound {
+            selectedUTF16Range = NSRange(location: range.location, length: 0)
+        }
+        lastJumpedPackedY = y(forSourceLine: line)
+    }
+
     var string: String {
         get { documentTextStorage.string }
         set { loadMarkdown(newValue) }
     }
     var onTextDidChange: (() -> Void)?
+    var selectedUTF16Range = NSRange(location: 0, length: 0)
+    var lastJumpedPackedY: CGFloat?
     var mode: EditorMode { session.mode }
     var tokens: ThemeTokens { session.tokens }
     var canvasBackground: PlatformColorType { session.tokens.background }

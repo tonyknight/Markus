@@ -253,4 +253,13 @@ final class DocumentHost: ObservableObject {
         session.setMode(mode)
         objectWillChange.send()
     }
+
+    var outlineItems: [OutlineItem] {
+        OutlineJump.items(from: session.editor.blocks, markdown: session.editor.string)
+    }
+
+    func jumpToOutlineItem(_ item: OutlineItem) {
+        session.editor.jumpToSourceLine(item.sourceLine)
+        objectWillChange.send()
+    }
 }
