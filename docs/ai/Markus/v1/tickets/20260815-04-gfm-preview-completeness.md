@@ -25,7 +25,7 @@ subtasks:
   title: Three-destination verify
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -54,7 +54,7 @@ Requirements R1, R9 tokens (picker UI is ticket 08).
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Parser GFM fixture events
 Keep `MarkdownParser.parse` returning heading/fence `MarkdownBlock`s so `BlockIndex` still folds. Add a sourcepos walk that emits **preview spans** (byte ranges) for GFM the fixture requires: ATX headings, tables, task-list items, strikethrough, footnotes, fenced code, plus inlines needed to paint Preview (`link`, `inlineCode`). Do not invent a second Markdown dialect; cmark-gfm remains the source of truth (N2). Footnotes stay enabled (`CMARK_OPT_FOOTNOTES` + extension).
@@ -68,7 +68,7 @@ Preview paints **themed `NSAttributedString` on the existing source buffer** (sa
 Files: `Markus/Markus/Markdown/` (renderer), `Markus/Markus/Editor/FoldingTextView.swift`, `Markus/MarkusTests/` preview fixture tests
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
 - [ ] todo
-- [ ] done
+- [x] done
 ### T03: Theme tokens
 Introduce `ThemeTokens` matching the Requirements data model: `heading`, `body`, `link`, `inlineCode`, `fence`, `list`, `foldMarker`, plus colors Preview already needs (`table`, `strikethrough`, `footnote`, `background`). Ship **one default palette** used by Preview (and Source body/fence as needed). Tests: swapping a token color changes the corresponding Preview range. Do **not** build the six-theme picker UI (ticket 08).
 Files: `Markus/Markus/Theme/ThemeTokens.swift` (or equivalent), renderer + `FoldingTextView` wiring, tests
@@ -90,3 +90,6 @@ Files: tests/fixtures as needed; no WebKit
 
 ### 2026-08-15
 T01 GREEN: previewSpans emit GFM fixture kinds; parse still returns heading/fence for BlockIndex; $x$ and mermaid are not special-cased.
+
+### 2026-08-15
+T02 GREEN: Preview paints GFM span attributes on the same NSTextStorage; folds still hide via layout fragments.

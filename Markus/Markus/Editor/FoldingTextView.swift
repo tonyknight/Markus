@@ -154,23 +154,8 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
                 NSAttributedString.Key.foregroundColor: PlatformColor.label,
             ]
             textStorage.setAttributes(body, range: full)
-            for block in blocks {
-                let nsRange = UTF8NSRange.nsRange(utf8Bytes: block.bytes, in: textStorage.string)
-                guard nsRange.location != NSNotFound else { continue }
-                switch block.kind {
-                case .heading:
-                    textStorage.addAttributes([
-                        .font: PlatformFont.heading(size: 22),
-                        .foregroundColor: PlatformColor.label,
-                    ], range: nsRange)
-                case .fencedCode:
-                    textStorage.addAttributes([
-                        .font: PlatformFont.monospaced(size: 13),
-                    ], range: nsRange)
-                case .other:
-                    break
-                }
-            }
+            let spans = MarkdownParser().previewSpans(textStorage.string)
+            MarkdownPreviewRenderer.apply(spans: spans, to: textStorage)
         }
         textStorage.endEditing()
     }
