@@ -57,6 +57,7 @@ final class DocumentHost: ObservableObject {
 
     func openFolder(_ url: URL) {
         folderSession = FolderSession(rootURL: url)
+        recents.record(url: url, isFolder: true)
         errorMessage = nil
         objectWillChange.send()
     }
@@ -75,13 +76,18 @@ final class DocumentHost: ObservableObject {
         do {
             let url = try recents.startAccessing(item)
             defer { recents.stopAccessing(url) }
-            try session.open(url: url)
-            folderSession = nil
-            recents.record(url: url, bookmarkData: item.bookmarkData)
+            if item.isFolder {
+                openFolder(url)
+                recents.record(url: url, bookmarkData: item.bookmarkData, isFolder: true)
+            } else {
+                try session.open(url: url)
+                folderSession = nil
+                recents.record(url: url, bookmarkData: item.bookmarkData)
+            }
             errorMessage = nil
             objectWillChange.send()
         } catch {
-            errorMessage = "Could not open recent file."
+            errorMessage = item.isFolder ? "Could not open recent folder." : "Could not open recent file."
         }
     }
 

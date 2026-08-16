@@ -3,6 +3,24 @@ import Foundation
 struct RecentDocumentItem: Codable, Equatable {
     var url: URL
     var bookmarkData: Data?
+    var isFolder: Bool
+
+    init(url: URL, bookmarkData: Data? = nil, isFolder: Bool = false) {
+        self.url = url
+        self.bookmarkData = bookmarkData
+        self.isFolder = isFolder
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case url, bookmarkData, isFolder
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decode(URL.self, forKey: .url)
+        bookmarkData = try container.decodeIfPresent(Data.self, forKey: .bookmarkData)
+        isFolder = try container.decodeIfPresent(Bool.self, forKey: .isFolder) ?? false
+    }
 }
 
 enum RecentDocumentsError: Error, Equatable {
@@ -23,14 +41,14 @@ final class RecentDocuments {
         load()
     }
 
-    func record(url: URL, bookmarkData: Data? = nil) {
+    func record(url: URL, bookmarkData: Data? = nil, isFolder: Bool = false) {
         var data = bookmarkData
         if data == nil {
             data = try? Self.makeBookmark(for: url)
         }
         let standardized = url.standardizedFileURL
         var next = load().filter { $0.url.standardizedFileURL != standardized }
-        next.insert(RecentDocumentItem(url: url, bookmarkData: data), at: 0)
+        next.insert(RecentDocumentItem(url: url, bookmarkData: data, isFolder: isFolder), at: 0)
         if next.count > limit {
             next = Array(next.prefix(limit))
         }

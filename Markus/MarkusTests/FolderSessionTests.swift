@@ -62,4 +62,33 @@ struct FolderSessionTests {
         #expect(!host.isFolderTreeVisible)
         #expect(host.session.editor.string == "# Lone\n")
     }
+
+    @Test func openRecentFolderResolvesBookmarkAndRebuildsTree() throws {
+        let fixture = try makeFolderFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let recents = isolatedRecents()
+        recents.record(url: fixture.root, isFolder: true)
+        let item = try #require(recents.items.first)
+        #expect(item.isFolder)
+
+        let host = DocumentHost(recents: recents)
+        host.openRecent(item)
+        #expect(host.errorMessage == nil)
+        #expect(host.isFolderTreeVisible)
+        #expect(host.folderSession?.rootURL.standardizedFileURL == fixture.root.standardizedFileURL)
+        #expect(host.folderSession?.tree.map(\.name).contains("notes.md") == true)
+    }
+
+    @Test func openRecentStaleFolderSetsErrorWithoutCrashing() {
+        let recents = isolatedRecents()
+        recents.record(
+            url: FileManager.default.temporaryDirectory.appendingPathComponent("gone-\(UUID().uuidString)", isDirectory: true),
+            bookmarkData: Data([0x00, 0xFF]),
+            isFolder: true
+        )
+        let host = DocumentHost(recents: recents)
+        host.openRecent(recents.items[0])
+        #expect(host.errorMessage != nil)
+        #expect(host.folderSession == nil)
+    }
 }
