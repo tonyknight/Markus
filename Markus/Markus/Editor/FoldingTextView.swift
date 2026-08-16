@@ -108,6 +108,26 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         packedLayoutHeight()
     }
 
+    func sourceLineMap() -> SourceLineMap {
+        SourceLineMap(entries: packedSourceLineEntries())
+    }
+
+    func y(forSourceLine line: Int) -> CGFloat? {
+        sourceLineMap().y(forSourceLine: line)
+    }
+
+    func sourceLine(atY y: CGFloat) -> Int? {
+        sourceLineMap().sourceLine(atY: y)
+    }
+
+    func sourceLineHeight(forSourceLine line: Int) -> CGFloat? {
+        sourceLineMap().height(forSourceLine: line)
+    }
+
+    var visibleSourceLines: [Int] {
+        sourceLineMap().visibleSourceLines
+    }
+
     func textLayoutManager(
         _ textLayoutManager: NSTextLayoutManager,
         textLayoutFragmentFor location: any NSTextLocation,
@@ -189,35 +209,132 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     }
 
     func drawFragments(in context: CGContext) {
-        guard let layoutManager else { return }
-        var y: CGFloat = 0
+        enumeratePackedVisibleFragments { fragment, packedY, _ in
+            fragment.draw(at: CGPoint(x: fragment.layoutFragmentFrame.minX, y: packedY), in: context)
+        }
+    }
+
+    private func packedLayoutHeight() -> CGFloat {
+        var height: CGFloat = 0
+        enumeratePackedVisibleFragments { fragment, _, _ in
+            height += fragment.layoutFragmentFrame.height
+        }
+        return height
+    }
+
+    private struct PackedFragment {
+        var fragment: NSTextLayoutFragment
+        var utf16Range: NSRange
+        var packedY: CGFloat
+    }
+
+    private func enumeratePackedVisibleFragments(
+        _ body: (NSTextLayoutFragment, CGFloat, NSRange) -> Void
+    ) {
+        guard let layoutManager, let content = layoutManager.textContentManager else { return }
+        var packedY: CGFloat = 0
         layoutManager.enumerateTextLayoutFragments(
             from: layoutManager.documentRange.location,
             options: [.ensuresLayout]
         ) { fragment in
             let collapsed = (fragment as? FoldingTextLayoutFragment)?.isCollapsed ?? false
             if !collapsed {
-                fragment.draw(at: CGPoint(x: fragment.layoutFragmentFrame.minX, y: y), in: context)
-                y += fragment.layoutFragmentFrame.height
+                let utf16 = utf16Range(for: fragment, content: content)
+                body(fragment, packedY, utf16)
+                packedY += fragment.layoutFragmentFrame.height
             }
             return true
         }
     }
 
-    private func packedLayoutHeight() -> CGFloat {
-        guard let layoutManager else { return 0 }
-        var height: CGFloat = 0
-        layoutManager.enumerateTextLayoutFragments(
-            from: layoutManager.documentRange.location,
-            options: [.ensuresLayout]
-        ) { fragment in
-            let collapsed = (fragment as? FoldingTextLayoutFragment)?.isCollapsed ?? false
-            if !collapsed {
-                height += fragment.layoutFragmentFrame.height
-            }
-            return true
+    private func packedVisibleFragments() -> [PackedFragment] {
+        var packed: [PackedFragment] = []
+        enumeratePackedVisibleFragments { fragment, packedY, utf16 in
+            packed.append(PackedFragment(fragment: fragment, utf16Range: utf16, packedY: packedY))
         }
-        return height
+        return packed
+    }
+
+    private func utf16Range(for fragment: NSTextLayoutFragment, content: NSTextContentManager) -> NSRange {
+        let range = fragment.rangeInElement
+        let start = content.offset(from: content.documentRange.location, to: range.location)
+        let end = content.offset(from: content.documentRange.location, to: range.endLocation)
+        return NSRange(location: start, length: max(0, end - start))
+    }
+
+    private func packedSourceLineEntries() -> [SourceLineMap.Entry] {
+        let string = textStorage?.string
+            ?? contentStorage?.textStorage?.string
+            ?? (layoutManager?.textContentManager as? NSTextContentStorage)?.textStorage?.string
+            ?? ""
+        guard !string.isEmpty else { return [] }
+
+        let sourceMap = SourceMap(markdown: string)
+        let hidden = hiddenUTF16Ranges
+        let packed = packedVisibleFragments()
+        var entries: [SourceLineMap.Entry] = []
+
+        for line in 1...sourceMap.lineStarts.count {
+            let bytes = sourceMap.offset(ofLine: line)..<sourceMap.endOffset(ofLine: line)
+            let lineRange = UTF8NSRange.nsRange(utf8Bytes: bytes, in: string)
+            guard lineRange.location != NSNotFound else { continue }
+            if isHidden(lineRange: lineRange, hidden: hidden) { continue }
+            guard let host = packed.first(where: { NSLocationInRange(lineRange.location, $0.utf16Range) || ($0.utf16Range.length == 0 && $0.utf16Range.location == lineRange.location) })
+                    ?? packed.first(where: { NSIntersectionRange($0.utf16Range, lineRange).length > 0 })
+            else { continue }
+
+            let relative = sourceLineMetrics(lineRange: lineRange, in: host)
+            entries.append(
+                SourceLineMap.Entry(
+                    sourceLine: line,
+                    y: host.packedY + relative.y,
+                    height: relative.height
+                )
+            )
+        }
+        return entries
+    }
+
+    private func isHidden(lineRange: NSRange, hidden: [NSRange]) -> Bool {
+        if lineRange.length == 0 {
+            return hidden.contains { NSLocationInRange(lineRange.location, $0) }
+        }
+        return hidden.contains { hiddenRange in
+            NSIntersectionRange(hiddenRange, lineRange).length == lineRange.length
+        }
+    }
+
+    private func sourceLineMetrics(lineRange: NSRange, in host: PackedFragment) -> (y: CGFloat, height: CGFloat) {
+        let fragment = host.fragment
+        let lineFragments = fragment.textLineFragments
+        guard !lineFragments.isEmpty else {
+            return (0, fragment.layoutFragmentFrame.height)
+        }
+
+        let fragmentStart = host.utf16Range.location
+        var matching: [NSTextLineFragment] = []
+        var cursor = fragmentStart
+        for lineFragment in lineFragments {
+            let lfRange = NSRange(location: cursor, length: lineFragment.characterRange.length)
+            if NSIntersectionRange(lfRange, lineRange).length > 0 || (lineRange.length == 0 && NSLocationInRange(lineRange.location, lfRange)) {
+                matching.append(lineFragment)
+            }
+            cursor += lineFragment.characterRange.length
+        }
+
+        if matching.isEmpty {
+            let onlyLineInFragment = host.utf16Range.length > 0
+                && NSIntersectionRange(host.utf16Range, lineRange).length == min(lineRange.length, host.utf16Range.length)
+            if onlyLineInFragment || lineFragments.count == 1 {
+                return (0, fragment.layoutFragmentFrame.height)
+            }
+            return (0, lineFragments[0].typographicBounds.height)
+        }
+
+        let minY = matching.map(\.typographicBounds.minY).min() ?? 0
+        let maxY = matching.map { $0.typographicBounds.maxY }.max() ?? minY
+        let height = max(maxY - minY, matching.last?.typographicBounds.height ?? 0)
+        return (minY, height)
     }
 }
 
@@ -282,6 +399,19 @@ final class FoldingTextView: PlatformView {
     var collapsedFragmentCount: Int { session.collapsedFragmentCount }
     var hiddenRangeCount: Int { session.hiddenUTF16RangeCount }
     var textStorage: NSTextStorage? { documentTextStorage }
+    var visibleSourceLines: [Int] { session.visibleSourceLines }
+
+    func y(forSourceLine line: Int) -> CGFloat? {
+        session.y(forSourceLine: line)
+    }
+
+    func sourceLine(atY y: CGFloat) -> Int? {
+        session.sourceLine(atY: y)
+    }
+
+    func sourceLineHeight(forSourceLine line: Int) -> CGFloat? {
+        session.sourceLineHeight(forSourceLine: line)
+    }
     var string: String {
         get { documentTextStorage.string }
         set { loadMarkdown(newValue) }
