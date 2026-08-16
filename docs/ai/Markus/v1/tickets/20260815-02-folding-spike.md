@@ -24,8 +24,7 @@ subtasks:
 - id: S4
   title: Three-destination verify
   status: todo
-plan_status: in-progress
-current_task: T04
+plan_status: done
 ---
 ## Description
 
@@ -57,8 +56,8 @@ index. Hard gate for v1. Parser lives in `Markus/Markus/Markdown/MarkdownParser.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T04
+Status: done
+Current task: 
 
 ### T01: Block index with fold extents
 RED then GREEN: parser/index reports ATX heading and fenced-code **byte and line ranges**, plus **fold extents** (heading: from end of heading line through next same-or-higher heading; fence: body after the opening fence, keep opening fence visible). Fixture with H2, paragraph, nested H3, fence, following H2.
@@ -86,7 +85,7 @@ Verify:
 and
 `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -only-testing:MarkusTests test`
 - [ ] todo
-
+- [x] done
 ## Notes
 
 ### 2026-08-15
@@ -97,3 +96,6 @@ T02: FoldStore is shared across Source/Preview; DocumentSave.writeUTF8 writes fu
 
 ### 2026-08-15
 T03: TextKit 2 view hides heading/fence extents in Source and Preview via collapsed paragraph styles on the full NSTextStorage (characters unchanged). NSTextLayoutFragment subclass was not invoked by NSTextView; layout still shrinks; save is full UTF-8; Source insert+undo works with a host window. macOS MarkusTests passed. Viable for v1 with remaining polish: fragment-based hide, caret in collapsed ranges, Preview is styled source not rendered GFM.
+
+### 2026-08-15
+T04: MarkusTests passed on iPhone 17 and iPad Pro 13-inch (M5). iOS insertTextAtCaret uses UIKeyInput.insertText (UITextView.shouldChangeText takes UITextRange, not NSRange). Ticket left in-progress for controller review.

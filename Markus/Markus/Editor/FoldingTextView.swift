@@ -477,12 +477,8 @@ final class FoldingTextView: UITextView {
 
     func insertTextAtCaret(_ string: String) {
         prepareForEditing()
-        let range = NSRange(location: 0, length: 0)
-        selectedRange = range
-        if shouldChangeText(in: range, replacementText: string) {
-            textStorage.replaceCharacters(in: range, with: string)
-            delegate?.textViewDidChange?(self)
-        }
+        selectedRange = NSRange(location: 0, length: 0)
+        insertText(string)
     }
 
     func undoLastChange() -> Bool {
