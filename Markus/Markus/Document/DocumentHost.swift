@@ -7,20 +7,30 @@ final class DocumentHost: ObservableObject {
     let recents: RecentDocuments
     @Published var isImporterPresented = false
     @Published var errorMessage: String?
+    private var sessionCancellable: AnyCancellable?
 
     init() {
         self.session = DocumentSession()
         self.recents = RecentDocuments()
+        observeSession()
     }
 
     init(session: DocumentSession, recents: RecentDocuments) {
         self.session = session
         self.recents = recents
+        observeSession()
     }
 
     init(recents: RecentDocuments) {
         self.session = DocumentSession()
         self.recents = recents
+        observeSession()
+    }
+
+    private func observeSession() {
+        sessionCancellable = session.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
     }
 
     func openPicked(_ url: URL) {

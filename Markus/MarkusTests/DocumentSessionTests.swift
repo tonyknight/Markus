@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 #if os(macOS)
 import AppKit
@@ -116,5 +117,43 @@ struct DocumentSessionTests {
         try session.autosave()
         #expect(!session.isDirty)
         #expect(try String(contentsOf: url, encoding: .utf8) == session.editor.string)
+    }
+
+    @Test func failedSecondOpenKeepsPreviousFileAndAllowsSave() throws {
+        let first = uniqueTempMarkdownURL()
+        let original = "# First\n"
+        try Data(original.utf8).write(to: first)
+        defer { try? FileManager.default.removeItem(at: first) }
+
+        let session = DocumentSession()
+        try session.open(url: first)
+        session.editor.insertTextAtCaret("KEEP ")
+
+        let missing = uniqueTempMarkdownURL()
+        #expect(throws: DocumentSessionError.self) {
+            try session.open(url: missing)
+        }
+
+        #expect(session.fileURL == first)
+        #expect(session.editor.string.hasPrefix("KEEP "))
+        try session.save()
+        #expect(try String(contentsOf: first, encoding: .utf8) == session.editor.string)
+    }
+
+    @Test func insertTextAtCaretPublishesDirty() throws {
+        let url = uniqueTempMarkdownURL()
+        try Data("# Clean\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let session = DocumentSession()
+        try session.open(url: url)
+        #expect(!session.isDirty)
+
+        var published = false
+        let cancellable = session.objectWillChange.sink { published = true }
+        session.editor.insertTextAtCaret("DIRTY ")
+        #expect(session.isDirty)
+        #expect(published)
+        _ = cancellable
     }
 }

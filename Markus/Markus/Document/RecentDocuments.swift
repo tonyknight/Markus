@@ -25,11 +25,9 @@ final class RecentDocuments {
 
     func record(url: URL, bookmarkData: Data? = nil) {
         var data = bookmarkData
-        #if os(iOS)
         if data == nil {
-            data = try? url.bookmarkData(options: .minimalBookmark)
+            data = try? Self.makeBookmark(for: url)
         }
-        #endif
         let standardized = url.standardizedFileURL
         var next = load().filter { $0.url.standardizedFileURL != standardized }
         next.insert(RecentDocumentItem(url: url, bookmarkData: data), at: 0)
@@ -46,12 +44,7 @@ final class RecentDocuments {
         var isStale = false
         let resolved: URL
         do {
-            resolved = try URL(
-                resolvingBookmarkData: bookmark,
-                options: [.withoutUI],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
+            resolved = try Self.resolveBookmark(bookmark, isStale: &isStale)
         } catch {
             throw RecentDocumentsError.staleBookmark
         }
@@ -81,5 +74,48 @@ final class RecentDocuments {
     private func save(_ items: [RecentDocumentItem]) {
         guard let data = try? JSONEncoder().encode(items) else { return }
         defaults.set(data, forKey: Self.storageKey)
+    }
+
+    private static func makeBookmark(for url: URL) throws -> Data {
+        try url.bookmarkData(
+            options: bookmarkCreationOptions,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+    }
+
+    private static var bookmarkCreationOptions: URL.BookmarkCreationOptions {
+        #if os(macOS)
+        [.withSecurityScope]
+        #else
+        .minimalBookmark
+        #endif
+    }
+
+    private static func resolveBookmark(_ bookmark: Data, isStale: inout Bool) throws -> URL {
+        #if os(macOS)
+        do {
+            return try URL(
+                resolvingBookmarkData: bookmark,
+                options: [.withSecurityScope, .withoutUI],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+        } catch {
+            return try URL(
+                resolvingBookmarkData: bookmark,
+                options: [.withoutUI],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+        }
+        #else
+        return try URL(
+            resolvingBookmarkData: bookmark,
+            options: [.withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+        #endif
     }
 }

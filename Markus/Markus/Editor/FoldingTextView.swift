@@ -292,6 +292,7 @@ final class FoldingTextView: PlatformView {
         get { documentTextStorage.string }
         set { loadMarkdown(newValue) }
     }
+    var onTextDidChange: (() -> Void)?
 
     convenience init(foldStore: FoldStore = FoldStore()) {
         self.init(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: foldStore)
@@ -421,6 +422,7 @@ final class FoldingTextView: PlatformView {
         editingUndoManager.registerUndo(withTarget: documentTextStorage) { storage in
             storage.replaceCharacters(in: inserted, with: "")
         }
+        onTextDidChange?()
     }
 
     func undoLastChange() -> Bool {

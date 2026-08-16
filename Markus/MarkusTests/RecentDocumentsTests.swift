@@ -55,4 +55,21 @@ struct RecentDocumentsTests {
         #expect(opened.standardizedFileURL == url.standardizedFileURL)
         recents.stopAccessing(opened)
     }
+
+    @Test func recordCreatesBookmarkAndStartAccessingReturnsUsableURL() throws {
+        let url = uniqueTempMarkdownURL()
+        let markdown = "# Bookmark round trip\n"
+        try Data(markdown.utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let recents = RecentDocuments(defaults: isolatedDefaults())
+        recents.record(url: url)
+
+        let item = try #require(recents.items.first)
+        #expect(item.bookmarkData != nil)
+        let opened = try recents.startAccessing(item)
+        #expect(FileManager.default.isReadableFile(atPath: opened.path))
+        #expect(try String(contentsOf: opened, encoding: .utf8) == markdown)
+        recents.stopAccessing(opened)
+    }
 }

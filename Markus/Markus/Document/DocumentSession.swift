@@ -30,20 +30,26 @@ final class DocumentSession: ObservableObject {
 
     init(editor: FoldingTextView = FoldingTextView()) {
         self.editor = editor
+        self.editor.onTextDidChange = { [weak self] in
+            self?.objectWillChange.send()
+        }
     }
 
     func open(url: URL) throws {
-        releaseAccess()
-        isAccessing = url.startAccessingSecurityScopedResource()
-        scopedURL = url
+        let accessing = url.startAccessingSecurityScopedResource()
         do {
             let markdown = try readUTF8(from: url)
+            releaseAccess()
+            isAccessing = accessing
+            scopedURL = url
             fileURL = url
             lastSavedText = markdown
             editor.loadMarkdown(markdown)
             objectWillChange.send()
         } catch {
-            releaseAccess()
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
             throw error
         }
     }

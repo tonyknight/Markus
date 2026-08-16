@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import Markus
@@ -31,5 +32,23 @@ struct DocumentHostTests {
         host.openPicked(missing)
         #expect(host.errorMessage != nil)
         #expect(host.session.editor.string.isEmpty)
+    }
+
+    @Test func insertTextPublishesDirtyOnHost() throws {
+        let url = uniqueTempMarkdownURL()
+        try Data("# Host\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let recents = RecentDocuments(defaults: UserDefaults(suiteName: "markus.host.\(UUID().uuidString)")!)
+        let host = DocumentHost(recents: recents)
+        host.openPicked(url)
+        #expect(!host.session.isDirty)
+
+        var published = false
+        let cancellable = host.objectWillChange.sink { published = true }
+        host.session.editor.insertTextAtCaret("EDIT ")
+        #expect(host.session.isDirty)
+        #expect(published)
+        _ = cancellable
     }
 }
