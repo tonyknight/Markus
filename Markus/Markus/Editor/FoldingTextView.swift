@@ -372,6 +372,26 @@ enum PlatformColor {
         UIColor.label
         #endif
     }
+
+    static var secondaryLabel: PlatformColorType {
+        #if os(macOS)
+        NSColor.secondaryLabelColor
+        #else
+        UIColor.secondaryLabel
+        #endif
+    }
+}
+
+enum GutterMetrics {
+    static let chevronWidth: CGFloat = 16
+    static let numberWidth: CGFloat = 36
+
+    static func width(showLineNumbers: Bool) -> CGFloat {
+        if showLineNumbers {
+            return chevronWidth + numberWidth
+        }
+        return chevronWidth
+    }
 }
 
 #if os(macOS)
@@ -412,6 +432,41 @@ final class FoldingTextView: PlatformView {
     func sourceLineHeight(forSourceLine line: Int) -> CGFloat? {
         session.sourceLineHeight(forSourceLine: line)
     }
+
+    #if os(macOS)
+    var showLineNumbers: Bool {
+        get { true }
+        set { _ = newValue }
+    }
+    #else
+    var showLineNumbers: Bool = true {
+        didSet { updateTextContainerForGutter() }
+    }
+    #endif
+
+    var gutterWidth: CGFloat {
+        GutterMetrics.width(showLineNumbers: showLineNumbers)
+    }
+
+    func gutterLineNumbers() -> [Int] {
+        showLineNumbers ? visibleSourceLines : []
+    }
+
+    func foldableSourceLines() -> [Int] {
+        let visible = Set(visibleSourceLines)
+        return blocks.compactMap { block in
+            guard block.foldExtent != nil, visible.contains(block.id.startLine) else { return nil }
+            return block.id.startLine
+        }
+    }
+
+    func toggleFold(atSourceLine line: Int) {
+        guard let block = blocks.first(where: { $0.id.startLine == line && $0.foldExtent != nil }) else { return }
+        foldStore.toggle(block.id)
+        applyFolds()
+        ensureLayout()
+    }
+
     var string: String {
         get { documentTextStorage.string }
         set { loadMarkdown(newValue) }
@@ -458,6 +513,7 @@ final class FoldingTextView: PlatformView {
         contentStorage.addTextLayoutManager(textLayoutManager)
         contentStorage.textStorage = documentTextStorage
         session.attach(layoutManager: textLayoutManager, contentStorage: contentStorage)
+        updateTextContainerForGutter()
         #if os(macOS)
         wantsLayer = true
         layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
@@ -477,7 +533,22 @@ final class FoldingTextView: PlatformView {
         NSColor.textBackgroundColor.setFill()
         dirtyRect.fill()
         guard let context = NSGraphicsContext.current?.cgContext else { return }
+        drawGutter(in: context)
+        context.saveGState()
+        context.translateBy(x: gutterWidth, y: 0)
         session.drawFragments(in: context)
+        context.restoreGState()
+    }
+
+    override func layout() {
+        super.layout()
+        updateTextContainerForGutter()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if handleGutterClick(at: point) { return }
+        super.mouseDown(with: event)
     }
     #else
     override var canBecomeFirstResponder: Bool { true }
@@ -487,7 +558,23 @@ final class FoldingTextView: PlatformView {
         backgroundColor?.setFill()
         UIRectFill(rect)
         guard let context = UIGraphicsGetCurrentContext() else { return }
+        drawGutter(in: context)
+        context.saveGState()
+        context.translateBy(x: gutterWidth, y: 0)
         session.drawFragments(in: context)
+        context.restoreGState()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateTextContainerForGutter()
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let point = touches.first?.location(in: self), handleGutterClick(at: point) {
+            return
+        }
+        super.touchesBegan(touches, with: event)
     }
     #endif
 
@@ -508,12 +595,88 @@ final class FoldingTextView: PlatformView {
     }
 
     func ensureLayout() {
+        updateTextContainerForGutter()
         session.ensureLayout()
         #if os(macOS)
         needsDisplay = true
         #else
         setNeedsDisplay()
         #endif
+    }
+
+    private func updateTextContainerForGutter() {
+        let width = max(40, bounds.width - gutterWidth)
+        let size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        if textContainer.size != size {
+            textContainer.size = size
+            session.applyFolds()
+        }
+    }
+
+    @discardableResult
+    func handleGutterClick(at point: CGPoint) -> Bool {
+        guard point.x >= 0, point.x <= gutterWidth else { return false }
+        guard point.x <= GutterMetrics.chevronWidth else { return true }
+        guard let line = sourceLine(atY: point.y), foldableSourceLines().contains(line) else { return true }
+        toggleFold(atSourceLine: line)
+        return true
+    }
+
+    private func drawGutter(in context: CGContext) {
+        let gutterRect = CGRect(x: 0, y: 0, width: gutterWidth, height: max(bounds.height, layoutHeight))
+        context.saveGState()
+        #if os(macOS)
+        NSColor.controlBackgroundColor.withAlphaComponent(0.35).setFill()
+        #else
+        UIColor.secondarySystemBackground.withAlphaComponent(0.35).setFill()
+        #endif
+        context.fill(gutterRect)
+
+        let map = session.sourceLineMap()
+        let foldable = Set(foldableSourceLines())
+        let numberFont = PlatformFont.monospaced(size: 11)
+        let numberColor = PlatformColor.secondaryLabel
+        let numberAttrs: [NSAttributedString.Key: Any] = [
+            .font: numberFont,
+            .foregroundColor: numberColor,
+        ]
+
+        for entry in map.entries {
+            if foldable.contains(entry.sourceLine) {
+                drawChevron(
+                    in: context,
+                    at: CGPoint(x: 4, y: entry.y + max(2, (entry.height - 8) / 2)),
+                    folded: blocks.first(where: { $0.id.startLine == entry.sourceLine }).map { foldStore.isFolded($0.id) } ?? false
+                )
+            }
+            if showLineNumbers {
+                let label = "\(entry.sourceLine)" as NSString
+                let size = label.size(withAttributes: numberAttrs)
+                let x = GutterMetrics.chevronWidth + GutterMetrics.numberWidth - 6 - size.width
+                let y = entry.y + max(0, (min(entry.height, size.height + 4) - size.height) / 2)
+                label.draw(at: CGPoint(x: x, y: y), withAttributes: numberAttrs)
+            }
+        }
+        context.restoreGState()
+    }
+
+    private func drawChevron(in context: CGContext, at origin: CGPoint, folded: Bool) {
+        let size: CGFloat = 8
+        context.saveGState()
+        context.translateBy(x: origin.x, y: origin.y)
+        if folded {
+            context.move(to: CGPoint(x: 1, y: 0))
+            context.addLine(to: CGPoint(x: size, y: size / 2))
+            context.addLine(to: CGPoint(x: 1, y: size))
+        } else {
+            context.move(to: CGPoint(x: 0, y: 2))
+            context.addLine(to: CGPoint(x: size, y: 2))
+            context.addLine(to: CGPoint(x: size / 2, y: size))
+        }
+        context.closePath()
+        context.setFillColor(PlatformColor.secondaryLabel.cgColor)
+        context.fillPath()
+        context.restoreGState()
     }
 
     private var hostWindow: AnyObject?
