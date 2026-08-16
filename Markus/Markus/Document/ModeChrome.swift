@@ -5,6 +5,10 @@ enum ModeChrome {
         case principal
     }
 
+    enum IOSItemPlacement: Equatable {
+        case navigationBar
+    }
+
     static var showsMacTitleBarControl: Bool {
         #if os(macOS)
         true
@@ -22,11 +26,21 @@ enum ModeChrome {
     }
 
     static let macItemPlacement: MacItemPlacement = .principal
+    static let iosItemPlacement: IOSItemPlacement = .navigationBar
 
     #if os(macOS)
     static var macToolbarPlacement: ToolbarItemPlacement {
         switch macItemPlacement {
         case .principal:
+            return .principal
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    static var iosToolbarPlacement: ToolbarItemPlacement {
+        switch iosItemPlacement {
+        case .navigationBar:
             return .principal
         }
     }

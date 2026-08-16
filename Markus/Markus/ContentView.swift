@@ -29,6 +29,11 @@ struct ContentView: View {
                 DocumentModePicker(host: host)
             }
             #endif
+            #if os(iOS)
+            ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
+                DocumentModePicker(host: host)
+            }
+            #endif
             ToolbarItem(placement: .automatic) {
                 Button("Open") {
                     host.isImporterPresented = true

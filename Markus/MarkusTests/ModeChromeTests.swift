@@ -82,4 +82,24 @@ struct ModeChromeTests {
         #expect(ObjectIdentifier(host.session.editor) == editorIdentity)
     }
     #endif
+
+    @Test func iOSSegmentedControlBindsToExclusiveHostModeWithoutMacTitleBar() {
+        #expect(ModeChrome.iosItemPlacement == .navigationBar)
+        #if os(macOS)
+        #expect(!ModeChrome.showsIOSSegmentedControl)
+        #expect(ModeChrome.showsMacTitleBarControl)
+        #else
+        #expect(ModeChrome.showsIOSSegmentedControl)
+        #expect(!ModeChrome.showsMacTitleBarControl)
+        #endif
+
+        let host = DocumentHost()
+        let editorIdentity = ObjectIdentifier(host.session.editor)
+        ModeChrome.select(.source, on: host)
+        #expect(host.mode == .source)
+        #expect(host.session.editor.mode == .source)
+        ModeChrome.select(.preview, on: host)
+        #expect(host.mode == .preview)
+        #expect(ObjectIdentifier(host.session.editor) == editorIdentity)
+    }
 }
