@@ -91,4 +91,81 @@ struct FolderSessionTests {
         #expect(host.errorMessage != nil)
         #expect(host.folderSession == nil)
     }
+
+    @Test func openFolderReportsStillAccessingRoot() throws {
+        let fixture = try makeFolderFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let host = DocumentHost(recents: isolatedRecents())
+        host.openFolder(fixture.root)
+        #expect(host.folderSession?.isAccessingRoot == true)
+    }
+
+    @Test func openRecentFolderReportsStillAccessingRoot() throws {
+        let fixture = try makeFolderFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let recents = isolatedRecents()
+        recents.record(url: fixture.root, isFolder: true)
+        let item = try #require(recents.items.first)
+
+        let host = DocumentHost(recents: recents)
+        host.openRecent(item)
+        #expect(host.errorMessage == nil)
+        #expect(host.folderSession?.isAccessingRoot == true)
+    }
+
+    @Test func openPickedLoneFileReleasesRootAccess() throws {
+        let fixture = try makeFolderFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let lone = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-lone-scope-\(UUID().uuidString).md")
+        try Data("# Lone\n".utf8).write(to: lone)
+        defer { try? FileManager.default.removeItem(at: lone) }
+
+        let host = DocumentHost(recents: isolatedRecents())
+        host.openFolder(fixture.root)
+        let held = try #require(host.folderSession)
+        #expect(held.isAccessingRoot)
+
+        host.openPicked(lone)
+        #expect(!held.isAccessingRoot)
+        #expect(host.folderSession == nil)
+    }
+
+    @Test func openTreeFileAfterRecentFolderKeepsRootAccess() throws {
+        let fixture = try makeFolderFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let recents = isolatedRecents()
+        recents.record(url: fixture.root, isFolder: true)
+        let item = try #require(recents.items.first)
+
+        let host = DocumentHost(recents: recents)
+        host.openRecent(item)
+        let held = try #require(host.folderSession)
+        #expect(held.isAccessingRoot)
+
+        host.openTreeFile(fixture.nested)
+        #expect(held.isAccessingRoot)
+        #expect(host.folderSession?.isAccessingRoot == true)
+        #expect(host.session.fileURL?.standardizedFileURL == fixture.nested.standardizedFileURL)
+    }
+
+    @Test func replacingFolderSessionReleasesPreviousRootAccess() throws {
+        let first = try makeFolderFixture()
+        let second = try makeFolderFixture()
+        defer {
+            try? FileManager.default.removeItem(at: first.root)
+            try? FileManager.default.removeItem(at: second.root)
+        }
+
+        let host = DocumentHost(recents: isolatedRecents())
+        host.openFolder(first.root)
+        let previous = try #require(host.folderSession)
+        #expect(previous.isAccessingRoot)
+
+        host.openFolder(second.root)
+        #expect(!previous.isAccessingRoot)
+        #expect(host.folderSession?.isAccessingRoot == true)
+        #expect(host.folderSession?.rootURL.standardizedFileURL == second.root.standardizedFileURL)
+    }
 }

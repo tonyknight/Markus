@@ -47,7 +47,7 @@ final class DocumentHost: ObservableObject {
         }
         do {
             try session.open(url: url)
-            folderSession = nil
+            clearFolderSession()
             recents.record(url: url)
             errorMessage = nil
             objectWillChange.send()
@@ -56,11 +56,17 @@ final class DocumentHost: ObservableObject {
         }
     }
 
-    func openFolder(_ url: URL) {
-        folderSession = FolderSession(rootURL: url)
+    func openFolder(_ url: URL, alreadyAccessing: Bool = false) {
+        folderSession?.stopAccessing()
+        folderSession = FolderSession(rootURL: url, alreadyAccessing: alreadyAccessing)
         recents.record(url: url, isFolder: true)
         errorMessage = nil
         objectWillChange.send()
+    }
+
+    private func clearFolderSession() {
+        folderSession?.stopAccessing()
+        folderSession = nil
     }
 
     func openTreeFile(_ url: URL) {
@@ -76,13 +82,13 @@ final class DocumentHost: ObservableObject {
     func openRecent(_ item: RecentDocumentItem) {
         do {
             let url = try recents.startAccessing(item)
-            defer { recents.stopAccessing(url) }
             if item.isFolder {
-                openFolder(url)
+                openFolder(url, alreadyAccessing: true)
                 recents.record(url: url, bookmarkData: item.bookmarkData, isFolder: true)
             } else {
+                defer { recents.stopAccessing(url) }
                 try session.open(url: url)
-                folderSession = nil
+                clearFolderSession()
                 recents.record(url: url, bookmarkData: item.bookmarkData)
             }
             errorMessage = nil
