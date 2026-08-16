@@ -53,4 +53,45 @@ struct GutterTests {
         #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
         #expect(view.string == fixture)
     }
+
+    @Test func slimFoldRailIsNarrowerThanNumberedGutter() {
+        #expect(GutterMetrics.width(showLineNumbers: false) < GutterMetrics.width(showLineNumbers: true))
+        #expect(GutterMetrics.width(showLineNumbers: false) == GutterMetrics.chevronWidth)
+    }
+
+    #if os(iOS)
+    @Test func iosHidingLineNumbersLeavesSlimRailThatStillFolds() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.preview)
+        view.showLineNumbers = true
+        view.ensureLayout()
+        let numberedWidth = view.gutterWidth
+        #expect(!view.gutterLineNumbers().isEmpty)
+        #expect(view.foldableSourceLines().contains(1))
+
+        view.showLineNumbers = false
+        view.ensureLayout()
+        #expect(!view.showLineNumbers)
+        #expect(view.gutterLineNumbers().isEmpty)
+        #expect(view.gutterWidth < numberedWidth)
+        #expect(view.gutterWidth == GutterMetrics.chevronWidth)
+        #expect(view.foldableSourceLines().contains(1))
+
+        let before = view.collapsedFragmentCount
+        view.toggleFold(atSourceLine: 1)
+        #expect(view.collapsedFragmentCount > before)
+
+        view.setMode(.source)
+        view.ensureLayout()
+        #expect(!view.showLineNumbers)
+        #expect(view.gutterLineNumbers().isEmpty)
+        #expect(view.foldableSourceLines().contains(1))
+
+        view.showLineNumbers = true
+        view.ensureLayout()
+        #expect(view.showLineNumbers)
+        #expect(view.gutterLineNumbers() == view.visibleSourceLines)
+    }
+    #endif
 }
