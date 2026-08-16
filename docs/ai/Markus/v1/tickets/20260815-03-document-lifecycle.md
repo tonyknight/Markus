@@ -25,7 +25,7 @@ subtasks:
   title: Three-destination verify
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -57,7 +57,7 @@ Editor: `Markus/Markus/Editor/FoldingTextView.swift`. Save helper:
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Open UTF-8 from URL
 `DocumentSession` loads a file URL as UTF-8 into `NSTextStorage` and
@@ -77,7 +77,7 @@ Files: `Markus/Markus/Document/DocumentSession.swift`,
 `Markus/MarkusTests/DocumentSessionTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
 - [ ] todo
-
+- [x] done
 ### T03: Recents and iOS security scope
 Recents store file URLs (and bookmark data on iOS). Opening from recents
 starts security-scoped access when required; if the bookmark is stale,
@@ -101,3 +101,6 @@ Files: `Markus/Markus/MarkusApp.swift`, `Markus/Markus/ContentView.swift` as nee
 
 ### 2026-08-15
 T01: DocumentSession.open loads UTF-8 into NSTextStorage and FoldingTextView; missing/invalid UTF-8 throws without crash. macOS MarkusTests TEST SUCCEEDED.
+
+### 2026-08-15
+T02: save writes full UTF-8 via DocumentSave even when folded; revert reloads disk; dirty clears after save/revert; autosave writes if dirty. macOS MarkusTests TEST SUCCEEDED.
