@@ -5,7 +5,7 @@ import AppKit
 import UIKit
 #endif
 
-enum EditorMode: Equatable, Sendable {
+enum EditorMode: Equatable, Hashable, Sendable {
     case source
     case preview
 }

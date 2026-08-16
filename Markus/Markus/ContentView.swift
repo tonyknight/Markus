@@ -24,6 +24,11 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
+            #if os(macOS)
+            ToolbarItem(placement: ModeChrome.macToolbarPlacement) {
+                DocumentModePicker(host: host)
+            }
+            #endif
             ToolbarItem(placement: .automatic) {
                 Button("Open") {
                     host.isImporterPresented = true
