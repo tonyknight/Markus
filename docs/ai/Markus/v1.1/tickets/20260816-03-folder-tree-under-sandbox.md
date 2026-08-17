@@ -13,15 +13,15 @@ depends_on: []
 subtasks:
 - id: T1
   title: Replace path-based enumeration with security-scoped URL enumeration
-  status: todo
+  status: done
 - id: T2
   title: Filter to Markdown extensions, exclude dotfiles, recurse nested folders
-  status: todo
+  status: done
 - id: T3
   title: Regression test against a sandboxed fixture folder
-  status: todo
+  status: done
 plan_status: approved
-current_task: T01
+current_task: T02
 ---
 ## Description
 
@@ -34,12 +34,12 @@ depends on to have anything to show.
 
 ## Acceptance criteria
 
-- [ ] `MarkdownFolderTree.children(of:)` enumerates via the
+- [x] `MarkdownFolderTree.children(of:)` enumerates via the
       security-scoped **URL**, never a path (N7).
-- [ ] Opening a folder lists its Markdown files (`.md`, `.markdown`,
+- [x] Opening a folder lists its Markdown files (`.md`, `.markdown`,
       `.mdown`, `.mkd`), including nested folders, excluding dotfiles and
       other file types (R6, population half).
-- [ ] A test exercises enumeration against a sandboxed fixture folder and
+- [x] A test exercises enumeration against a sandboxed fixture folder and
       would fail if enumeration silently returned empty (N9).
 
 ## Context
@@ -51,17 +51,17 @@ depends on to have anything to show.
 
 ## Subtasks
 
-- [ ] Replace `contentsOfDirectory(atPath:)` with URL-based enumeration
+- [x] Replace `contentsOfDirectory(atPath:)` with URL-based enumeration
       that honors the folder's security scope.
-- [ ] Apply the Markdown-extension and dotfile filters; recurse into
+- [x] Apply the Markdown-extension and dotfile filters; recurse into
       nested folders.
-- [ ] Add a fixture-backed regression test asserting non-empty, correctly
+- [x] Add a fixture-backed regression test asserting non-empty, correctly
       filtered results under sandbox conditions.
 
 ## Implementation plan
 
 Status: approved
-Current task: T01
+Current task: T02
 
 ### T01: URL-based, security-scope-safe folder enumeration
 

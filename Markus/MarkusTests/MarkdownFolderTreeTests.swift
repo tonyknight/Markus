@@ -77,6 +77,93 @@ struct MarkdownFolderTreeTests {
         #expect(sub.children.map(\.name) == ["nested.markdown"])
     }
 
+    private func makeSandboxedFixture() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-sandboxed-tree-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("# Index\n".utf8).write(to: root.appendingPathComponent("index.md"))
+        try Data("readme\n".utf8).write(to: root.appendingPathComponent("README.txt"))
+        try Data("# Dotfile\n".utf8).write(to: root.appendingPathComponent(".gitkeep.md"))
+
+        let dotDir = root.appendingPathComponent(".obsidian", isDirectory: true)
+        try FileManager.default.createDirectory(at: dotDir, withIntermediateDirectories: true)
+        try Data("# Config\n".utf8).write(to: dotDir.appendingPathComponent("config.md"))
+
+        let assets = root.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        try Data("PNG".utf8).write(to: assets.appendingPathComponent("logo.png"))
+
+        let empty = root.appendingPathComponent("empty", isDirectory: true)
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+
+        let notes = root.appendingPathComponent("notes", isDirectory: true)
+        try FileManager.default.createDirectory(at: notes, withIntermediateDirectories: true)
+        try Data("# Overview\n".utf8).write(to: notes.appendingPathComponent("overview.markdown"))
+
+        let archive = notes.appendingPathComponent("archive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        try Data("# Old\n".utf8).write(to: archive.appendingPathComponent("old.mdown"))
+
+        let deep = archive.appendingPathComponent("deep", isDirectory: true)
+        try FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        try Data("# Deepest\n".utf8).write(to: deep.appendingPathComponent("deepest.mkd"))
+
+        return root
+    }
+
+    @Test func regressionEnumerationThroughRealSecurityScopedBookmarkPopulatesFullFilteredTree() throws {
+        // Mirrors the production folder-open flow (RecentDocuments /
+        // FolderSession): a security-scoped bookmark is created for the
+        // fixture root, resolved with .withSecurityScope, and access is
+        // started before MarkdownFolderTree ever sees the URL. Every
+        // assertion below is on MarkdownFolderTree.build's live output --
+        // it fails outright if enumeration silently returns empty, or if
+        // an excluded entry leaks through (N9).
+        let root = try makeSandboxedFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let bookmark = try root.bookmarkData(options: [.withSecurityScope])
+        var isStale = false
+        let resolved = try URL(
+            resolvingBookmarkData: bookmark,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+        let started = resolved.startAccessingSecurityScopedResource()
+        defer { if started { resolved.stopAccessingSecurityScopedResource() } }
+        #expect(started)
+
+        let tree = MarkdownFolderTree.build(root: resolved)
+
+        let topNames = tree.map(\.name).sorted()
+        #expect(topNames == ["index.md", "notes"])
+        #expect(!topNames.contains("README.txt"))
+        #expect(!topNames.contains(".gitkeep.md"))
+        #expect(!topNames.contains(".obsidian"))
+        #expect(!topNames.contains("assets"))
+        #expect(!topNames.contains("empty"))
+
+        let index = try #require(tree.first { $0.name == "index.md" })
+        #expect(!index.isDirectory)
+        #expect(index.children.isEmpty)
+
+        let notes = try #require(tree.first { $0.name == "notes" })
+        #expect(notes.isDirectory)
+        let notesNames = notes.children.map(\.name).sorted()
+        #expect(notesNames == ["archive", "overview.markdown"])
+
+        let archive = try #require(notes.children.first { $0.name == "archive" })
+        #expect(archive.isDirectory)
+        let archiveNames = archive.children.map(\.name).sorted()
+        #expect(archiveNames == ["deep", "old.mdown"])
+
+        let deep = try #require(archive.children.first { $0.name == "deep" })
+        #expect(deep.isDirectory)
+        #expect(deep.children.map(\.name) == ["deepest.mkd"])
+        #expect(!deep.children[0].isDirectory)
+    }
+
     @Test func includesMdownAndMkdExtensions() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("markus-tree-ext-\(UUID().uuidString)", isDirectory: true)
