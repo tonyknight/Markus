@@ -26,7 +26,7 @@ subtasks:
 - id: T5
   title: Go/no-go call; if impractical, stop and reopen design
   status: todo
-current_task: T05
+current_task: T06
 plan_status: in-progress
 ---
 ## Description
@@ -82,7 +82,7 @@ Detailed checklist (mirrors frontmatter `subtasks`):
 ## Implementation plan
 
 Status: in-progress
-Current task: T05
+Current task: T06
 
 ### T01: Parse GFM table structure from cmark AST
 
@@ -145,7 +145,7 @@ Files: new test file
 `Markus/MarkusTests/TableAttachmentFoldingTests.swift`.
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentFoldingTests`
-
+- [x] done
 ### T06: Go/no-go call and ticket-scope verification
 
 No new production code. Record the go/no-go decision and rationale as
@@ -159,3 +159,6 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-16
+T05 done: composition with FoldingTextLayoutFragment validated at the NSTextLayoutManager level (TableAttachmentFoldingTests) — folded fragments still collapse to zero height, the attachment's own paragraph fragment lays out normally alongside them, and the attachment attribute survives layout unmangled. No production changes were needed. Found (not a blocker for this ticket, flagged for ticket 08): FoldingSession.applyStyling does a blind textStorage.setAttributes(_, range: full) on every fold/mode/theme/zoom change, which wipes any .attachment attribute in range. That path is v1's attribute-only styling, explicitly slated for replacement by ticket 08's NSTextContentStorageDelegate paragraph substitution; ticket 08 must not reuse setAttributes(_:range:) wholesale once it substitutes table attachments in, or it will strip its own attachments on the next fold toggle.
