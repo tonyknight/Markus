@@ -21,8 +21,7 @@ subtasks:
 - id: T3
   title: Remove the old side-panel settings and its dead Done button
   status: todo
-current_task: T03
-plan_status: in-progress
+plan_status: done
 ---
 ## Description
 
@@ -63,8 +62,8 @@ working close box — reachable from the ribbon rail's gear (ticket 05).
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Settings chrome logic + full-viewport scene view
 Add `SettingsCategory` (enum, `.themes` case for now — ticket 07 extends
@@ -147,7 +146,7 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 `-destination 'platform=iOS Simulator,name=iPhone 17'` and `-destination
 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
 - [ ] todo
-- [ ] done
+- [x] done
 
 ## Notes
 
