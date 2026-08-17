@@ -709,7 +709,7 @@ final class FoldingTextView: PlatformView {
     var ignoresHits = false
     #endif
 
-    func configureAsThemeCardSample() {
+    func configureAsThemeProxy() {
         #if os(macOS)
         ignoresHits = true
         #else

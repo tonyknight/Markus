@@ -75,7 +75,7 @@ broadcasts to every open window and tab.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Pure-SwiftUI card swatch, proven card selection via real AppKit event dispatch
 Root-cause investigation (done before writing this plan, via a throwaway
@@ -119,32 +119,41 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 - [x] done
 
 ### T02: Single proxy document below the cards; hover previews into it only
-Rename `ThemeSampleView`/`ThemeChrome.makeCardSampleView` to
-`ThemeProxyView`/`ThemeChrome.makeProxyView` and place exactly one
-instance below the preset+custom grid (and below the custom controls) in
-`ThemePickerView`, bound to `host.themeStore.displayedTokens` (hover ??
-selection — the property already exists). Decouple hover from the real
-document: `DocumentHost.previewTheme(_:)` updates
-`themeStore.beginHover`/`endHover` only and notifies `objectWillChange`
-— it must **not** call `session.editor.setTheme` any more, so hovering a
-card never repaints the real open document, only the proxy below the
-cards (R8; C.9). Click-to-apply is unaffected (`applyTheme` still
-commits). Rewrite
-`macHoverPreviewChangesTokensWithoutPersistingUntilApply` (currently
-asserts the opposite — that hover *does* repaint
-`host.session.editor.tokens`, which is exactly the "jarring" behavior
-this ticket removes) to assert `host.session.editor.tokens` stays at the
-committed theme throughout hover while `host.themeStore.displayedTokens`
-(the proxy's data source) reflects the hovered theme, reverting to
-committed on `preview(nil, ...)`.
+Renamed `ThemeSampleView`/`ThemeChrome.makeCardSampleView`/
+`FoldingTextView.configureAsThemeCardSample()` to
+`ThemeProxyRepresentable`/`ThemeChrome.makeProxyView`/
+`configureAsThemeProxy()` and placed exactly one instance below the
+preset+custom grid (and below the custom controls) in `ThemePickerView`,
+bound to `host.themeStore.displayedTokens` (hover ?? selection — the
+property already existed). Decoupled hover from the real document:
+`DocumentHost.previewTheme(_:)` now only updates
+`themeStore.beginHover`/`endHover` and calls `objectWillChange.send()`
+— it no longer calls `session.editor.setTheme`, so hovering a card never
+repaints the real open document, only the proxy below the cards (R8;
+C.9). Renamed the private `applyDisplayedTheme()` to
+`applyCommittedTheme()` (now reads `themeStore.committedTokens`, not
+`displayedTokens`) and kept it wired from `applyTheme`,
+`setCustomBackground`, `setCustomTextStyle`, and every `init` — those
+are all genuine commits, not hover, so the real document should still
+repaint immediately for them. Rewrote
+`macHoverPreviewChangesTokensWithoutPersistingUntilApply` (renamed
+`macHoverPreviewChangesOnlyTheProxysTokensNeverTheRealDocument`; RED
+confirmed by stashing the `DocumentHost.swift` change and re-running —
+real assertion failure, not a compile error) to assert
+`host.session.editor.tokens` stays at the committed theme throughout
+hover while `store.displayedTokens` (the proxy's data source) reflects
+the hovered theme, reverting to committed on `preview(nil, ...)`.
 Files: `Markus/Markus/Theme/ThemeChrome.swift`,
+`Markus/Markus/Editor/FoldingTextView.swift`,
 `Markus/Markus/Document/DocumentHost.swift`,
 `Markus/MarkusTests/ThemePickerTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
-(`DocumentHost.swift` is shared, non-`#if`-guarded — also run
-`-destination 'platform=iOS Simulator,name=iPhone 17'` and `-destination
-'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
+(`DocumentHost.swift`/`FoldingTextView.swift` are shared, non-`#if`-
+guarded — also run `-destination 'platform=iOS Simulator,name=iPhone
+17'` and `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch
+(M5)'`)
 - [ ] todo
+- [x] done
 
 ### T03: App-scoped `ThemeStore` singleton, broadcasting to every open document
 Add `ThemeStore.shared` (a `static let`, same `UserDefaults.standard`-

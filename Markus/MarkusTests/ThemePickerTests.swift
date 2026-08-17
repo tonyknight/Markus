@@ -87,14 +87,14 @@ struct ThemePickerTests {
         #endif
     }
 
-    @Test func themeCardSampleViewDoesNotStealHitsOrFirstResponder() {
-        let sample = ThemeChrome.makeCardSampleView(tokens: NamedThemeCatalog.tokens(for: .daylight))
+    @Test func themeProxyViewIsReadOnlyAndNeverStealsHitsOrFirstResponder() {
+        let proxy = ThemeChrome.makeProxyView(tokens: NamedThemeCatalog.tokens(for: .daylight))
         #if os(macOS)
-        sample.frame = NSRect(x: 0, y: 0, width: 160, height: 88)
-        #expect(sample.hitTest(NSPoint(x: 80, y: 44)) == nil)
-        #expect(!sample.acceptsFirstResponder)
+        proxy.frame = NSRect(x: 0, y: 0, width: 160, height: 88)
+        #expect(proxy.hitTest(NSPoint(x: 80, y: 44)) == nil)
+        #expect(!proxy.acceptsFirstResponder)
         #else
-        #expect(!sample.isUserInteractionEnabled)
+        #expect(!proxy.isUserInteractionEnabled)
         #endif
     }
 
@@ -151,22 +151,32 @@ struct ThemePickerTests {
         #expect(selected == .named(.harbor))
     }
 
-    @Test func macHoverPreviewChangesTokensWithoutPersistingUntilApply() {
+    /// Hovering a card must preview into the proxy document only — the
+    /// real open document's editor must never repaint on hover (R8; C.9:
+    /// "hover repaints the real document, which is both heavy and
+    /// jarring"). The proxy's data source, `themeStore.displayedTokens`,
+    /// is what must change; `host.session.editor.tokens` (the real
+    /// document) must stay pinned to the committed theme throughout.
+    @Test func macHoverPreviewChangesOnlyTheProxysTokensNeverTheRealDocument() {
         let store = isolatedStore()
         let host = hostWithStore(store)
         ThemeChrome.select(.named(.daylight), on: host)
         #expect(store.persistedSelectionID == "daylight")
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
 
         ThemeChrome.preview(.named(.meadow), on: host)
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .meadow))
+        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .meadow))
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
         #expect(store.persistedSelectionID == "daylight")
         #expect(store.selection == .named(.daylight))
 
         ThemeChrome.preview(nil, on: host)
+        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .daylight))
         #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
         #expect(store.persistedSelectionID == "daylight")
 
         ThemeChrome.preview(.named(.fog), on: host)
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
         ThemeChrome.select(.named(.fog), on: host)
         #expect(store.persistedSelectionID == "fog")
         #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .fog))

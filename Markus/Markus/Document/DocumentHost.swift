@@ -59,7 +59,7 @@ final class DocumentHost: ObservableObject {
         self.recents = RecentDocuments()
         self.themeStore = ThemeStore()
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(session: DocumentSession, recents: RecentDocuments) {
@@ -67,7 +67,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = ThemeStore()
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(session: DocumentSession, recents: RecentDocuments, themeStore: ThemeStore) {
@@ -75,7 +75,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = themeStore
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(recents: RecentDocuments) {
@@ -83,7 +83,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = ThemeStore()
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(recents: RecentDocuments, themeStore: ThemeStore) {
@@ -91,7 +91,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = themeStore
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     private func observe() {
@@ -105,30 +105,35 @@ final class DocumentHost: ObservableObject {
 
     func applyTheme(_ selection: ThemeSelection) {
         themeStore.select(selection)
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
+    /// Hovering a card previews that theme in the picker's proxy document
+    /// only (`ThemeStore.displayedTokens`, read directly by
+    /// `ThemePickerView`) — it must never touch the real open document's
+    /// editor, which stays on the committed theme throughout hover (R8;
+    /// C.9).
     func previewTheme(_ selection: ThemeSelection?) {
         if let selection {
             themeStore.beginHover(selection)
         } else {
             themeStore.endHover()
         }
-        applyDisplayedTheme()
+        objectWillChange.send()
     }
 
     func setCustomBackground(_ color: PlatformColorType) {
         themeStore.setCustomBackground(color)
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     func setCustomTextStyle(_ style: CustomTextStyle) {
         themeStore.setCustomTextStyle(style)
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
-    private func applyDisplayedTheme() {
-        session.editor.setTheme(themeStore.displayedTokens)
+    private func applyCommittedTheme() {
+        session.editor.setTheme(themeStore.committedTokens)
         objectWillChange.send()
     }
 

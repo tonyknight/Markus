@@ -31,13 +31,17 @@ enum ThemeChrome {
         host.previewTheme(selection)
     }
 
+    /// Builds the single shared proxy document shown below the preset and
+    /// custom cards. Hovering a card previews that card's theme in this
+    /// proxy only; the real open document is never touched by hover (R8;
+    /// C.9).
     @MainActor
-    static func makeCardSampleView(tokens: ThemeTokens) -> FoldingTextView {
+    static func makeProxyView(tokens: ThemeTokens) -> FoldingTextView {
         let view = FoldingTextView()
         view.loadMarkdown(sampleMarkdown)
         view.setMode(.preview)
         view.setTheme(tokens)
-        view.configureAsThemeCardSample()
+        view.configureAsThemeProxy()
         return view
     }
 }
@@ -77,6 +81,9 @@ struct ThemePickerView: View {
                 if host.themeStore.selection == .custom {
                     customControls
                 }
+                ThemeProxyRepresentable(tokens: host.themeStore.displayedTokens)
+                    .frame(minHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .padding()
         }
@@ -158,9 +165,9 @@ struct ThemeCard: View {
 
 /// A card's miniature theme preview, drawn entirely in SwiftUI (no
 /// embedded `NSViewRepresentable`/`UIViewRepresentable`). Cards used to
-/// embed a real `FoldingTextView` here (`ThemeSampleView`, now used only
-/// by the single proxy document below the grid) — that embed was the
-/// actual cause of the "cards cannot be selected" bug: a click landing
+/// embed a real `FoldingTextView` here (`ThemeProxyRepresentable`, now
+/// used only by the single proxy document below the grid) — that embed
+/// was the actual cause of the "cards cannot be selected" bug: a click landing
 /// over the embedded view's region never reached the card's `Button`,
 /// even though the embedded view's own `hitTest` already returned `nil`.
 /// A plain SwiftUI view can't intercept AppKit/UIKit hit-testing that
@@ -201,12 +208,15 @@ private struct ThemeSwatch: View {
     }
 }
 
+/// The single shared proxy document below the cards. Read-only (not the
+/// real open document) — hover repaints only this view via
+/// `updateNSView`/`updateUIView`, never `DocumentHost.session.editor`.
 #if os(macOS)
-private struct ThemeSampleView: NSViewRepresentable {
+private struct ThemeProxyRepresentable: NSViewRepresentable {
     var tokens: ThemeTokens
 
     func makeNSView(context: Context) -> FoldingTextView {
-        ThemeChrome.makeCardSampleView(tokens: tokens)
+        ThemeChrome.makeProxyView(tokens: tokens)
     }
 
     func updateNSView(_ nsView: FoldingTextView, context: Context) {
@@ -215,11 +225,11 @@ private struct ThemeSampleView: NSViewRepresentable {
     }
 }
 #else
-private struct ThemeSampleView: UIViewRepresentable {
+private struct ThemeProxyRepresentable: UIViewRepresentable {
     var tokens: ThemeTokens
 
     func makeUIView(context: Context) -> FoldingTextView {
-        ThemeChrome.makeCardSampleView(tokens: tokens)
+        ThemeChrome.makeProxyView(tokens: tokens)
     }
 
     func updateUIView(_ uiView: FoldingTextView, context: Context) {
