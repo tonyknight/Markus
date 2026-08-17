@@ -254,4 +254,26 @@ struct PreviewSubstitutionTests {
         let doneMarker = done.string.replacingOccurrences(of: "done", with: "")
         #expect(todoMarker != doneMarker)
     }
+
+    // MARK: - T04: thematic breaks
+
+    @Test func previewModeDrawsThematicBreakInsteadOfLiteralDashes() throws {
+        let markdown = "Before.\n\n---\n\nAfter.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        #expect(!paragraphs.contains { $0.string.contains("-") })
+
+        let ruleParagraph = try #require(paragraphs.first { paragraph in
+            var found = false
+            paragraph.enumerateAttribute(.attachment, in: NSRange(location: 0, length: paragraph.length)) { value, _, _ in
+                if value is ThematicBreakAttachment { found = true }
+            }
+            return found
+        })
+        #expect(ruleParagraph.length > 0)
+    }
 }

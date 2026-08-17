@@ -128,11 +128,15 @@ enum PreviewElementCollector {
             let color = quoteDepth > 0 ? tokens.list : tokens.body
             let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: color)
             elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
+        } else if type == CMARK_NODE_THEMATIC_BREAK {
+            let attachment = ThematicBreakAttachment(color: tokens.foldMarker)
+            let attributed = NSAttributedString(attachment: attachment)
+            elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
         }
-        // Thematic breaks, tables, fenced code, and images are added by
-        // later tasks (T04–T06). Until then this block kind is simply
-        // not substituted — the default raw text lays out unchanged,
-        // same as Source mode.
+        // Tables, fenced code, and images are added by later tasks
+        // (T05–T06). Until then this block kind is simply not
+        // substituted — the default raw text lays out unchanged, same
+        // as Source mode.
     }
 
     /// One list item: the marker (bullet, ordinal, or task checkbox)
