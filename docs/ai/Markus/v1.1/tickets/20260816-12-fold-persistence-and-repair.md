@@ -3,10 +3,10 @@ id: 20260816-12-fold-persistence-and-repair
 title: Fold persistence and repair
 type: feature
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-17
-closed:
+closed: 2026-08-17
 notes: ''
 parent:
 depends_on:
@@ -14,13 +14,13 @@ depends_on:
 subtasks:
 - id: T1
   title: Add FoldID.anchor (short digest of the block's opening line)
-  status: todo
+  status: done
 - id: T2
   title: Persist fold set per file in app storage
-  status: todo
+  status: done
 - id: T3
   title: Repair fold IDs against anchors when the block index rebuilds
-  status: todo
+  status: done
 plan_status: done
 ---
 ## Description
@@ -35,14 +35,14 @@ typing does.
 
 ## Acceptance criteria
 
-- [ ] Folds persist per file across relaunch, in app storage — not an
+- [x] Folds persist per file across relaunch, in app storage — not an
       in-memory `Set` (R16).
-- [ ] `FoldID` gains an `anchor` (short digest of the block's opening
+- [x] `FoldID` gains an `anchor` (short digest of the block's opening
       line) (Data model `FoldID`).
-- [ ] When the block index is rebuilt after an edit, fold IDs are
+- [x] When the block index is rebuilt after an edit, fold IDs are
       repaired against their anchors rather than left pointing at stale
       line numbers (R17).
-- [ ] A fold survives an edit made elsewhere in the document (R17).
+- [x] A fold survives an edit made elsewhere in the document (R17).
 
 ## Context
 
@@ -56,13 +56,13 @@ typing does.
 
 ## Subtasks
 
-- [ ] Add `anchor: String` to `FoldID`, computed as a short digest of the
+- [x] Add `anchor: String` to `FoldID`, computed as a short digest of the
       block's opening line.
-- [ ] Implement per-file fold persistence (app storage, e.g.
+- [x] Implement per-file fold persistence (app storage, e.g.
       `UserDefaults` keyed by file).
-- [ ] Implement repair: on block-index rebuild, match existing fold
+- [x] Implement repair: on block-index rebuild, match existing fold
       anchors against the new index and update `startLine` accordingly.
-- [ ] Test: fold a block, edit elsewhere in the document, confirm the
+- [x] Test: fold a block, edit elsewhere in the document, confirm the
       fold survives; relaunch, confirm folds are restored.
 
 ## Implementation plan
@@ -175,3 +175,9 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-17
 All three plan tasks complete. T01: FoldID gained anchor: String (an FNV-1a digest of the block's opening source line) plus FoldID.Kind's String raw value; BlockIndex.build now hoists one shared SourceMap per build (also closing the P5 repeated-construction note) and computes each block's anchor from its opening line. T02: new FoldPersistence follows the RecentDocuments/ThemeStore UserDefaults-backed pattern exactly (one JSON blob under "markus.folds", keyed by standardized file path); FoldStore binds to a file URL, restores its persisted set, and persists after every toggle/foldAll/unfoldAll — a real per-file app-storage set, not an in-memory Set (R16). T03: FoldStore.repair(against:) re-matches folded IDs by kind+anchor against a freshly rebuilt block list, replacing stale startLines and dropping folds whose block was deleted; wired into FoldingSession.syncBlocksFromStorage() (today's edit-time rebuild path via find/replace, and typing once ticket 13 lands) and into a new restoreFolds(for:) called from DocumentSession.open(url:) right after loadMarkdown, so persisted folds are bound and repaired against the current index on open (R17). Explicit acceptance-scenario test added: fold block A, edit block B's body via FindReplace so A's startLine shifts, rebuild via syncBlocksFromStorage(), assert live foldStore.isFolded state for the repaired id and absence of the stale one. All tests assert live FoldStore/BlockIndex state (isFolded/foldedIDs/startLine/anchor), never a flag that can't fail (N9). Verify: xcodebuild macOS, iOS Simulator iPhone 17, and iOS Simulator iPad Pro 13-inch (M5) all TEST SUCCEEDED. bora dev lint clean. Working tree clean after 3 commits (T01, T02, T03). AC checkboxes, subtask checkboxes, and status left untouched for the controlling session's independent review per process boundary.
+
+## Review
+
+**2026-08-17 — Verdict: clean.** Reviewed by a fresh subagent against R16, R17, and the `FoldID.anchor` data model entry, independently re-running the touched test suites (`FoldStoreTests`, `FoldingTextViewTests`, `DocumentSessionTests`, `BlockIndexTests`: 20/20 pass) plus the full macOS suite (all green, including UI tests).
+
+Confirmed: `FoldAnchor.digest(_:)` is a pure FNV-1a hash over the opening line's UTF-8 bytes only — no line number folded in, proven directly by a test where two identically-worded headings at different `startLine`s share an anchor; the `SourceMap` hoist from per-fence to per-build introduces no correctness risk (one immutable markdown snapshot per build call); persistence genuinely follows the `RecentDocuments`/`ThemeStore` `UserDefaults` pattern, is genuinely per-file (keyed by standardized path), and survives a real second-instance reload in test; `repair(against:)` matches by `kind`+`anchor`, correctly updates `startLine` on match and correctly drops folds for deleted blocks (rebuilds a fresh set rather than mutating in place); wired into both real production paths (`FoldingSession.syncBlocksFromStorage()` for edit-time rebuild, `DocumentSession.open(url:)` for open-time restore), not just unit-tested in isolation; the ticket's core acceptance scenario (fold A, edit B via real `FindReplace`, rebuild, A survives under its repaired id) is tested end-to-end through production code; all `UserDefaults`-touching tests use isolated per-test suites, no shared-domain pollution; every assertion checks live state (N9). No findings, Minor or otherwise.
