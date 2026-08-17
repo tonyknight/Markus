@@ -164,8 +164,18 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     func syncBlocksFromStorage() {
         guard let textStorage else { return }
         blocks = BlockIndex.build(markdown: textStorage.string)
+        foldStore.repair(against: blocks)
         applyStyling(to: textStorage)
         invalidateLayout()
+    }
+
+    /// Binds the fold store to `url` (restoring whatever was persisted for
+    /// it) and repairs the restored set against the block index already
+    /// built from the just-loaded document (R16, R17's "open file" flow).
+    func restoreFolds(for url: URL?) {
+        foldStore.bind(to: url)
+        foldStore.repair(against: blocks)
+        applyFolds()
     }
 
     var layoutHeight: CGFloat {
@@ -677,6 +687,11 @@ final class FoldingTextView: PlatformView {
 
     func syncBlocksFromStorage() {
         session.syncBlocksFromStorage()
+    }
+
+    func restoreFolds(for url: URL?) {
+        session.restoreFolds(for: url)
+        ensureLayout()
     }
 
     var string: String {

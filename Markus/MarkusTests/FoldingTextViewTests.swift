@@ -154,6 +154,45 @@ struct FoldingTextViewTests {
         #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
     }
 
+    @Test func foldSurvivesAnEditElsewhereInTheDocumentViaBlockIndexRebuildRepair() throws {
+        let twoBlockFixture = """
+        ## Block B
+
+        Body B marker HERE.
+
+        ## Block A
+
+        Body A.
+        """
+        let view = FoldingTextView()
+        view.loadMarkdown(twoBlockFixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        // Fold block A, then edit inside block B — elsewhere in the
+        // document — in a way that grows block B's body and pushes block
+        // A's startLine down. This exercises the real rebuild path
+        // (syncBlocksFromStorage), not a hand-constructed block list.
+        let blockAOriginal = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.startLine != 1 })
+        view.foldStore.toggle(blockAOriginal.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(view.foldStore.isFolded(blockAOriginal.id))
+
+        let storage = try #require(view.textStorage)
+        let match = try #require(FindReplace.search("HERE", in: storage))
+        let replaced = FindReplace.replace(match, with: "HERE\nExtra line one.\nExtra line two.", in: storage)
+        #expect(replaced)
+
+        view.syncBlocksFromStorage()
+        view.ensureLayout()
+
+        let blockARepaired = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.anchor == blockAOriginal.id.anchor })
+        #expect(blockARepaired.id.startLine != blockAOriginal.id.startLine)
+        #expect(view.foldStore.isFolded(blockARepaired.id))
+        #expect(!view.foldStore.foldedIDs.contains(blockAOriginal.id))
+    }
+
     private func usesCollapsedParagraphStyles(_ storage: NSTextStorage) -> Bool {
         var found = false
         storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, _, stop in

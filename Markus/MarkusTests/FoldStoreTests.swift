@@ -8,6 +8,18 @@ import Testing
 @testable import Markus
 
 struct FoldStoreTests {
+    private func isolatedDefaults() -> UserDefaults {
+        let suite = "markus.folds.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    private func uniqueTempMarkdownURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-fold-store-\(UUID().uuidString).md")
+    }
+
     private var fixture: String {
         """
         ## Heading two
@@ -78,5 +90,81 @@ struct FoldStoreTests {
         for id in foldableIDs {
             #expect(!store.isFolded(id))
         }
+    }
+
+    @Test func foldedStateSurvivesASimulatedRelaunchViaASecondIndependentStoreOnTheSameDefaults() throws {
+        let defaults = isolatedDefaults()
+        let url = uniqueTempMarkdownURL()
+        let blocks = BlockIndex.build(markdown: fixture)
+        let heading = try #require(blocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+
+        // First "launch": fold a block and bind the store to the file.
+        let firstStore = FoldStore(persistence: FoldPersistence(defaults: defaults))
+        firstStore.bind(to: url)
+        #expect(!firstStore.isFolded(heading.id))
+        firstStore.toggle(heading.id)
+        #expect(firstStore.isFolded(heading.id))
+
+        // "Relaunch": a brand-new store, sharing only the same UserDefaults
+        // suite and the same file URL — no shared in-memory state at all.
+        let secondStore = FoldStore(persistence: FoldPersistence(defaults: defaults))
+        #expect(!secondStore.isFolded(heading.id))
+        secondStore.bind(to: url)
+        #expect(secondStore.isFolded(heading.id))
+    }
+
+    @Test func unrelatedFilesDoNotShareFoldStateInTheSamePersistence() throws {
+        let defaults = isolatedDefaults()
+        let firstURL = uniqueTempMarkdownURL()
+        let secondURL = uniqueTempMarkdownURL()
+        let blocks = BlockIndex.build(markdown: fixture)
+        let heading = try #require(blocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+
+        let store = FoldStore(persistence: FoldPersistence(defaults: defaults))
+        store.bind(to: firstURL)
+        store.toggle(heading.id)
+        #expect(store.isFolded(heading.id))
+
+        store.bind(to: secondURL)
+        #expect(!store.isFolded(heading.id))
+    }
+
+    @Test func repairMatchesFoldedAnchorsToTheirBlocksNewStartLineAndDropsUnmatched() throws {
+        let originalMarkdown = """
+        ## Drop
+
+        Body drop.
+
+        ## Keep
+
+        Body keep.
+        """
+        let editedMarkdown = """
+        Preface paragraph inserted before everything.
+
+        ## Keep
+
+        Body keep.
+        """
+        let originalBlocks = BlockIndex.build(markdown: originalMarkdown)
+        let dropOriginal = try #require(originalBlocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+        let keepOriginal = try #require(originalBlocks.first { $0.id.kind == .heading && $0.id.startLine != 1 })
+
+        let store = FoldStore()
+        store.toggle(dropOriginal.id)
+        store.toggle(keepOriginal.id)
+        #expect(store.isFolded(dropOriginal.id))
+        #expect(store.isFolded(keepOriginal.id))
+
+        let editedBlocks = BlockIndex.build(markdown: editedMarkdown)
+        let keepEdited = try #require(editedBlocks.first { $0.id.kind == .heading && $0.id.anchor == keepOriginal.id.anchor })
+        #expect(keepEdited.id.startLine != keepOriginal.id.startLine)
+        #expect(!editedBlocks.contains { $0.id.anchor == dropOriginal.id.anchor })
+
+        store.repair(against: editedBlocks)
+
+        #expect(store.isFolded(keepEdited.id))
+        #expect(!store.foldedIDs.contains(keepOriginal.id))
+        #expect(store.foldedIDs == Set([keepEdited.id]))
     }
 }
