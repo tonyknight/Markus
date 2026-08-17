@@ -1,33 +1,32 @@
 ---
 id: 20260816-01-table-grid-spike
-title: "Table grid spike"
+title: Table grid spike
 type: spike
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-16
 updated: 2026-08-16
 closed:
-notes: "Hard gate: sequenced first, decides whether ticket 08 can proceed as designed."
+notes: 'Hard gate: sequenced first, decides whether ticket 08 can proceed as designed.'
 parent:
 depends_on: []
 subtasks:
-  - id: T1
-    title: Prototype NSTextAttachment sizing/measurement from column content
-    status: todo
-  - id: T2
-    title: Draw aligned grid (borders, column widths) in the attachment cell
-    status: todo
-  - id: T3
-    title: Attach full table source-range metadata to the attachment
-    status: todo
-  - id: T4
-    title: Validate selection over the attachment can resolve to source range
-    status: todo
-  - id: T5
-    title: Go/no-go call; if impractical, stop and reopen design
-    status: todo
+- id: T1
+  title: Prototype NSTextAttachment sizing/measurement from column content
+  status: todo
+- id: T2
+  title: Draw aligned grid (borders, column widths) in the attachment cell
+  status: todo
+- id: T3
+  title: Attach full table source-range metadata to the attachment
+  status: todo
+- id: T4
+  title: Validate selection over the attachment can resolve to source range
+  status: todo
+- id: T5
+  title: Go/no-go call; if impractical, stop and reopen design
+  status: todo
 ---
-
 ## Description
 
 A GFM table is one cmark node spanning several source lines, but the
