@@ -13,21 +13,20 @@ depends_on: []
 subtasks:
 - id: T1
   title: Prototype NSTextAttachment sizing/measurement from column content
-  status: todo
+  status: done
 - id: T2
   title: Draw aligned grid (borders, column widths) in the attachment cell
-  status: todo
+  status: done
 - id: T3
   title: Attach full table source-range metadata to the attachment
-  status: todo
+  status: done
 - id: T4
   title: Validate selection over the attachment can resolve to source range
-  status: todo
+  status: done
 - id: T5
   title: Go/no-go call; if impractical, stop and reopen design
-  status: todo
-current_task: T06
-plan_status: in-progress
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -43,15 +42,15 @@ degrade silently to a styled-but-misaligned table.
 
 ## Acceptance criteria
 
-- [ ] An `NSTextAttachment` subtype measures column widths from cell
+- [x] An `NSTextAttachment` subtype measures column widths from cell
       content and draws an aligned grid (R11).
-- [ ] The attachment carries the table's full source byte range so a
+- [x] The attachment carries the table's full source byte range so a
       later selection over it can resolve back to source Markdown (feeds
       R22 in ticket 13).
-- [ ] The attachment composes with folding: it behaves as a normal owned
+- [x] The attachment composes with folding: it behaves as a normal owned
       layout element and does not break `FoldingTextLayoutFragment`
       folding of surrounding content (N3).
-- [ ] **Hard gate documented:** a clear go/no-go decision is recorded on
+- [x] **Hard gate documented:** a clear go/no-go decision is recorded on
       this ticket. If no-go, this ticket stops here and reopens
       architecture discussion rather than shipping a degraded table.
 
@@ -70,19 +69,19 @@ degrade silently to a styled-but-misaligned table.
 
 Detailed checklist (mirrors frontmatter `subtasks`):
 
-- [ ] Prototype attachment sizing/measurement from parsed GFM table cell
+- [x] Prototype attachment sizing/measurement from parsed GFM table cell
       content (columns, alignment).
-- [ ] Draw the grid: borders, aligned columns, per-cell text.
-- [ ] Carry the table's full source `Range<Int>` on the attachment
+- [x] Draw the grid: borders, aligned columns, per-cell text.
+- [x] Carry the table's full source `Range<Int>` on the attachment
       (`TableLayout.sourceRange`).
-- [ ] Validate that a selection spanning the attachment can be resolved
+- [x] Validate that a selection spanning the attachment can be resolved
       back to that source range (needed for R22 later).
-- [ ] Record the go/no-go decision and rationale in Notes.
+- [x] Record the go/no-go decision and rationale in Notes.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T06
+Status: done
+Current task: 
 
 ### T01: Parse GFM table structure from cmark AST
 
@@ -155,10 +154,13 @@ for changes to the shared editor.
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test` then
 `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' test` then
 `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test`
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
 
 ### 2026-08-16
 T05 done: composition with FoldingTextLayoutFragment validated at the NSTextLayoutManager level (TableAttachmentFoldingTests) — folded fragments still collapse to zero height, the attachment's own paragraph fragment lays out normally alongside them, and the attachment attribute survives layout unmangled. No production changes were needed. Found (not a blocker for this ticket, flagged for ticket 08): FoldingSession.applyStyling does a blind textStorage.setAttributes(_, range: full) on every fold/mode/theme/zoom change, which wipes any .attachment attribute in range. That path is v1's attribute-only styling, explicitly slated for replacement by ticket 08's NSTextContentStorageDelegate paragraph substitution; ticket 08 must not reuse setAttributes(_:range:) wholesale once it substitutes table attachments in, or it will strip its own attachments on the next fold toggle.
+
+### 2026-08-16
+GO. Hard-gate decision: a true, custom-drawn NSTextAttachment grid is practical on this stack — ticket 08 (Preview rendering via paragraph substitution) may proceed as designed. Evidence: TableAttachment (Markus/Markus/Editor/TableAttachment.swift) measures per-column widths from actual cell content via font metrics (T02), draws real borders plus per-cell aligned text into a rasterized image via attachmentBounds(for:...)/image(forBounds:textContainer:characterIndex:) — the standard cross-platform NSTextAttachmentContainer drawing hook, no NSTextAttachmentCell or platform-specific view provider required (T03). It carries the table's full source Range<Int> (TableLayout.sourceRange, from TableParsing.swift's cmark_gfm_extensions_get_table_* walk of CMARK_NODE_TABLE/_ROW/_CELL) and NSAttributedString.tableSourceRange(intersecting:) resolves any selection overlapping the attachment back to that whole range, satisfying R22's future need (T04). Composition with FoldingTextLayoutFragment was validated directly at the NSTextLayoutManager level: folding elsewhere in a document containing the attachment still collapses to zero height, the attachment's own paragraph fragment lays out normally and is never touched by folding, and the attachment attribute survives layout unmangled (T05, N3 satisfied). All three xcodebuild destinations (macOS, iPhone 17, iPad Pro 13-inch M5) pass with zero failures. One integration risk flagged for ticket 08 (see prior note): FoldingSession.applyStyling's blind setAttributes(_, range: full) on every fold/mode/theme/zoom change wipes .attachment attributes — ticket 08 must not layer table-attachment insertion under that call path unchanged.
