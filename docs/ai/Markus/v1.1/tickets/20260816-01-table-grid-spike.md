@@ -26,7 +26,7 @@ subtasks:
 - id: T5
   title: Go/no-go call; if impractical, stop and reopen design
   status: todo
-current_task: T02
+current_task: T03
 plan_status: in-progress
 ---
 ## Description
@@ -82,7 +82,7 @@ Detailed checklist (mirrors frontmatter `subtasks`):
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Parse GFM table structure from cmark AST
 
@@ -107,7 +107,7 @@ Files: new `Markus/Markus/Editor/TableAttachment.swift`; new test file
 `Markus/MarkusTests/TableAttachmentTests.swift`.
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentTests`
-
+- [x] done
 ### T03: Draw the aligned grid
 
 Override `image(forBounds:textContainer:characterIndex:)` on
