@@ -26,7 +26,7 @@ subtasks:
 - id: T5
   title: Go/no-go call; if impractical, stop and reopen design
   status: todo
-current_task: T04
+current_task: T05
 plan_status: in-progress
 ---
 ## Description
@@ -82,7 +82,7 @@ Detailed checklist (mirrors frontmatter `subtasks`):
 ## Implementation plan
 
 Status: in-progress
-Current task: T04
+Current task: T05
 
 ### T01: Parse GFM table structure from cmark AST
 
@@ -132,7 +132,7 @@ Files: `Markus/Markus/Editor/TableAttachment.swift`; extends
 `Markus/MarkusTests/TableAttachmentTests.swift`.
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentTests`
-
+- [x] done
 ### T05: Validate composition with folding (N3)
 
 Embed a `TableAttachment` into a `FoldingTextView`'s storage alongside

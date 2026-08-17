@@ -157,6 +157,57 @@ struct TableAttachmentTests {
         #endif
     }
 
+    // MARK: - Source range and selection resolution (T04)
+
+    @Test func attachmentCarriesTheParsedTablesFullSourceRange() {
+        let attachment = TableAttachment(table: parsedTable, font: PlatformFont.monospaced(size: 14))
+        #expect(attachment.sourceRange == parsedTable.sourceRange)
+    }
+
+    private func documentWithEmbeddedTable(_ attachment: TableAttachment) -> (combined: NSAttributedString, prefixLength: Int) {
+        let prefix = NSAttributedString(string: "Before. ")
+        let attachmentRun = NSAttributedString(attachment: attachment)
+        let suffix = NSAttributedString(string: " After.")
+        let combined = NSMutableAttributedString()
+        combined.append(prefix)
+        combined.append(attachmentRun)
+        combined.append(suffix)
+        return (combined, prefix.length)
+    }
+
+    @Test func selectionExactlyOnTheAttachmentResolvesToItsSourceRange() {
+        let attachment = TableAttachment(table: parsedTable, font: PlatformFont.monospaced(size: 14))
+        let (combined, prefixLength) = documentWithEmbeddedTable(attachment)
+
+        let selection = NSRange(location: prefixLength, length: 1)
+        #expect(combined.tableSourceRange(intersecting: selection) == attachment.sourceRange)
+    }
+
+    @Test func selectionSpanningPastTheAttachmentStillResolvesToItsSourceRange() {
+        let attachment = TableAttachment(table: parsedTable, font: PlatformFont.monospaced(size: 14))
+        let (combined, _) = documentWithEmbeddedTable(attachment)
+
+        // The attachment is one opaque glyph: a selection that merely
+        // overlaps it (rather than covering it exactly) still resolves to
+        // the whole table's source range.
+        let wideSelection = NSRange(location: 0, length: combined.length)
+        #expect(combined.tableSourceRange(intersecting: wideSelection) == attachment.sourceRange)
+    }
+
+    @Test func selectionNotTouchingTheAttachmentResolvesToNil() {
+        let attachment = TableAttachment(table: parsedTable, font: PlatformFont.monospaced(size: 14))
+        let (combined, prefixLength) = documentWithEmbeddedTable(attachment)
+
+        let selectionInPrefix = NSRange(location: 0, length: prefixLength)
+        #expect(combined.tableSourceRange(intersecting: selectionInPrefix) == nil)
+    }
+
+    @Test func documentWithNoTableAttachmentResolvesToNil() {
+        let plain = NSAttributedString(string: "Just plain text, no table here.")
+        let selection = NSRange(location: 0, length: plain.length)
+        #expect(plain.tableSourceRange(intersecting: selection) == nil)
+    }
+
     private func opaquePixelFraction(of rendered: CGImage) -> Double? {
         guard let data = rendered.dataProvider?.data,
               let bytes = CFDataGetBytePtr(data)

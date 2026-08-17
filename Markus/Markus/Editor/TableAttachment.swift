@@ -215,3 +215,24 @@ typealias PlatformImage = NSImage
 #else
 typealias PlatformImage = UIImage
 #endif
+
+extension NSAttributedString {
+    /// Resolves a Preview selection that overlaps a `TableAttachment`'s
+    /// single-character run back to the table's full source byte range.
+    /// A table attachment is one opaque glyph — there is no partial
+    /// selection within it — so any overlap with `selection` resolves to
+    /// the whole table (feeds R22 in ticket 13). Returns `nil` when the
+    /// selection touches no table attachment.
+    func tableSourceRange(intersecting selection: NSRange) -> Range<Int>? {
+        var found: Range<Int>?
+        enumerateAttribute(.attachment, in: NSRange(location: 0, length: length)) { value, range, stop in
+            guard let table = value as? TableAttachment else { return }
+            let intersects = NSIntersectionRange(range, selection).length > 0
+                || (selection.length == 0 && NSLocationInRange(selection.location, range))
+            guard intersects else { return }
+            found = table.sourceRange
+            stop.pointee = true
+        }
+        return found
+    }
+}
