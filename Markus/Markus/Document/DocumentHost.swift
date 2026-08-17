@@ -12,6 +12,7 @@ final class DocumentHost: ObservableObject {
     @Published var isImporterPresented = false
     @Published var isFolderImporterPresented = false
     @Published var isSettingsPresented = false
+    @Published var isLibraryPanelOpen = false
     @Published var isOutlinePresented = false
     @Published var isFindPresented = false
     @Published var isGoToLinePresented = false
@@ -306,6 +307,20 @@ final class DocumentHost: ObservableObject {
 
     func presentOutline() {
         isOutlinePresented = true
+        objectWillChange.send()
+    }
+
+    func presentSettings() {
+        isSettingsPresented = true
+        objectWillChange.send()
+    }
+
+    /// Toggles the left ribbon rail's library panel (macOS-only chrome).
+    /// The panel starts closed; the hamburger flips this regardless of
+    /// whether a folder session exists — `LibraryPanelView` decides
+    /// whether to show the tree or an empty state for that case.
+    func toggleLibraryPanel() {
+        isLibraryPanelOpen.toggle()
         objectWillChange.send()
     }
 

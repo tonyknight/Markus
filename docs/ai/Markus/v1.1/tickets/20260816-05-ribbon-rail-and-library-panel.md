@@ -5,7 +5,7 @@ type: feature
 priority: medium
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
 notes: ''
 parent:
@@ -21,6 +21,8 @@ subtasks:
 - id: T3
   title: Empty state offering Open Folder… with no folder session
   status: todo
+plan_status: in-progress
+current_task: T02
 ---
 ## Description
 
@@ -66,8 +68,71 @@ do nothing.
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Ribbon rail SwiftUI column + host toggle state + gear stub
+Build the macOS-only ribbon rail (`RibbonRailView`: hamburger icon top,
+gear icon bottom, pinned to the far left of `documentChrome`). Add
+`DocumentHost.isLibraryPanelOpen` (published, defaults `false`) and
+`toggleLibraryPanel()`; add `presentSettings()` alongside the existing
+`presentOutline()`/`presentFind()` pattern so the gear has a testable,
+named action rather than setting `isSettingsPresented` inline from the
+view. Hamburger calls `toggleLibraryPanel()`; gear calls
+`presentSettings()` (settings surface itself is ticket 06 — this only
+wires the entry point, matching the ticket's explicit stub scope) (R5;
+subtask "Build the ribbon rail SwiftUI column" + "Wire the gear button
+to present the settings surface").
+Files: new `Markus/Markus/Document/RibbonRail.swift`,
+`Markus/Markus/Document/DocumentHost.swift`,
+`Markus/Markus/ContentView.swift`, new `Markus/MarkusTests/RibbonRailTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/RibbonRailTests test`
+(DocumentHost.swift is shared, non-guarded — also run iOS/iPadOS per
+task before commit: `-destination 'platform=iOS Simulator,name=iPhone 17'`
+and `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`,
+same `-only-testing:MarkusTests/RibbonRailTests test`)
+- [x] done
+
+### T02: Library panel closed-by-default / hamburger-toggle logic
+Relocate the existing `FolderTreeView` (from ticket 03, unmodified)
+behind a new macOS-only `LibraryPanelView` in `RibbonRail.swift`, shown
+in `documentChrome` when `host.isLibraryPanelOpen` is true (replacing
+the old unconditional `if FolderChrome.showsTree(for: host) {
+FolderTreeView(...) }` column on macOS only — iOS/iPadOS keep that exact
+prior behavior unchanged, no ribbon rail there, matching the "no new
+iPhone/iPad UI" non-goal). `DocumentHost.openFolder(_:alreadyAccessing:)`
+sets `isLibraryPanelOpen = true` (opening a folder — via Open Folder…
+or Recents — auto-opens the library), and `toggleLibraryPanel()` can
+still close it manually even with a folder session present. A
+single-file-open session leaves `isLibraryPanelOpen` at its default
+`false` (R5, R6; subtask "Wire the hamburger to toggle the library
+panel; implement closed-by-default when only a single file is open").
+Files: `Markus/Markus/Document/DocumentHost.swift`,
+`Markus/Markus/Document/RibbonRail.swift`,
+`Markus/Markus/ContentView.swift`, `Markus/MarkusTests/RibbonRailTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/RibbonRailTests test`
+(DocumentHost.openFolder change is shared, non-guarded — also run
+iOS/iPadOS per task before commit, same `-only-testing:MarkusTests/RibbonRailTests test`
+on `-destination 'platform=iOS Simulator,name=iPhone 17'` and
+`-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
+- [ ] todo
+
+### T03: Empty state offering Open Folder… with no folder session
+Add `LibraryEmptyStateView` (macOS-only, in `RibbonRail.swift`): shown
+by `LibraryPanelView` when the panel is open but `host.folderSession`
+is nil, offering an **Open Folder…** button. Button action calls a new
+pure, testable `LibraryChrome.openFolderFromEmptyState(on:)` (sets
+`host.isFolderImporterPresented = true`) rather than inlining state
+mutation in the view body, keeping the empty-state trigger unit-testable
+without rendering SwiftUI (R6; subtask "Implement the empty state
+(offering Open Folder…) for the no-folder-session case").
+Files: `Markus/Markus/Document/RibbonRail.swift`,
+`Markus/MarkusTests/RibbonRailTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/RibbonRailTests test`
+(macOS-only view/logic, no DocumentHost or shared ContentView.swift
+change in this task beyond what T01/T02 already exercised on all three
+destinations — macOS alone suffices here)
+- [ ] todo
 
 ## Notes
 
