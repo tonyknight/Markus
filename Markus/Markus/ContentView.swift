@@ -116,10 +116,12 @@ private struct DocumentToolbar: ToolbarContent {
                 .keyboardShortcut("k", modifiers: [.command, .shift])
                 .accessibilityIdentifier(ToolbarChrome.Identifier.fold)
         }
-        #endif
-        // Outline stays on both platforms: it isn't superseded by the
-        // AppKit File/Edit menus built for this ticket (R2/R3 only cover
-        // File and Edit), so it's out of this ticket's removal list.
+        // Outline and Settings are iOS-only for now, matching the
+        // ticket's Acceptance Criteria as written ("title bar contains
+        // only the Source/Preview control" — an unconditional "only").
+        // Neither has a macOS entry point yet (that's a later ticket's
+        // ribbon rail / settings surface), but the AC carves out no
+        // exception, so both wait on macOS until that entry point exists.
         ToolbarItem(placement: .automatic) {
             Menu("Outline") {
                 Button("Show Outline") { EditorCommands.presentOutline(on: host) }
@@ -135,7 +137,6 @@ private struct DocumentToolbar: ToolbarContent {
             .keyboardShortcut("o", modifiers: [.command, .shift])
             .accessibilityIdentifier(ToolbarChrome.Identifier.outline)
         }
-        #if os(iOS)
         ToolbarItem(placement: .automatic) {
             Button("Toggle Mode") { EditorCommands.toggleSourcePreview(on: host) }
                 .keyboardShortcut("e", modifiers: [.command])
@@ -153,11 +154,9 @@ private struct DocumentToolbar: ToolbarContent {
                 .keyboardShortcut("1", modifiers: [.command])
                 .accessibilityIdentifier(ToolbarChrome.Identifier.tree)
         }
-        #endif
         ToolbarItemGroup(placement: .automatic) {
             Button("Settings") { host.isSettingsPresented = true }
                 .accessibilityIdentifier(ToolbarChrome.Identifier.settings)
-            #if os(iOS)
             Menu("Recents") {
                 if host.recents.items.isEmpty {
                     Text("No Recents")
@@ -170,8 +169,8 @@ private struct DocumentToolbar: ToolbarContent {
                 }
             }
             .accessibilityIdentifier(ToolbarChrome.Identifier.recents)
-            #endif
         }
+        #endif
     }
 }
 

@@ -14,7 +14,7 @@ struct MacTitleBarChromeTests {
     /// flexible space). Counting that live item set — rather than reading
     /// back a compile-time `#if os(macOS)` flag — is what actually proves
     /// the removed buttons are gone from the real window, per N9.
-    @Test func macTitleBarToolbarHasOnlyModePickerOutlineSettingsAndTheAutoSpacer() throws {
+    @Test func macTitleBarToolbarHasOnlyTheModePickerAndNothingElse() throws {
         let document = MarkdownDocument()
         document.makeWindowControllers()
         let window = try #require(document.windowControllers.first?.window)
@@ -22,13 +22,15 @@ struct MacTitleBarChromeTests {
         window.displayIfNeeded()
 
         let toolbar = try #require(window.toolbar)
-        // Source/Preview mode picker, Outline jump menu, Settings button,
-        // plus SwiftUI's one auto-inserted flexible-space item. Open, Open
-        // Folder, Save, Revert, Fold, Toggle Mode, Find, Go to Line, Tree,
-        // and Recents must not be present — they're superseded by the
-        // AppKit File/Edit menus (or, for Recents, folded under the
-        // "Open Recent" submenu; Toggle duplicates the mode picker itself).
-        #expect(toolbar.items.count == 4)
+        // Only the Source/Preview mode picker, per the ticket's own
+        // Acceptance Criteria ("title bar contains only the Source/Preview
+        // control") — an unconditional "only", so Outline and Settings
+        // are gone too, alongside Open, Open Folder, Save, Revert, Fold,
+        // Toggle Mode, Find, Go to Line, Tree, and Recents. Neither
+        // Outline nor Settings has a macOS entry point yet (that's a
+        // later ticket's ribbon rail / settings surface), but the AC as
+        // written carves out no exception, so they wait too.
+        #expect(toolbar.items.count == 1)
     }
 }
 #endif
