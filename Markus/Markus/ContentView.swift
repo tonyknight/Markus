@@ -5,6 +5,22 @@ struct ContentView: View {
     @ObservedObject var host: DocumentHost
 
     var body: some View {
+        #if os(macOS)
+        // The settings surface fills the entire viewport as a sibling of
+        // the document `NavigationStack`, never nested inside it (R7) —
+        // the old side panel's bug was a nested `NavigationStack`'s
+        // toolbar item getting hoisted into the window toolbar.
+        if host.isSettingsPresented {
+            SettingsScene(host: host)
+        } else {
+            documentScene
+        }
+        #else
+        documentScene
+        #endif
+    }
+
+    private var documentScene: some View {
         NavigationStack {
             documentChrome
                 .navigationTitle(host.session.fileURL?.lastPathComponent ?? host.folderSession?.rootURL.lastPathComponent ?? "Markus")

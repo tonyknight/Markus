@@ -21,6 +21,8 @@ subtasks:
 - id: T3
   title: Remove the old side-panel settings and its dead Done button
   status: todo
+current_task: T02
+plan_status: in-progress
 ---
 ## Description
 
@@ -61,8 +63,91 @@ working close box — reachable from the ribbon rail's gear (ticket 05).
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Settings chrome logic + full-viewport scene view
+Add `SettingsCategory` (enum, `.themes` case for now — ticket 07 extends
+the themes category's own content, not the category list itself) in new
+`Markus/Markus/Document/SettingsScene.swift`. Deviation from the
+original plan text: category selection is kept as local `@State` inside
+the macOS-only `SettingsScene` view rather than a new
+`DocumentHost.selectedSettingsCategory` published property with a
+`SettingsChrome.select(_:on:)` — with only one category existing today,
+a "does selecting update host state" test would be tautological
+(start == target == `.themes` regardless of whether the function does
+anything), violating N9. Local view state is untestable but honest
+about being untestable, matching this project's "no ViewInspector"
+convention rather than manufacturing host state to test around. The
+view: an `HStack` with a plain `List`/`Button`-driven category column on
+the left (no `List(selection:)` binding, no `NavigationStack` anywhere
+in this view or its subviews) and a detail column on the right that
+switches on the local selection to show the existing `ThemePickerView`
+for `.themes`. Wire `ContentView.body` (macOS only) to swap the entire
+body to `SettingsScene(host:)` — a sibling of the document
+`NavigationStack`, never nested inside it — whenever
+`host.isSettingsPresented` is true, so the scene fills the whole window
+viewport rather than appending a column. Tests (new
+`SettingsSceneTests.swift`, genuinely failable per N9):
+`SettingsCategory.themes.displayName == "Themes"` (RED confirmed first
+against a stubbed empty-string `displayName`, not a compile error);
+`SettingsCategory.allCases == [.themes]` (R7; subtask "Build the
+full-viewport settings scene: category list, detail panel").
+Files: new `Markus/Markus/Document/SettingsScene.swift`,
+`Markus/Markus/ContentView.swift`, new `Markus/MarkusTests/SettingsSceneTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/SettingsSceneTests test`
+(ContentView.swift is shared, non-guarded — also ran iOS/iPadOS per task
+before commit: `-destination 'platform=iOS Simulator,name=iPhone 17'`
+and `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`,
+same `-only-testing:MarkusTests/SettingsSceneTests test` — all three
+TEST SUCCEEDED)
+- [ ] todo
+- [x] done
+
+### T02: Working close box, proven to actually dismiss
+Add `SettingsChrome.close(on:)` (sets `host.isSettingsPresented =
+false`) to `SettingsScene.swift`. Wire it to a plain button placed via
+`.overlay`, not `.toolbar`/`ToolbarItem` — the old bug's root cause was
+a `ToolbarItem` inside a nested `NavigationStack` getting hoisted into
+the window toolbar, so the fix is to never place the close action in a
+toolbar context at all. Test: call `host.presentSettings()` then
+`SettingsChrome.close(on: host)` and assert `host.isSettingsPresented`
+flips `true` -> `false` — a genuine observable state transition (N9),
+not just a button existing. This is macOS-only chrome with no shared
+file changes beyond T01's, so macOS alone suffices for this task's
+commit (R7; subtask "Implement the close box and confirm it actually
+dismisses").
+Files: `Markus/Markus/Document/SettingsScene.swift`,
+`Markus/MarkusTests/SettingsSceneTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/SettingsSceneTests test`
+- [ ] todo
+- [ ] done
+
+### T03: Remove the old side-panel settings and its dead Done button
+Delete the macOS side-panel branch from `ContentView.documentChrome`
+(`if !ThemeChrome.presentsSettingsAsModalSheet, host.isSettingsPresented
+{ SettingsPane(...) }`) now that T01/T02 replace it, and delete
+`ThemeChrome.presentsSettingsAsModalSheet` entirely. Simplify
+`SettingsSheetModifier` to a direct `#if os(iOS)` (iOS keeps its
+existing, already-functional sheet-presented `SettingsPane` — that one
+dismisses correctly today because a `.sheet` owns its own presentation
+context, so it was never the bug this ticket fixes, and per the "no new
+iPhone/iPad chrome" non-goal it stays untouched). Update
+`ThemePickerTests.settingsHostThePickerAndHoverPreviewIsMacOnly` to drop
+the removed `presentsSettingsAsModalSheet` assertions, keeping
+`hostsPickerInSettings`/`showsHoverPreview` coverage. No new production
+logic in this task — verification is the full three-destination suite
+staying green with the dead code gone (R7; subtask "Remove the old
+side-panel settings implementation").
+Files: `Markus/Markus/ContentView.swift`,
+`Markus/Markus/Theme/ThemeChrome.swift`,
+`Markus/MarkusTests/ThemePickerTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+(ContentView.swift/ThemeChrome.swift are shared, non-guarded — also run
+`-destination 'platform=iOS Simulator,name=iPhone 17'` and `-destination
+'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
+- [ ] todo
+- [ ] done
 
 ## Notes
 
