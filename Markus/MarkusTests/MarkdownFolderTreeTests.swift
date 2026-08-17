@@ -48,6 +48,35 @@ struct MarkdownFolderTreeTests {
         #expect(notes.url.lastPathComponent == "notes.md")
     }
 
+    @Test func buildDrivesFromInjectedURLBasedListerRatherThanReadingTheRealFilesystemDirectly() throws {
+        // MarkdownFolderTree must reach every directory it enumerates
+        // exclusively through the (URL) -> [URL] lister it is handed --
+        // never by falling back to FileManager.default against a path
+        // string of its own construction (N7). Proving this doesn't
+        // require a real sandbox: none of these URLs exist on disk, so
+        // any code path that still touches the real filesystem directly
+        // sees nothing and the tree comes back empty.
+        let root = URL(fileURLWithPath: "/nonexistent-markus-root-\(UUID().uuidString)", isDirectory: true)
+        let onlyViaHook = root.appendingPathComponent("only-via-hook.md")
+        let subdir = root.appendingPathComponent("sub", isDirectory: true)
+        let nested = subdir.appendingPathComponent("nested.markdown", isDirectory: false)
+
+        let tree = MarkdownFolderTree.build(root: root) { url in
+            switch url {
+            case root: return [onlyViaHook, subdir]
+            case subdir: return [nested]
+            default: return []
+            }
+        }
+
+        let names = tree.map(\.name).sorted()
+        #expect(names == ["only-via-hook.md", "sub"])
+
+        let sub = try #require(tree.first { $0.name == "sub" })
+        #expect(sub.isDirectory)
+        #expect(sub.children.map(\.name) == ["nested.markdown"])
+    }
+
     @Test func includesMdownAndMkdExtensions() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("markus-tree-ext-\(UUID().uuidString)", isDirectory: true)
