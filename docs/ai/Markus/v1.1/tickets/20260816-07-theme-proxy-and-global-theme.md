@@ -1,31 +1,30 @@
 ---
 id: 20260816-07-theme-proxy-and-global-theme
-title: "Theme proxy and global theme"
+title: Theme proxy and global theme
 type: feature
 priority: medium
-status: todo
+status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-06-settings-surface
+- 20260816-06-settings-surface
 subtasks:
-  - id: T1
-    title: Single proxy document below the preset + custom cards
-    status: todo
-  - id: T2
-    title: Hover-to-preview into the proxy; click-to-apply
-    status: todo
-  - id: T3
-    title: Isolate and fix card selection (suspect FoldingTextView-in-Button)
-    status: todo
-  - id: T4
-    title: App-scoped ThemeStore broadcasting to all open documents
-    status: todo
+- id: T1
+  title: Single proxy document below the preset + custom cards
+  status: todo
+- id: T2
+  title: Hover-to-preview into the proxy; click-to-apply
+  status: todo
+- id: T3
+  title: Isolate and fix card selection (suspect FoldingTextView-in-Button)
+  status: todo
+- id: T4
+  title: App-scoped ThemeStore broadcasting to all open documents
+  status: todo
 ---
-
 ## Description
 
 The theme picker currently renders a miniature editor inside every card
