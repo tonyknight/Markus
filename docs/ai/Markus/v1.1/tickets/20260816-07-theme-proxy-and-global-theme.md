@@ -74,8 +74,8 @@ broadcasts to every open window and tab.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T04
+Status: done
+Current task: 
 
 ### T01: Pure-SwiftUI card swatch, proven card selection via real AppKit event dispatch
 Root-cause investigation (done before writing this plan, via a throwaway
@@ -224,7 +224,113 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 `-destination 'platform=iOS Simulator,name=iPhone 17' test`,
 `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test`
 - [ ] todo
+- [x] done
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-17
+All 4 plan tasks (T01-T04) complete and committed.
+
+**Root cause of "cards cannot be selected" (T01), isolated empirically, not
+assumed.** Before writing any fix, spiked a throwaway harness (discarded
+after use, not committed): host a real `ThemeCard` in an `NSHostingView`
+inside a real, key `NSWindow`, synthesize a genuine
+`NSEvent.leftMouseDown`/`leftMouseUp` pair, and dispatch it via
+`window.sendEvent(_:)` at the swatch's on-screen point. Against the
+unmodified `ThemeCard` (which embedded `ThemeSampleView`, a
+`FoldingTextView`/`NSViewRepresentable`), the click never reached
+`onSelect` — reproducing the bug. Two controlled variants ruled out red
+herrings before accepting the finding: (1) a non-key `NSWindow` also
+fails to dispatch clicks to *any* SwiftUI `Button` regardless of content
+(confirmed with a trivial `Button("Tap")`) — so the window must be key,
+which the real fix's test now does; (2) a fully-transparent `Color.clear`
+swatch placeholder *also* failed to dispatch, an unrelated SwiftUI
+quirk — so the real fix's swatch fill is never `.clear`. With both
+confounders controlled for, swapping only the embedded `FoldingTextView`
+for a plain, opaque SwiftUI view flipped the same click from failing to
+passing, and swapping it back (keeping the key window and opaque-content
+fixes) reproduced the failure again. This confirms the planning doc's
+suspect (C.10) *was* the actual cause: a `Button` containing an
+`NSViewRepresentable`/`UIViewRepresentable` subview fails to dispatch
+clicks landing over that subview's region to the button's own action —
+even though the embedded view's own `hitTest` already returns `nil`
+(`themeCardSampleViewDoesNotStealHitsOrFirstResponder`, unchanged,
+proved that in isolation but wasn't sufficient — AppKit's hit-test
+recursion doesn't fall through to the SwiftUI button the way that test
+implied it would). The fix (a new pure-SwiftUI `ThemeSwatch`, no
+embedded view of any kind) dissolves the bug by construction rather than
+patching around it. The committed proof test
+(`clickOnCardSwatchDispatchesRealAppKitEventThatInvokesOnSelect`) is a
+permanent regression guard, not throwaway — it's macOS-only, hosts the
+real (now `internal`, was `private`) `ThemeCard`, and asserts the
+dispatched closure actually ran (N9: a real dispatched AppKit event, not
+a direct call to `onSelect`/`ThemeChrome.select`).
+
+**T01** also made `ThemeCard` `internal` for testability and added
+`ThemeSwatch` (color bars from `ThemeTokens`, drawn entirely in SwiftUI).
+**T02** renamed the (now per-card-unused) `ThemeSampleView`/
+`makeCardSampleView`/`configureAsThemeCardSample` to
+`ThemeProxyRepresentable`/`makeProxyView`/`configureAsThemeProxy` and
+placed exactly one instance below the preset+custom grid in
+`ThemePickerView`, bound to `themeStore.displayedTokens`. Decoupled hover
+from the real document: `DocumentHost.previewTheme(_:)` no longer calls
+`session.editor.setTheme` — hovering now only ever repaints the proxy,
+never the real open document (R8; C.9). Renamed the private
+`applyDisplayedTheme()` to `applyCommittedTheme()`, now reading
+`themeStore.committedTokens` rather than `displayedTokens`.
+**T03** added `ThemeStore.shared` (a `static let`) and wired the two real
+production entry points — `MarkdownDocument.init()` (mac) and
+`AppRootView` (iOS/iPadOS) — to it explicitly via the existing
+`init(session:recents:themeStore:)` initializer, so every real
+window/tab/scene shares one instance. Deliberately left `DocumentHost`'s
+other convenience initializers creating a fresh, isolated `ThemeStore()`
+as before, so the many pre-existing tests across other files that
+construct `DocumentHost` for unrelated concerns (folders, mode, zoom,
+tabs) don't start sharing one global mutable store with no coverage of
+their own. Added `ThemeStore.themeChanged` (`PassthroughSubject<Void,
+Never>`), sent *after* the property write (unlike `@Published`, which
+publishes before the value is actually stored — a real timing hazard if
+a subscriber reads the property synchronously) from `select`,
+`setCustomBackground`, and `setCustomTextStyle` only, deliberately never
+from `beginHover`/`endHover` — broadcasting hover would just relocate
+T02's "heavy and jarring" bug across every open window instead of fixing
+it. `DocumentHost.observe()` subscribes to `themeChanged` and re-applies
+`committedTokens`; `applyTheme`/`setCustomBackground`/
+`setCustomTextStyle` on `DocumentHost` now purely delegate to the store,
+relying entirely on this subscription to repaint — proved load-bearing
+by temporarily disabling just the subscription (keeping everything else
+compiling) and confirming the broadcast test, and *also* the pre-existing
+select/custom-theme tests, all failed for the right reason before
+re-enabling it. New tests: two `DocumentHost`s sharing one explicit,
+isolated `ThemeStore` (the identical wiring pattern production uses with
+`.shared`, just pointed at a test suite) show a selection on one host
+repainting the other's `session.editor.tokens` via the real Combine
+subscription (not two hosts independently reading the same stored
+value); a macOS-only identity test constructs two real
+`MarkdownDocument()`s and asserts they resolve to the same
+`ThemeStore.shared` instance, exercising the actual production wiring,
+not a substitute.
+**T04** added a persistence-across-simulated-relaunch test with two
+windows sharing the store (theme selected via one, a *fresh*
+`ThemeStore(defaults:)` from the same `UserDefaults` suite comes back
+with the same selection/tokens) — no new production code, since the
+existing `UserDefaults`-backed persistence in `ThemeStore` was already
+scope-agnostic and needed no change once the store itself became
+app-scoped.
+
+Destinations run: T01 was macOS-only chrome with no shared-file changes,
+so macOS alone sufficed for that task's commit; T02-T04 all touched
+`DocumentHost.swift` and/or `ThemeStore.swift` (shared, non-`#if`-guarded)
+so all three destinations ran for each. Final full-suite verify (fresh,
+this session, after all four tasks): `-destination 'platform=macOS'
+test` -> TEST SUCCEEDED (31.7s); `-destination 'platform=iOS
+Simulator,name=iPhone 17' test` -> TEST SUCCEEDED (77.8s); `-destination
+'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test` -> TEST
+SUCCEEDED (83.6s). `bora dev lint` -> OK, no issues. Working tree fully
+committed after this notes commit. Acceptance-criteria/Subtask body
+checkboxes intentionally left unchecked and ticket `status:` frontmatter
+left `in-progress`, per this project's precedent (tickets 02/05/06) —
+checking those off, marking done, and running `bora-review` is the
+controlling session's job after independent review, not run here.

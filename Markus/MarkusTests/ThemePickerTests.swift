@@ -87,6 +87,29 @@ struct ThemePickerTests {
         #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
     }
 
+    /// Confirms persistence still works now that `ThemeStore` is app-scoped
+    /// rather than one-per-`DocumentHost` (R8): a theme selected while
+    /// *two* windows/tabs share one store must still be there after a
+    /// simulated relaunch (a fresh `ThemeStore` reading the same
+    /// `UserDefaults` suite — the same mechanism `ThemeStore.shared` would
+    /// use against `.standard` across a real relaunch).
+    @Test func selectionMadeWhileTwoWindowsShareTheStorePersistsAcrossSimulatedRelaunch() {
+        let store = isolatedStore()
+        let first = hostWithStore(store)
+        let second = hostWithStore(store)
+
+        ThemeChrome.select(.named(.parchment), on: second)
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .parchment))
+        #expect(store.persistedSelectionID == "parchment")
+
+        // Simulated relaunch: a brand new ThemeStore, no DocumentHost
+        // sharing memory with `store`, reading the same UserDefaults suite.
+        let relaunched = ThemeStore(defaults: store.defaults)
+        #expect(relaunched.selection == .named(.parchment))
+        #expect(relaunched.displayedTokens == NamedThemeCatalog.tokens(for: .parchment))
+        #expect(relaunched.committedTokens == NamedThemeCatalog.tokens(for: .parchment))
+    }
+
     @Test func setThemePaintsEditorCanvasWithTokenBackground() {
         let view = FoldingTextView()
         let lampblack = NamedThemeCatalog.tokens(for: .lampblack)
