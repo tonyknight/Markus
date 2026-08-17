@@ -99,4 +99,89 @@ struct PreviewSubstitutionTests {
         #expect(!paragraphs.contains { $0.contains("#") })
         #expect(view.textStorage?.string == markdown)
     }
+
+    // MARK: - T02: inline span rendering
+
+    private func attributedParagraphs(_ view: FoldingTextView) -> [NSAttributedString] {
+        var strings: [NSAttributedString] = []
+        view.contentStorage.enumerateTextElements(from: view.contentStorage.documentRange.location) { element in
+            if let paragraph = element as? NSTextParagraph {
+                strings.append(paragraph.attributedString)
+            }
+            return true
+        }
+        return strings
+    }
+
+    @Test func previewModeAppliesBoldAndItalicWithoutLiteralAsterisks() throws {
+        let markdown = "A **bold** word and an *italic* word.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let paragraph = try #require(paragraphs.first { $0.string.contains("bold") })
+        #expect(!paragraph.string.contains("*"))
+        #expect(paragraph.string.contains("bold"))
+        #expect(paragraph.string.contains("italic"))
+
+        let boldRange = (paragraph.string as NSString).range(of: "bold")
+        let boldFont = try #require(paragraph.attribute(.font, at: boldRange.location, effectiveRange: nil) as? PlatformFontType)
+        #expect(PlatformFont.isBold(boldFont))
+
+        let italicRange = (paragraph.string as NSString).range(of: "italic")
+        let italicFont = try #require(paragraph.attribute(.font, at: italicRange.location, effectiveRange: nil) as? PlatformFontType)
+        #expect(PlatformFont.isItalic(italicFont))
+    }
+
+    @Test func previewModeAppliesStrikethroughWithoutLiteralTildes() throws {
+        let markdown = "Strike ~~gone~~ text.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let paragraph = try #require(paragraphs.first { $0.string.contains("gone") })
+        #expect(!paragraph.string.contains("~"))
+        let goneRange = (paragraph.string as NSString).range(of: "gone")
+        let style = paragraph.attribute(.strikethroughStyle, at: goneRange.location, effectiveRange: nil) as? Int
+        #expect(style == NSUnderlineStyle.single.rawValue)
+    }
+
+    @Test func previewModeAppliesInlineCodeWithoutLiteralBackticks() throws {
+        let markdown = "Some `inline code` here.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let paragraph = try #require(paragraphs.first { $0.string.contains("inline code") })
+        #expect(!paragraph.string.contains("`"))
+        let range = (paragraph.string as NSString).range(of: "inline code")
+        let font = try #require(paragraph.attribute(.font, at: range.location, effectiveRange: nil) as? PlatformFontType)
+        #expect(font.isFixedPitch || PlatformFont.monospaced(size: font.pointSize).fontName == font.fontName)
+    }
+
+    @Test func previewModePresentsLinksWithURLAndNoLiteralBracketsOrParens() throws {
+        let markdown = "See [the link](https://example.com) for more.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let paragraph = try #require(paragraphs.first { $0.string.contains("the link") })
+        #expect(paragraph.string.contains("the link"))
+        #expect(!paragraph.string.contains("["))
+        #expect(!paragraph.string.contains("]"))
+        #expect(!paragraph.string.contains("("))
+        #expect(!paragraph.string.contains(")"))
+
+        let range = (paragraph.string as NSString).range(of: "the link")
+        let url = paragraph.attribute(.link, at: range.location, effectiveRange: nil) as? URL
+        #expect(url == URL(string: "https://example.com"))
+    }
 }

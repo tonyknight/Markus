@@ -418,6 +418,42 @@ enum PlatformFont {
         UIFont.boldSystemFont(ofSize: size)
         #endif
     }
+
+    /// `base` with italic added to its existing traits, same point size.
+    static func italic(_ base: PlatformFontType) -> PlatformFontType {
+        #if os(macOS)
+        NSFontManager.shared.convert(base, toHaveTrait: .italicFontMask)
+        #else
+        let descriptor = base.fontDescriptor.withSymbolicTraits(base.fontDescriptor.symbolicTraits.union(.traitItalic)) ?? base.fontDescriptor
+        return UIFont(descriptor: descriptor, size: base.pointSize)
+        #endif
+    }
+
+    /// `base` with bold added to its existing traits, same point size.
+    static func bold(_ base: PlatformFontType) -> PlatformFontType {
+        #if os(macOS)
+        NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
+        #else
+        let descriptor = base.fontDescriptor.withSymbolicTraits(base.fontDescriptor.symbolicTraits.union(.traitBold)) ?? base.fontDescriptor
+        return UIFont(descriptor: descriptor, size: base.pointSize)
+        #endif
+    }
+
+    static func isItalic(_ font: PlatformFontType) -> Bool {
+        #if os(macOS)
+        font.fontDescriptor.symbolicTraits.contains(.italic)
+        #else
+        font.fontDescriptor.symbolicTraits.contains(.traitItalic)
+        #endif
+    }
+
+    static func isBold(_ font: PlatformFontType) -> Bool {
+        #if os(macOS)
+        font.fontDescriptor.symbolicTraits.contains(.bold)
+        #else
+        font.fontDescriptor.symbolicTraits.contains(.traitBold)
+        #endif
+    }
 }
 
 enum PlatformColor {

@@ -82,38 +82,108 @@ enum PreviewElementCollector {
 
         if type == CMARK_NODE_HEADING {
             let level = Int(cmark_node_get_heading_level(node))
-            let text = plainInlineText(of: node)
-            let attributed = NSAttributedString(string: text, attributes: [
-                .font: PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale)),
-                .foregroundColor: tokens.heading,
-            ])
+            let font = PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale))
+            let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.heading)
+            elements.append(PreviewElement(lines: lines, rendered: attributed))
+        } else if type == CMARK_NODE_PARAGRAPH {
+            let font = PlatformFont.body(size: 16 * zoomScale)
+            let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.body)
             elements.append(PreviewElement(lines: lines, rendered: attributed))
         }
-        // Paragraphs, lists, block quotes, thematic breaks, tables,
-        // fenced code, and images are added by later tasks (T02–T06).
-        // Until then this block kind is simply not substituted — the
-        // default raw text lays out unchanged, same as Source mode.
+        // Lists, block quotes, thematic breaks, tables, fenced code,
+        // and images are added by later tasks (T03–T06). Until then
+        // this block kind is simply not substituted — the default raw
+        // text lays out unchanged, same as Source mode.
     }
 
-    private static func plainInlineText(of node: UnsafeMutablePointer<cmark_node>?) -> String {
-        var text = ""
+    // MARK: - Inline rendering
+
+    /// Concatenates the rendered inline content of `node`'s children:
+    /// emphasis/strong become font traits, inline code and
+    /// strikethrough get their own attributes, links carry `.link` and
+    /// lose their `[]()` syntax, and everything else falls back to
+    /// literal text — always via the AST, never a raw-source slice, so
+    /// markup punctuation is structurally absent rather than merely
+    /// colored over (R10).
+    private static func renderInlineChildren(
+        of node: UnsafeMutablePointer<cmark_node>?,
+        font: PlatformFontType,
+        tokens: ThemeTokens,
+        defaultColor: PlatformColorType
+    ) -> NSAttributedString {
+        let result = NSMutableAttributedString()
         var child = cmark_node_first_child(node)
         while let n = child {
-            appendLiteral(n, into: &text)
+            result.append(renderInlineNode(n, font: font, tokens: tokens, defaultColor: defaultColor))
             child = cmark_node_next(n)
         }
-        return text
+        return result
     }
 
-    private static func appendLiteral(_ node: UnsafeMutablePointer<cmark_node>?, into text: inout String) {
-        if let literal = cmark_node_get_literal(node) {
-            text += String(cString: literal)
+    private static func renderInlineNode(
+        _ node: UnsafeMutablePointer<cmark_node>,
+        font: PlatformFontType,
+        tokens: ThemeTokens,
+        defaultColor: PlatformColorType
+    ) -> NSAttributedString {
+        let type = cmark_node_get_type(node)
+
+        switch type {
+        case CMARK_NODE_TEXT:
+            return NSAttributedString(string: literalText(node), attributes: [
+                .font: font,
+                .foregroundColor: defaultColor,
+            ])
+        case CMARK_NODE_SOFTBREAK, CMARK_NODE_LINEBREAK:
+            return NSAttributedString(string: " ", attributes: [
+                .font: font,
+                .foregroundColor: defaultColor,
+            ])
+        case CMARK_NODE_CODE:
+            return NSAttributedString(string: literalText(node), attributes: [
+                .font: PlatformFont.monospaced(size: font.pointSize),
+                .foregroundColor: tokens.inlineCode,
+            ])
+        case CMARK_NODE_EMPH:
+            return renderInlineChildren(of: node, font: PlatformFont.italic(font), tokens: tokens, defaultColor: defaultColor)
+        case CMARK_NODE_STRONG:
+            return renderInlineChildren(of: node, font: PlatformFont.bold(font), tokens: tokens, defaultColor: defaultColor)
+        case CMARK_NODE_LINK:
+            let inner = NSMutableAttributedString(
+                attributedString: renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.link)
+            )
+            let fullRange = NSRange(location: 0, length: inner.length)
+            inner.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
+            if let rawURL = cmark_node_get_url(node), let url = URL(string: String(cString: rawURL)) {
+                inner.addAttribute(.link, value: url, range: fullRange)
+            }
+            return inner
+        default:
+            let typeName = String(cString: cmark_node_get_type_string(node))
+            if typeName == "strikethrough" {
+                let inner = NSMutableAttributedString(
+                    attributedString: renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.strikethrough)
+                )
+                let fullRange = NSRange(location: 0, length: inner.length)
+                inner.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
+                return inner
+            }
+            // Unhandled inline kinds (images handled in T06, footnote
+            // references, raw inline HTML, …) fall back to their own
+            // rendered children, or literal text for true leaves.
+            if cmark_node_first_child(node) != nil {
+                return renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: defaultColor)
+            }
+            return NSAttributedString(string: literalText(node), attributes: [
+                .font: font,
+                .foregroundColor: defaultColor,
+            ])
         }
-        var child = cmark_node_first_child(node)
-        while let n = child {
-            appendLiteral(n, into: &text)
-            child = cmark_node_next(n)
-        }
+    }
+
+    private static func literalText(_ node: UnsafeMutablePointer<cmark_node>?) -> String {
+        guard let literal = cmark_node_get_literal(node) else { return "" }
+        return String(cString: literal)
     }
 }
 

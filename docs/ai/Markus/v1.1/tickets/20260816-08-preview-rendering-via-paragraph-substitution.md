@@ -28,7 +28,7 @@ subtasks:
   title: Fixtures/assertions that exercise what a reader actually sees
   status: todo
 plan_status: approved
-current_task: T01
+current_task: T02
 ---
 ## Description
 
@@ -93,7 +93,7 @@ mode substitutes nothing and the buffer stays raw Markdown throughout.
 ## Implementation plan
 
 Status: approved
-Current task: T01
+Current task: T02
 
 Design note (read before touching FoldingSession): substitution is
 implemented so that no rendered content or attachment is ever stored as
