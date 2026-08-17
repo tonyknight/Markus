@@ -13,7 +13,7 @@ depends_on: []
 subtasks:
 - id: T1
   title: Window geometry — three-quarter visibleFrame, pinned top-left
-  status: todo
+  status: done
 - id: T2
   title: Build AppKit NSMenu hierarchy in MarkusAppDelegate
   status: todo
@@ -26,6 +26,8 @@ subtasks:
 - id: T5
   title: Fix stacked .fileImporter bug (dead Open button)
   status: todo
+current_task: T02
+plan_status: in-progress
 ---
 ## Description
 
@@ -84,8 +86,81 @@ just the Source/Preview control.
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Window geometry — three-quarter visibleFrame, pinned top-left
+Size and position the window in `MarkdownDocument.makeWindowControllers()`
+to three-quarters of the active screen's `visibleFrame` width and height,
+pinned to the top-left corner, replacing the fixed 960×720 zero-origin
+rect (R1; subtask "Implement window geometry on `makeWindowControllers`").
+Files: `Markus/Markus/Document/MarkdownDocument.swift`, new
+`Markus/MarkusTests/MacWindowGeometryTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/MacWindowGeometryTests test`
+- [ ] todo
+- [x] done
+### T02: Fix stacked .fileImporter bug (dead Open button)
+Collapse the two chained `.fileImporter` modifiers in `ContentView` (one
+per `isImporterPresented`/`isFolderImporterPresented`) into a single
+dynamic modifier driven by one presentation state and an importer-kind,
+so both file and folder imports actually present a picker and neither
+silently wins over the other. Later tasks (menu routing, title-bar
+cleanup) depend on this working path (A.5; subtask "Diagnose and fix the
+chained `.fileImporter` bug").
+Files: `Markus/Markus/ContentView.swift`, `Markus/Markus/Document/DocumentHost.swift`
+(if a shared importer-kind state is needed), `Markus/MarkusTests/FolderChromeTests.swift`
+or a new `Markus/MarkusTests/FileImporterChromeTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
+- [ ] todo
+
+### T03: Build AppKit NSMenu hierarchy in MarkusAppDelegate
+A new `MacMainMenu` type builds an `NSMenu` — File (New, Open…, Open
+Folder…, Open Recent submenu, Save) and Edit (Find, Go to Line, Fold
+All, Unfold All) with standard shortcuts — installed as `NSApp.mainMenu`
+from `MarkusAppDelegate`. No SwiftUI `WindowGroup` is added to
+`MarkusApp` (R2, R3, N5; subtask "Build the `NSMenu` hierarchy in
+`MarkusAppDelegate` at launch").
+Files: new `Markus/Markus/Document/MacMainMenu.swift`,
+`Markus/Markus/Document/MarkdownDocument.swift` (`MarkusAppDelegate`),
+new `Markus/MarkusTests/MacMainMenuTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/MacMainMenuTests test`
+- [ ] todo
+
+### T04: Route custom menu actions through the responder chain
+File's New/Open/Save use the standard `NSDocumentController`/`NSDocument`
+action selectors (target `nil`) so they resolve automatically through the
+responder chain; Open Recent is populated from
+`NSDocumentController.shared.recentDocumentURLs`. Open Folder, Find, Go
+to Line, Fold All, and Unfold All target `nil` and resolve to `@objc`
+action methods implemented on `MarkdownDocument` (already in the
+responder chain) — Open Folder drives the fixed importer from T02, Find
+and Go to Line forward to `EditorCommands`/`host`, and Fold All/Unfold
+All are wired stubs only (no fold logic — ticket 04 of this project)
+(R2, R3, N5; subtasks "Wire File items to `NSDocumentController`…" and
+"Add Edit items … targeting `nil`, resolved via the responder chain").
+Files: `Markus/Markus/Document/MarkdownDocument.swift`,
+`Markus/Markus/Document/MacMainMenu.swift`,
+`Markus/MarkusTests/MacMainMenuTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/MacMainMenuTests test`
+- [ ] todo
+
+### T05: Title-bar cleanup and tabbing regression check
+On macOS, `DocumentToolbar` shows only the Source/Preview control; Open,
+Open Folder, Save, Revert, Fold, Toggle, Find, Go to Line, Tree,
+Recents, and Settings buttons are removed from the macOS title bar
+(guarded so iOS keeps its toolbar, since no AppKit menu exists there).
+Confirm `NSDocument` window tabbing still works after the menu and
+window-controller changes (R4, N5; subtasks "Remove the title-bar
+buttons superseded by menu items" and "Regression-check `NSDocument`
+tabbing after the menu change").
+Files: `Markus/Markus/ContentView.swift`,
+`Markus/MarkusTests/MacOnlyChromeTests.swift` or a new
+`Markus/MarkusTests/MacTitleBarChromeTests.swift`, `Markus/MarkusTests/MacTabsTests.swift`
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
+- [ ] todo
+
+### Ticket-scope verify
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
 
 ## Notes
 

@@ -4,6 +4,19 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum MacWindowGeometry {
+    /// Three-quarters of `visibleFrame`'s width and height, pinned to the
+    /// screen's top-left corner. AppKit's y-axis is bottom-up, so "pinned
+    /// to the top" means the window's `maxY` matches the screen's `maxY`.
+    static func windowFrame(forVisibleFrame visibleFrame: NSRect) -> NSRect {
+        let width = visibleFrame.width * 0.75
+        let height = visibleFrame.height * 0.75
+        let x = visibleFrame.minX
+        let y = visibleFrame.maxY - height
+        return NSRect(x: x, y: y, width: width, height: height)
+    }
+}
+
 final class MarkusDocumentController: NSDocumentController {
     override var defaultType: String? {
         "net.daringfireball.markdown"
@@ -99,6 +112,13 @@ final class MarkdownDocument: NSDocument {
             MacDocumentChrome.applyPreferredTabbing(to: window)
             window.contentViewController = NSHostingController(rootView: ContentView(host: host))
             window.title = fileURL?.lastPathComponent ?? session.fileURL?.lastPathComponent ?? "Untitled"
+            // Set geometry last: assigning contentViewController can trigger
+            // NSHostingController's automatic content-size-driven window
+            // resize, which would otherwise clobber this frame.
+            let screen = window.screen ?? NSScreen.main
+            if let visibleFrame = screen?.visibleFrame {
+                window.setFrame(MacWindowGeometry.windowFrame(forVisibleFrame: visibleFrame), display: false)
+            }
             addWindowController(NSWindowController(window: window))
         }
     }
