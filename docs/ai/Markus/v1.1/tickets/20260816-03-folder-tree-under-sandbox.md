@@ -1,27 +1,26 @@
 ---
 id: 20260816-03-folder-tree-under-sandbox
-title: "Folder tree under sandbox"
+title: Folder tree under sandbox
 type: bug
 priority: medium
-status: todo
+status: in-progress
 created: 2026-08-16
 updated: 2026-08-16
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on: []
 subtasks:
-  - id: T1
-    title: Replace path-based enumeration with security-scoped URL enumeration
-    status: todo
-  - id: T2
-    title: Filter to Markdown extensions, exclude dotfiles, recurse nested folders
-    status: todo
-  - id: T3
-    title: Regression test against a sandboxed fixture folder
-    status: todo
+- id: T1
+  title: Replace path-based enumeration with security-scoped URL enumeration
+  status: todo
+- id: T2
+  title: Filter to Markdown extensions, exclude dotfiles, recurse nested folders
+  status: todo
+- id: T3
+  title: Regression test against a sandboxed fixture folder
+  status: todo
 ---
-
 ## Description
 
 Selecting a folder yields an empty library panel. `MarkdownFolderTree.
