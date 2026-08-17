@@ -1,33 +1,32 @@
 ---
 id: 20260816-02-window-geometry-and-appkit-main-menu
-title: "Window geometry and AppKit main menu"
+title: Window geometry and AppKit main menu
 type: feature
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-16
 updated: 2026-08-16
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on: []
 subtasks:
-  - id: T1
-    title: Window geometry — three-quarter visibleFrame, pinned top-left
-    status: todo
-  - id: T2
-    title: Build AppKit NSMenu hierarchy in MarkusAppDelegate
-    status: todo
-  - id: T3
-    title: Route custom menu actions through the responder chain
-    status: todo
-  - id: T4
-    title: Title-bar cleanup — remove buttons now owned by menus
-    status: todo
-  - id: T5
-    title: Fix stacked .fileImporter bug (dead Open button)
-    status: todo
+- id: T1
+  title: Window geometry — three-quarter visibleFrame, pinned top-left
+  status: todo
+- id: T2
+  title: Build AppKit NSMenu hierarchy in MarkusAppDelegate
+  status: todo
+- id: T3
+  title: Route custom menu actions through the responder chain
+  status: todo
+- id: T4
+  title: Title-bar cleanup — remove buttons now owned by menus
+  status: todo
+- id: T5
+  title: Fix stacked .fileImporter bug (dead Open button)
+  status: todo
 ---
-
 ## Description
 
 The macOS document window does not behave like a Mac app: it opens at a
