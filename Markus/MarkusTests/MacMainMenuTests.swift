@@ -159,18 +159,69 @@ struct MacMainMenuTests {
         #expect(resolveAndPerform(MacMainMenuAction.performUnfoldAll, startingAt: viewController))
     }
 
-    @Test func standardDocumentActionsAreImplementedByNSDocumentControllerAndNSDocumentWithoutCustomWiring() {
-        // New/Open/Save use AppKit's own document-architecture action
-        // methods (menu items built with target `nil`, per MacMainMenu);
-        // confirm the objects that automatic nil-targeted dispatch would
-        // reach actually implement them, rather than depending on which
-        // window the OS currently treats as key/main (arbitrated
-        // machine-wide, and flaky under concurrent processes).
-        #expect(NSDocumentController.shared.responds(to: #selector(NSDocumentController.newDocument(_:))))
-        #expect(NSDocumentController.shared.responds(to: #selector(NSDocumentController.openDocument(_:))))
-
+    @Test func customActionsResolveFromTheRealFirstResponderNotJustTheViewControllerItself() throws {
+        // The previous version of this test started the chain-walk
+        // directly at `MarkdownDocumentViewController`, which already
+        // implements the action — so `responds(to:)` was true on the
+        // very first iteration and no chain-walk actually happened. That
+        // proves nothing about responder-chain routing; it's equivalent
+        // to calling the method directly. Here the walk starts at the
+        // window's real first responder — deliberately moved onto a
+        // SwiftUI-hosted subview, not the view controller — so reaching
+        // the action requires genuinely climbing `nextResponder` hops
+        // through the content view up to the auto-spliced
+        // `contentViewController`, the same path AppKit's own
+        // nil-targeted dispatch (`window.firstResponder` outward) uses.
         let document = MarkdownDocument()
-        #expect(document.responds(to: #selector(NSDocument.save(_:))))
+        document.makeWindowControllers()
+        let window = try #require(document.windowControllers.first?.window)
+        let viewController = try #require(window.contentViewController as? MarkdownDocumentViewController)
+        let contentView = try #require(window.contentView)
+
+        #expect(contentView !== viewController, "the walk must start below the view controller, not at it")
+        #expect(window.makeFirstResponder(contentView))
+        let firstResponder = try #require(window.firstResponder)
+        #expect(firstResponder === contentView)
+
+        #expect(!document.host.isFindPresented)
+        #expect(resolveAndPerform(MacMainMenuAction.performFind, startingAt: firstResponder))
+        #expect(document.host.isFindPresented)
+    }
+
+    @Test func customActionsResolveToTheRoutedWindowsDocumentAmongMultipleOpenDocuments() throws {
+        // A single-document test can't distinguish "routes through the
+        // responder chain correctly" from "always happens to find the
+        // only document that exists." Open two documents/windows and
+        // drive dispatch through each window's own first responder in
+        // turn, proving the action lands on THAT window's document, not
+        // the other one — the actual claim N5 needs evidence for.
+        let first = MarkdownDocument()
+        first.makeWindowControllers()
+        let firstWindow = try #require(first.windowControllers.first?.window)
+        let firstContentView = try #require(firstWindow.contentView)
+
+        let second = MarkdownDocument()
+        second.makeWindowControllers()
+        let secondWindow = try #require(second.windowControllers.first?.window)
+        let secondContentView = try #require(secondWindow.contentView)
+
+        #expect(!first.host.isFindPresented)
+        #expect(!second.host.isFindPresented)
+
+        // Route through the second window: only the second document's
+        // host should react.
+        #expect(secondWindow.makeFirstResponder(secondContentView))
+        #expect(resolveAndPerform(MacMainMenuAction.performFind, startingAt: try #require(secondWindow.firstResponder)))
+        #expect(!first.host.isFindPresented)
+        #expect(second.host.isFindPresented)
+
+        // Route through the first window with a different action: only
+        // the first document's host should react, and the second
+        // document's earlier state must be untouched by this dispatch.
+        #expect(firstWindow.makeFirstResponder(firstContentView))
+        #expect(resolveAndPerform(MacMainMenuAction.performGoToLine, startingAt: try #require(firstWindow.firstResponder)))
+        #expect(first.host.isGoToLinePresented)
+        #expect(!second.host.isGoToLinePresented)
     }
 
     @Test func recentDocumentItemsAreBuiltFromTheGivenURLsWithClearMenuAtTheEnd() throws {
