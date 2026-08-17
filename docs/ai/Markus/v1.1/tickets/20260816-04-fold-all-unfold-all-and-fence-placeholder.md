@@ -1,28 +1,27 @@
 ---
 id: 20260816-04-fold-all-unfold-all-and-fence-placeholder
-title: "Fold All / Unfold All and fence placeholder"
+title: Fold All / Unfold All and fence placeholder
 type: feature
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-16
 updated: 2026-08-16
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-02-window-geometry-and-appkit-main-menu
+- 20260816-02-window-geometry-and-appkit-main-menu
 subtasks:
-  - id: T1
-    title: Fold-all / unfold-all traversal over the block index
-    status: todo
-  - id: T2
-    title: Wire Edit menu items (from ticket 02) to the fold service
-    status: todo
-  - id: T3
-    title: Fence placeholder — opening fence line plus short placeholder
-    status: todo
+- id: T1
+  title: Fold-all / unfold-all traversal over the block index
+  status: todo
+- id: T2
+  title: Wire Edit menu items (from ticket 02) to the fold service
+  status: todo
+- id: T3
+  title: Fence placeholder — opening fence line plus short placeholder
+  status: todo
 ---
-
 ## Description
 
 Fold All / Unfold All is named in v1's planning file, in v1's R4, and in
