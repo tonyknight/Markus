@@ -3,10 +3,10 @@ id: 20260816-07-theme-proxy-and-global-theme
 title: Theme proxy and global theme
 type: feature
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-17
-closed:
+closed: 2026-08-17
 notes: ''
 parent:
 depends_on:
@@ -14,16 +14,16 @@ depends_on:
 subtasks:
 - id: T1
   title: Single proxy document below the preset + custom cards
-  status: todo
+  status: done
 - id: T2
   title: Hover-to-preview into the proxy; click-to-apply
-  status: todo
+  status: done
 - id: T3
   title: Isolate and fix card selection (suspect FoldingTextView-in-Button)
-  status: todo
+  status: done
 - id: T4
   title: App-scoped ThemeStore broadcasting to all open documents
-  status: todo
+  status: done
 ---
 ## Description
 
@@ -39,14 +39,14 @@ broadcasts to every open window and tab.
 
 ## Acceptance criteria
 
-- [ ] Six preset cards plus custom sit above a single proxy document;
+- [x] Six preset cards plus custom sit above a single proxy document;
       hovering a card previews that theme in the proxy only; clicking
       applies it (R8; C.9).
-- [ ] Card selection works — proven working, not assumed (R8; C.10).
-- [ ] Selecting a theme applies it to **every open window and tab**
+- [x] Card selection works — proven working, not assumed (R8; C.10).
+- [x] Selecting a theme applies it to **every open window and tab**
       immediately (R9; J.27).
-- [ ] The choice persists across relaunch (R8).
-- [ ] `ThemeStore` is a single app-scoped store, not one per
+- [x] The choice persists across relaunch (R8).
+- [x] `ThemeStore` is a single app-scoped store, not one per
       `DocumentHost`; a change broadcasts to every open document.
 
 ## Context
@@ -61,15 +61,15 @@ broadcasts to every open window and tab.
 
 ## Subtasks
 
-- [ ] Replace per-card miniature editors with a single proxy document
+- [x] Replace per-card miniature editors with a single proxy document
       view below the cards.
-- [ ] Wire hover-to-preview (into the proxy only) and click-to-apply.
-- [ ] Isolate the card-selection bug; fix it (check whether moving to a
+- [x] Wire hover-to-preview (into the proxy only) and click-to-apply.
+- [x] Isolate the card-selection bug; fix it (check whether moving to a
       single proxy already dissolves it, per the planning doc's
       hypothesis).
-- [ ] Promote `ThemeStore` to an app-scoped singleton; broadcast changes
+- [x] Promote `ThemeStore` to an app-scoped singleton; broadcast changes
       to every open `DocumentHost`.
-- [ ] Persist the applied theme (`UserDefaults`) and confirm it survives
+- [x] Persist the applied theme (`UserDefaults`) and confirm it survives
       relaunch.
 
 ## Implementation plan
@@ -334,3 +334,13 @@ checkboxes intentionally left unchecked and ticket `status:` frontmatter
 left `in-progress`, per this project's precedent (tickets 02/05/06) —
 checking those off, marking done, and running `bora-review` is the
 controlling session's job after independent review, not run here.
+
+## Review
+
+**2026-08-17 — Verdict: clean (minors-only).** Reviewed by a fresh subagent against R8, R9, and Architecture component 6, with extra scrutiny on the `ThemeStore` singleton change given its blast radius. Independently re-ran `ThemePickerTests`/`MacTabsTests` (34 case-executions, 0 failures) and the full macOS suite (140 passing cases, 0 failures, no flakes or order-dependent failures — no sign of `ThemeStore.shared` state leaking into unrelated suites).
+
+Confirmed T01's root-cause claim is genuinely proven, not post-hoc: `ThemeSwatch` is verified to contain no `NSViewRepresentable`/`UIViewRepresentable`, and the proof test dispatches a real synthesized `NSEvent` through a real key `NSWindow`'s `sendEvent(_:)`, not a direct closure call. T02's hover-only proxy confirmed: `DocumentHost.previewTheme(_:)` never touches `session.editor`. T03's singleton wiring confirmed by grep: `ThemeStore.shared` is a genuine `static let`, and the *only* two production entry points that construct a real window/tab/scene's `DocumentHost` (`MarkdownDocument.init()`, `AppRootView`) both pass `.shared` explicitly — every other `DocumentHost`-constructing call site (34, across 10 files) is test-only, so the "isolated convenience initializers" decision carries no production risk of a window silently missing global theme broadcasts. The broadcast mechanism (`themeChanged`, fired only from committed changes, never hover) is proven via a real two-host Combine-subscription test, not two hosts independently reading shared state. T04's relaunch persistence is genuinely tested via a fresh `ThemeStore` instance, not merely asserted.
+
+Findings (both Minor, neither blocking):
+1. `ThemeStore.shared` (`ThemeStore.swift:45`) is backed by real `UserDefaults.standard`; no current test mutates state through it, but a future test that does would leak between test cases sharing the same process — worth a code comment warning against selecting a theme through `.shared` in tests.
+2. `DocumentHost.previewTheme` (`DocumentHost.swift:129`) calls `objectWillChange.send()` explicitly even though the hover call already triggers it via the existing `themeCancellable` forwarding — redundant, harmless, slightly muddies the "single source of truth" story.
