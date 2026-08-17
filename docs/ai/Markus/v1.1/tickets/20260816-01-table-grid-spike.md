@@ -26,6 +26,8 @@ subtasks:
 - id: T5
   title: Go/no-go call; if impractical, stop and reopen design
   status: todo
+current_task: T02
+plan_status: in-progress
 ---
 ## Description
 
@@ -79,8 +81,80 @@ Detailed checklist (mirrors frontmatter `subtasks`):
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Parse GFM table structure from cmark AST
+
+Add table extraction to the Markdown layer: rows (header + body),
+per-cell plain text, per-column alignment, and the table's full source
+byte range, walking `CMARK_NODE_TABLE` / `_TABLE_ROW` / `_TABLE_CELL`
+via `cmark_gfm_extensions_get_table_columns/alignments/row_is_header`.
+
+Files: new `Markus/Markus/Markdown/TableParsing.swift`; new test file
+`Markus/MarkusTests/TableParsingTests.swift`.
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableParsingTests`
+- [x] done
+### T02: Prototype TableAttachment sizing/measurement
+
+New `NSTextAttachment` subclass that takes a parsed table and measures
+each column's width from its widest cell (font metrics), overriding
+`attachmentBounds(for:location:textContainer:proposedLineFragment:position:)`
+to report total grid size.
+
+Files: new `Markus/Markus/Editor/TableAttachment.swift`; new test file
+`Markus/MarkusTests/TableAttachmentTests.swift`.
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentTests`
+
+### T03: Draw the aligned grid
+
+Override `image(forBounds:textContainer:characterIndex:)` on
+`TableAttachment` to render borders, per-column alignment, and per-cell
+text into a platform image sized to the measured bounds.
+
+Files: `Markus/Markus/Editor/TableAttachment.swift`; extends
+`Markus/MarkusTests/TableAttachmentTests.swift` with drawing assertions
+(non-empty image, size matches measured bounds, border pixels present).
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentTests`
+
+### T04: Carry source range; resolve selection back to it
+
+Add `sourceRange: Range<Int>` to `TableAttachment` (from T01's parsed
+table) and an `NSAttributedString.tableSourceRange(intersecting:)`
+helper that, given a selection `NSRange` overlapping the attachment's
+character, returns the table's full source range (feeds R22 in ticket
+13).
+
+Files: `Markus/Markus/Editor/TableAttachment.swift`; extends
+`Markus/MarkusTests/TableAttachmentTests.swift`.
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentTests`
+
+### T05: Validate composition with folding (N3)
+
+Embed a `TableAttachment` into a `FoldingTextView`'s storage alongside
+a foldable heading/fence, and assert folding elsewhere still collapses
+to zero-height fragments, layout doesn't crash, and the buffer is
+untouched — no production changes expected unless composition surfaces
+a bug.
+
+Files: new test file
+`Markus/MarkusTests/TableAttachmentFoldingTests.swift`.
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentFoldingTests`
+
+### T06: Go/no-go call and ticket-scope verification
+
+No new production code. Record the go/no-go decision and rationale as
+a ticket Notes entry; run the full three-destination suite required
+for changes to the shared editor.
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test` then
+`xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' test` then
+`xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test`
 
 ## Notes
 
