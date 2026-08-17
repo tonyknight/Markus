@@ -27,7 +27,13 @@ struct MarkusApp: App {
 }
 
 struct AppRootView: View {
-    @StateObject private var host = DocumentHost()
+    // Shares the single app-scoped `ThemeStore` across every iOS/iPadOS
+    // scene so a theme change broadcasts to all of them (R9; J.27).
+    @StateObject private var host = DocumentHost(
+        session: DocumentSession(),
+        recents: RecentDocuments(),
+        themeStore: ThemeStore.shared
+    )
 
     var body: some View {
         ContentView(host: host)

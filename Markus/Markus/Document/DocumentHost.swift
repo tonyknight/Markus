@@ -25,6 +25,7 @@ final class DocumentHost: ObservableObject {
     private(set) var folderSession: FolderSession?
     private var sessionCancellable: AnyCancellable?
     private var themeCancellable: AnyCancellable?
+    private var themeChangeCancellable: AnyCancellable?
 
     var isFolderTreeVisible: Bool {
         folderSession != nil
@@ -59,7 +60,7 @@ final class DocumentHost: ObservableObject {
         self.recents = RecentDocuments()
         self.themeStore = ThemeStore()
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(session: DocumentSession, recents: RecentDocuments) {
@@ -67,7 +68,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = ThemeStore()
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(session: DocumentSession, recents: RecentDocuments, themeStore: ThemeStore) {
@@ -75,7 +76,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = themeStore
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(recents: RecentDocuments) {
@@ -83,7 +84,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = ThemeStore()
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     init(recents: RecentDocuments, themeStore: ThemeStore) {
@@ -91,7 +92,7 @@ final class DocumentHost: ObservableObject {
         self.recents = recents
         self.themeStore = themeStore
         observe()
-        applyDisplayedTheme()
+        applyCommittedTheme()
     }
 
     private func observe() {
@@ -101,34 +102,43 @@ final class DocumentHost: ObservableObject {
         themeCancellable = themeStore.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
+        // Broadcasts a committed theme change (never a hover) from *any*
+        // `DocumentHost` sharing this store to every other one, repainting
+        // each one's own real editor — the mechanism that makes theme
+        // selection app-scoped rather than per-window (R9; J.27).
+        themeChangeCancellable = themeStore.themeChanged.sink { [weak self] _ in
+            self?.applyCommittedTheme()
+        }
     }
 
     func applyTheme(_ selection: ThemeSelection) {
         themeStore.select(selection)
-        applyDisplayedTheme()
     }
 
+    /// Hovering a card previews that theme in the picker's proxy document
+    /// only (`ThemeStore.displayedTokens`, read directly by
+    /// `ThemePickerView`) — it must never touch the real open document's
+    /// editor, which stays on the committed theme throughout hover (R8;
+    /// C.9).
     func previewTheme(_ selection: ThemeSelection?) {
         if let selection {
             themeStore.beginHover(selection)
         } else {
             themeStore.endHover()
         }
-        applyDisplayedTheme()
+        objectWillChange.send()
     }
 
     func setCustomBackground(_ color: PlatformColorType) {
         themeStore.setCustomBackground(color)
-        applyDisplayedTheme()
     }
 
     func setCustomTextStyle(_ style: CustomTextStyle) {
         themeStore.setCustomTextStyle(style)
-        applyDisplayedTheme()
     }
 
-    private func applyDisplayedTheme() {
-        session.editor.setTheme(themeStore.displayedTokens)
+    private func applyCommittedTheme() {
+        session.editor.setTheme(themeStore.committedTokens)
         objectWillChange.send()
     }
 

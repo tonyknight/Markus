@@ -106,6 +106,17 @@ struct MacTabsTests {
         #expect(host.recents.items.map(\.url.standardizedFileURL).contains(secondURL.standardizedFileURL))
     }
 
+    /// Proves the real production wiring (not a test substitute) shares
+    /// one app-scoped `ThemeStore` across Mac documents/tabs (R9; J.27) —
+    /// two real `MarkdownDocument()`s must resolve to the identical
+    /// `ThemeStore.shared` instance through `host.themeStore`.
+    @Test func twoMarkdownDocumentsShareTheSameAppScopedThemeStore() {
+        let first = MarkdownDocument()
+        let second = MarkdownDocument()
+        #expect(ObjectIdentifier(first.host.themeStore) == ObjectIdentifier(second.host.themeStore))
+        #expect(first.host.themeStore === ThemeStore.shared)
+    }
+
     @Test func nsDocumentWriteClearsSessionDirty() throws {
         let document = MarkdownDocument()
         document.session.editor.insertTextAtCaret("# Saved\n")

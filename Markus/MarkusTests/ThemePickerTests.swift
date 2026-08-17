@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 #if os(macOS)
 import AppKit
 #else
@@ -65,6 +66,50 @@ struct ThemePickerTests {
         #expect(store.selection == .custom)
     }
 
+    /// Proves the app-scoped broadcast (R9; J.27): two `DocumentHost`s
+    /// sharing one `ThemeStore` instance — the exact production wiring
+    /// `MarkdownDocument`/`AppRootView` use with `ThemeStore.shared`,
+    /// just pointed at an isolated `UserDefaults` suite for test hygiene
+    /// — must both repaint when *either* one commits a theme change. This
+    /// exercises the real `ThemeStore.themeChanged` -> `DocumentHost`
+    /// Combine subscription, not two hosts independently reading the same
+    /// stored value (N9).
+    @Test func selectingOnOneHostBroadcastsToAnotherHostSharingTheSameStore() {
+        let store = isolatedStore()
+        let first = hostWithStore(store)
+        let second = hostWithStore(store)
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+
+        ThemeChrome.select(.named(.harbor), on: first)
+
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
+        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
+    }
+
+    /// Confirms persistence still works now that `ThemeStore` is app-scoped
+    /// rather than one-per-`DocumentHost` (R8): a theme selected while
+    /// *two* windows/tabs share one store must still be there after a
+    /// simulated relaunch (a fresh `ThemeStore` reading the same
+    /// `UserDefaults` suite — the same mechanism `ThemeStore.shared` would
+    /// use against `.standard` across a real relaunch).
+    @Test func selectionMadeWhileTwoWindowsShareTheStorePersistsAcrossSimulatedRelaunch() {
+        let store = isolatedStore()
+        let first = hostWithStore(store)
+        let second = hostWithStore(store)
+
+        ThemeChrome.select(.named(.parchment), on: second)
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .parchment))
+        #expect(store.persistedSelectionID == "parchment")
+
+        // Simulated relaunch: a brand new ThemeStore, no DocumentHost
+        // sharing memory with `store`, reading the same UserDefaults suite.
+        let relaunched = ThemeStore(defaults: store.defaults)
+        #expect(relaunched.selection == .named(.parchment))
+        #expect(relaunched.displayedTokens == NamedThemeCatalog.tokens(for: .parchment))
+        #expect(relaunched.committedTokens == NamedThemeCatalog.tokens(for: .parchment))
+    }
+
     @Test func setThemePaintsEditorCanvasWithTokenBackground() {
         let view = FoldingTextView()
         let lampblack = NamedThemeCatalog.tokens(for: .lampblack)
@@ -86,34 +131,96 @@ struct ThemePickerTests {
         #endif
     }
 
-    @Test func themeCardSampleViewDoesNotStealHitsOrFirstResponder() {
-        let sample = ThemeChrome.makeCardSampleView(tokens: NamedThemeCatalog.tokens(for: .daylight))
+    @Test func themeProxyViewIsReadOnlyAndNeverStealsHitsOrFirstResponder() {
+        let proxy = ThemeChrome.makeProxyView(tokens: NamedThemeCatalog.tokens(for: .daylight))
         #if os(macOS)
-        sample.frame = NSRect(x: 0, y: 0, width: 160, height: 88)
-        #expect(sample.hitTest(NSPoint(x: 80, y: 44)) == nil)
-        #expect(!sample.acceptsFirstResponder)
+        proxy.frame = NSRect(x: 0, y: 0, width: 160, height: 88)
+        #expect(proxy.hitTest(NSPoint(x: 80, y: 44)) == nil)
+        #expect(!proxy.acceptsFirstResponder)
         #else
-        #expect(!sample.isUserInteractionEnabled)
+        #expect(!proxy.isUserInteractionEnabled)
         #endif
     }
 
     #if os(macOS)
-    @Test func macHoverPreviewChangesTokensWithoutPersistingUntilApply() {
+    /// Proves card selection actually works end to end: a genuine AppKit
+    /// mouse-down/mouse-up pair, synthesized and dispatched through a real
+    /// `NSWindow`'s `sendEvent(_:)` at the swatch's on-screen point, must
+    /// reach the card's `onSelect` closure. This is deliberately *not* a
+    /// direct call to `onSelect` or `ThemeChrome.select` — that would only
+    /// prove the closure works, not that a real click reaches it (N9;
+    /// R8; C.10 — "selection must be proven working, not assumed"). Before
+    /// this ticket's fix, the same harness against the old
+    /// `ThemeSampleView`-embedding card reproduced the reported bug: the
+    /// click was silently swallowed and `onSelect` never ran, even though
+    /// the embedded view's own `hitTest` already returned `nil`.
+    @Test func clickOnCardSwatchDispatchesRealAppKitEventThatInvokesOnSelect() {
+        var selected: ThemeSelection?
+        let card = ThemeCard(
+            title: "Harbor",
+            tokens: NamedThemeCatalog.tokens(for: .harbor),
+            isSelected: false,
+            onSelect: { selected = .named(.harbor) },
+            onHover: { _ in }
+        )
+        .frame(width: 180, height: 140)
+
+        let hostingView = NSHostingView(rootView: card)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 180, height: 140)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.titled, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        hostingView.layoutSubtreeIfNeeded()
+
+        // A point inside the swatch band (the card's top ~88pt) — the
+        // region the old embedded FoldingTextView occupied.
+        let point = NSPoint(x: 90, y: 70)
+        let downEvent = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        )!
+        let upEvent = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        )!
+        window.sendEvent(downEvent)
+        window.sendEvent(upEvent)
+        window.orderOut(nil)
+
+        #expect(selected == .named(.harbor))
+    }
+
+    /// Hovering a card must preview into the proxy document only — the
+    /// real open document's editor must never repaint on hover (R8; C.9:
+    /// "hover repaints the real document, which is both heavy and
+    /// jarring"). The proxy's data source, `themeStore.displayedTokens`,
+    /// is what must change; `host.session.editor.tokens` (the real
+    /// document) must stay pinned to the committed theme throughout.
+    @Test func macHoverPreviewChangesOnlyTheProxysTokensNeverTheRealDocument() {
         let store = isolatedStore()
         let host = hostWithStore(store)
         ThemeChrome.select(.named(.daylight), on: host)
         #expect(store.persistedSelectionID == "daylight")
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
 
         ThemeChrome.preview(.named(.meadow), on: host)
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .meadow))
+        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .meadow))
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
         #expect(store.persistedSelectionID == "daylight")
         #expect(store.selection == .named(.daylight))
 
         ThemeChrome.preview(nil, on: host)
+        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .daylight))
         #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
         #expect(store.persistedSelectionID == "daylight")
 
         ThemeChrome.preview(.named(.fog), on: host)
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
         ThemeChrome.select(.named(.fog), on: host)
         #expect(store.persistedSelectionID == "fog")
         #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .fog))
