@@ -33,11 +33,35 @@ final class ThemeStore: ObservableObject {
     static let customBackgroundKey = "markus.theme.customBackground"
     static let customTextKey = "markus.theme.customText"
 
+    /// The single app-scoped store. Every real document window/tab/scene
+    /// is wired to this instance (`MarkdownDocument.init()` on macOS,
+    /// `AppRootView` on iOS/iPadOS) so a theme change broadcasts to all of
+    /// them (R9; J.27; Architecture component 6 "One app-scoped
+    /// `ThemeStore`"). Deliberately not used as the default for
+    /// `DocumentHost`'s other convenience initializers — those keep
+    /// creating a fresh, isolated `ThemeStore()` so the many pre-existing
+    /// tests that construct `DocumentHost` for unrelated concerns don't
+    /// start sharing one global mutable store.
+    static let shared = ThemeStore()
+
     let defaults: UserDefaults
     @Published private(set) var selection: ThemeSelection
     @Published private(set) var hoverSelection: ThemeSelection?
     @Published private(set) var customBackground: PlatformColorType
     @Published private(set) var customTextStyle: CustomTextStyle
+
+    /// Fires after a *committed* theme change (selection or a custom-theme
+    /// edit) — never for hover. `DocumentHost` subscribes to this to
+    /// re-apply `committedTokens` to its real editor, which is what makes
+    /// every open document repaint when *any* of them commits a theme
+    /// change (R9). Kept separate from `objectWillChange` (which also
+    /// fires on hover, for the proxy/chrome to redraw) so a hover in one
+    /// window can never force every other open document to reparse —
+    /// that would just relocate the "heavy and jarring" bug T02 removed,
+    /// not fix it. Sent *after* the property write (unlike `@Published`,
+    /// which publishes before the value is actually stored) so subscribers
+    /// that read `committedTokens` synchronously always see the new value.
+    let themeChanged = PassthroughSubject<Void, Never>()
 
     var persistedSelectionID: String? {
         defaults.string(forKey: Self.selectionKey)
@@ -79,6 +103,7 @@ final class ThemeStore: ObservableObject {
         hoverSelection = nil
         defaults.set(selection.persistenceID, forKey: Self.selectionKey)
         objectWillChange.send()
+        themeChanged.send(())
     }
 
     func beginHover(_ selection: ThemeSelection) {
@@ -95,12 +120,14 @@ final class ThemeStore: ObservableObject {
         customBackground = color
         defaults.set(Self.encodeColor(color), forKey: Self.customBackgroundKey)
         objectWillChange.send()
+        themeChanged.send(())
     }
 
     func setCustomTextStyle(_ style: CustomTextStyle) {
         customTextStyle = style
         defaults.set(style.rawValue, forKey: Self.customTextKey)
         objectWillChange.send()
+        themeChanged.send(())
     }
 
     private static func encodeColor(_ color: PlatformColorType) -> [Double] {

@@ -131,7 +131,13 @@ final class MarkdownDocument: NSDocument {
         precondition(Thread.isMainThread)
         let session = MainActor.assumeIsolated { DocumentSession() }
         self.session = session
-        self.host = MainActor.assumeIsolated { DocumentHost(session: session, recents: RecentDocuments()) }
+        self.host = MainActor.assumeIsolated {
+            // Shares the single app-scoped `ThemeStore` across every Mac
+            // document/tab so a theme change broadcasts to all of them
+            // (R9; J.27) — the old per-`DocumentHost` `ThemeStore()` here
+            // let two tabs disagree on theme.
+            DocumentHost(session: session, recents: RecentDocuments(), themeStore: ThemeStore.shared)
+        }
         super.init()
         hasUndoManager = false
         MainActor.assumeIsolated {

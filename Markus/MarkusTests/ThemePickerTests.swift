@@ -66,6 +66,27 @@ struct ThemePickerTests {
         #expect(store.selection == .custom)
     }
 
+    /// Proves the app-scoped broadcast (R9; J.27): two `DocumentHost`s
+    /// sharing one `ThemeStore` instance — the exact production wiring
+    /// `MarkdownDocument`/`AppRootView` use with `ThemeStore.shared`,
+    /// just pointed at an isolated `UserDefaults` suite for test hygiene
+    /// — must both repaint when *either* one commits a theme change. This
+    /// exercises the real `ThemeStore.themeChanged` -> `DocumentHost`
+    /// Combine subscription, not two hosts independently reading the same
+    /// stored value (N9).
+    @Test func selectingOnOneHostBroadcastsToAnotherHostSharingTheSameStore() {
+        let store = isolatedStore()
+        let first = hostWithStore(store)
+        let second = hostWithStore(store)
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+
+        ThemeChrome.select(.named(.harbor), on: first)
+
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
+        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
+    }
+
     @Test func setThemePaintsEditorCanvasWithTokenBackground() {
         let view = FoldingTextView()
         let lampblack = NamedThemeCatalog.tokens(for: .lampblack)

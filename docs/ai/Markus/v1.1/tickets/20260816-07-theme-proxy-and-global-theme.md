@@ -75,7 +75,7 @@ broadcasts to every open window and tab.
 ## Implementation plan
 
 Status: in-progress
-Current task: T03
+Current task: T04
 
 ### T01: Pure-SwiftUI card swatch, proven card selection via real AppKit event dispatch
 Root-cause investigation (done before writing this plan, via a throwaway
@@ -205,6 +205,7 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 also run `-destination 'platform=iOS Simulator,name=iPhone 17'` and
 `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
 - [ ] todo
+- [x] done
 
 ### T04: Confirm relaunch persistence under app scope; full-suite verify; Notes
 No new production code expected. Add a test that selects a theme through
