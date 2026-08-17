@@ -579,6 +579,11 @@ final class FoldingTextView: PlatformView {
         foldStore.toggle(block.id)
         applyFolds()
         ensureLayout()
+        // The real chevron-click path (`handleGutterClick`) reaches this
+        // method directly, bypassing DocumentHost/DocumentSession — so
+        // this is the one place that can reliably notify dependents (the
+        // minimap among them) that a fold changed (G.19).
+        onTextDidChange?()
     }
 
     func jumpToSourceLine(_ line: Int) {
@@ -845,6 +850,7 @@ final class FoldingTextView: PlatformView {
 
     func setMode(_ mode: EditorMode) {
         session.setMode(mode, textStorage: documentTextStorage)
+        onTextDidChange?()
     }
 
     func setTheme(_ tokens: ThemeTokens) {
@@ -854,6 +860,7 @@ final class FoldingTextView: PlatformView {
 
     func setZoomScale(_ scale: CGFloat) {
         session.setZoomScale(scale, textStorage: documentTextStorage)
+        onTextDidChange?()
     }
 
     func foldCurrent() {
@@ -874,11 +881,13 @@ final class FoldingTextView: PlatformView {
     func foldAll() {
         session.foldAll(textStorage: documentTextStorage)
         ensureLayout()
+        onTextDidChange?()
     }
 
     func unfoldAll() {
         session.unfoldAll(textStorage: documentTextStorage)
         ensureLayout()
+        onTextDidChange?()
     }
 
     func ensureLayout() {
