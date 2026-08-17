@@ -21,8 +21,7 @@ subtasks:
 - id: T3
   title: Fence placeholder — opening fence line plus short placeholder
   status: todo
-current_task: T03
-plan_status: in-progress
+plan_status: done
 ---
 ## Description
 
@@ -68,8 +67,8 @@ wired to the Edit menu items ticket 02 creates.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Fold-all / unfold-all traversal over the block index
 
@@ -160,7 +159,7 @@ xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platfor
 xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' test
 xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test
 ```
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.

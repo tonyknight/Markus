@@ -28,7 +28,13 @@ enum UTF8NSRange {
 }
 
 final class FoldingTextLayoutFragment: NSTextLayoutFragment {
+    /// A short placeholder shown in place of a folded fence's hidden body
+    /// (R15) — the real text is never removed from the fragment's
+    /// underlying element (N3); only what this fragment draws changes.
+    static let placeholderText = "\u{22EF}"
+
     var isCollapsed = false
+    var isPlaceholder = false
 
     override var layoutFragmentFrame: CGRect {
         var frame = super.layoutFragmentFrame
@@ -47,7 +53,31 @@ final class FoldingTextLayoutFragment: NSTextLayoutFragment {
 
     override func draw(at point: CGPoint, in context: CGContext) {
         guard !isCollapsed else { return }
+        if isPlaceholder {
+            Self.drawPlaceholder(at: point, in: context)
+            return
+        }
         super.draw(at: point, in: context)
+    }
+
+    private static func drawPlaceholder(at point: CGPoint, in context: CGContext) {
+        let text = placeholderText as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: PlatformFont.monospaced(size: 13),
+            .foregroundColor: PlatformColor.secondaryLabel,
+        ]
+        #if os(macOS)
+        context.saveGState()
+        let previous = NSGraphicsContext.current
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        text.draw(at: point, withAttributes: attributes)
+        NSGraphicsContext.current = previous
+        context.restoreGState()
+        #else
+        UIGraphicsPushContext(context)
+        text.draw(at: point, withAttributes: attributes)
+        UIGraphicsPopContext()
+        #endif
     }
 }
 
@@ -168,37 +198,81 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         in textElement: NSTextElement
     ) -> NSTextLayoutFragment {
         let fragment = FoldingTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
-        fragment.isCollapsed = isElementCollapsed(textElement, layoutManager: textLayoutManager)
+        switch collapseState(for: textElement, layoutManager: textLayoutManager) {
+        case .visible:
+            break
+        case .collapsed:
+            fragment.isCollapsed = true
+        case .placeholder:
+            fragment.isPlaceholder = true
+        }
         return fragment
     }
 
-    private func isElementCollapsed(_ textElement: NSTextElement, layoutManager: NSTextLayoutManager) -> Bool {
+    private enum ElementCollapseState {
+        case visible
+        case collapsed
+        case placeholder
+    }
+
+    /// A folded heading collapses fully (no placeholder needed — the next
+    /// heading or end of document is the visible boundary). A folded fence
+    /// keeps its first hidden line as a placeholder instead of collapsing
+    /// it too, so the fence shows its opening line plus a short
+    /// placeholder rather than an empty gap (R15). Every other hidden line
+    /// in either kind of fold still collapses to zero height, as before —
+    /// this only changes what one designated line per folded fence does.
+    private func collapseState(for textElement: NSTextElement, layoutManager: NSTextLayoutManager) -> ElementCollapseState {
         guard let elementRange = textElement.elementRange,
               let content = layoutManager.textContentManager
         else {
-            return false
+            return .visible
         }
         let start = content.offset(from: content.documentRange.location, to: elementRange.location)
         let end = content.offset(from: content.documentRange.location, to: elementRange.endLocation)
         let fragmentRange = NSRange(location: start, length: max(0, end - start))
-        guard fragmentRange.length > 0 else { return false }
-        return hiddenUTF16Ranges.contains { hidden in
+        guard fragmentRange.length > 0 else { return .visible }
+        let isHidden = hiddenUTF16Ranges.contains { hidden in
             NSIntersectionRange(hidden, fragmentRange).length == fragmentRange.length
         }
+        guard isHidden else { return .visible }
+        return placeholderUTF16Locations.contains(start) ? .placeholder : .collapsed
     }
 
     var hiddenUTF16RangeCount: Int { hiddenUTF16Ranges.count }
 
-    private var hiddenUTF16Ranges: [NSRange] {
+    private var documentString: String? {
         let string = textStorage?.string
             ?? contentStorage?.textStorage?.string
             ?? (layoutManager?.textContentManager as? NSTextContentStorage)?.textStorage?.string
-        guard let string, !string.isEmpty else { return [] }
+        guard let string, !string.isEmpty else { return nil }
+        return string
+    }
+
+    private var hiddenUTF16Ranges: [NSRange] {
+        guard let string = documentString else { return [] }
         return foldStore.hiddenByteRanges(in: blocks).compactMap { bytes in
             let range = UTF8NSRange.nsRange(utf8Bytes: bytes, in: string)
             guard range.location != NSNotFound, range.length > 0 else { return nil }
             return range
         }
+    }
+
+    /// The UTF-16 location of the first hidden line inside each folded
+    /// fence's `foldExtent` — i.e. `foldExtent.lowerBound`, which
+    /// `BlockIndex.build` always sets to the byte offset right after the
+    /// opening fence line. That element becomes the placeholder instead of
+    /// collapsing.
+    private var placeholderUTF16Locations: Set<Int> {
+        guard let string = documentString else { return [] }
+        var locations: Set<Int> = []
+        for block in blocks where block.id.kind == .fence {
+            guard foldStore.isFolded(block.id), let extent = block.foldExtent else { continue }
+            let range = UTF8NSRange.nsRange(utf8Bytes: extent.lowerBound..<extent.lowerBound, in: string)
+            guard range.location != NSNotFound else { continue }
+            locations.insert(range.location)
+        }
+        return locations
     }
 
     private func applyStyling(to textStorage: NSTextStorage) {
@@ -297,11 +371,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     }
 
     private func packedSourceLineEntries() -> [SourceLineMap.Entry] {
-        let string = textStorage?.string
-            ?? contentStorage?.textStorage?.string
-            ?? (layoutManager?.textContentManager as? NSTextContentStorage)?.textStorage?.string
-            ?? ""
-        guard !string.isEmpty else { return [] }
+        guard let string = documentString else { return [] }
 
         let sourceMap = SourceMap(markdown: string)
         let hidden = hiddenUTF16Ranges

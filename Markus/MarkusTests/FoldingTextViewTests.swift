@@ -111,6 +111,49 @@ struct FoldingTextViewTests {
         #expect(abs(view.layoutHeight - unfoldedHeight) < 1)
     }
 
+    @Test func foldedFenceShowsOpeningLinePlusPlaceholderInsteadOfAnEmptyGap() throws {
+        let view = FoldingTextView()
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let fence = try #require(view.blocks.first { $0.id.kind == .fence })
+        view.foldStore.toggle(fence.id)
+        view.applyFolds()
+        view.ensureLayout()
+
+        // Only the closing fence line collapses to zero height; the body's
+        // first line becomes a visible, non-zero-height placeholder instead
+        // of also collapsing to zero — so the fence no longer vanishes into
+        // an empty gap after its opening line (R15). Before this task, both
+        // the body line and the closing fence line collapsed, so this count
+        // was 2.
+        #expect(view.collapsedFragmentCount == 1)
+
+        var placeholders: [FoldingTextLayoutFragment] = []
+        view.textLayoutManager.enumerateTextLayoutFragments(
+            from: view.textLayoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            if let folding = fragment as? FoldingTextLayoutFragment, folding.isPlaceholder {
+                placeholders.append(folding)
+            }
+            return true
+        }
+        #expect(placeholders.count == 1)
+        let placeholder = try #require(placeholders.first)
+        #expect(!placeholder.isCollapsed)
+        #expect(placeholder.layoutFragmentFrame.height > 0)
+
+        // The buffer itself is untouched (N3): the real body text is still
+        // there in full, byte for byte — only the drawn placeholder glyph
+        // stands in for it, nothing is rewritten or hidden via near-zero
+        // paragraph styles.
+        #expect(view.string == fixture)
+        let storage = try #require(view.textStorage)
+        #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
+    }
+
     private func usesCollapsedParagraphStyles(_ storage: NSTextStorage) -> Bool {
         var found = false
         storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, _, stop in
