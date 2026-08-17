@@ -201,6 +201,85 @@ struct MacMinimapTests {
         #expect(clickedLine == nil)
     }
 
+    // MARK: - Downsampling and fold-awareness (T04)
+
+    private func syntheticSnapshot(entryCount: Int, headingLines: Set<Int> = []) -> MinimapSnapshot {
+        let lineHeight: CGFloat = 14
+        let entries = (1...entryCount).map { line in
+            SourceLineMap.Entry(sourceLine: line, y: CGFloat(line - 1) * lineHeight, height: lineHeight)
+        }
+        return MinimapSnapshot(
+            mode: .source,
+            packedHeight: CGFloat(entryCount) * lineHeight,
+            visibleSourceLines: Array(1...entryCount),
+            map: SourceLineMap(entries: entries),
+            headingLines: headingLines,
+            fenceLines: [],
+            visiblePackedRect: .zero
+        )
+    }
+
+    @Test func downsamplingCapsBarsRegardlessOfDocumentSize() {
+        let snapshot = syntheticSnapshot(entryCount: 5000)
+
+        let bars = MinimapRenderer.bars(from: snapshot)
+        #expect(bars.count <= MinimapRenderer.defaultMaxBars)
+        #expect(bars.count < snapshot.map.entries.count)
+    }
+
+    @Test func smallDocumentsKeepOneBarPerLineBelowTheDownsamplingThreshold() {
+        let snapshot = syntheticSnapshot(entryCount: 10)
+
+        let bars = MinimapRenderer.bars(from: snapshot)
+        #expect(bars.count == snapshot.map.entries.count)
+    }
+
+    @Test func foldedContentDoesNotRenderInTheBarsAsIfStillExpanded() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let unfolded = MacMinimapChrome.snapshot(from: view)
+        let unfoldedBars = MinimapRenderer.bars(from: unfolded)
+        let unfoldedSpan = unfoldedBars.map { $0.y + $0.height }.max() ?? 0
+
+        let heading = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+        view.foldStore.toggle(heading.id)
+        view.applyFolds()
+        view.ensureLayout()
+
+        let folded = MacMinimapChrome.snapshot(from: view)
+        let foldedBars = MinimapRenderer.bars(from: folded)
+        let foldedSpan = foldedBars.map { $0.y + $0.height }.max() ?? 0
+
+        #expect(foldedSpan <= folded.packedHeight + 0.5)
+        #expect(foldedSpan < unfoldedSpan)
+    }
+
+    @Test func barsAreCachedOnSnapshotAssignmentNotRecomputedPerDraw() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let minimap = MacMinimapView(frame: CGRect(x: 0, y: 0, width: 120, height: 400))
+        let snapshot = MacMinimapChrome.snapshot(from: view)
+        minimap.snapshot = snapshot
+
+        let expected = MinimapRenderer.bars(from: snapshot)
+        #expect(minimap.bars == expected)
+
+        // Multiple repaints (via the real display machinery, as in the
+        // rasterization test above) must not need to recompute — the
+        // cached array set at snapshot-assignment time stays exactly as
+        // it was.
+        let rep = try #require(minimap.bitmapImageRepForCachingDisplay(in: minimap.bounds))
+        minimap.cacheDisplay(in: minimap.bounds, to: rep)
+        minimap.cacheDisplay(in: minimap.bounds, to: rep)
+        #expect(minimap.bars == expected)
+    }
+
     private func distinctOpaqueColours(in rep: NSBitmapImageRep) -> Set<[Int]> {
         var colours: Set<[Int]> = []
         for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
