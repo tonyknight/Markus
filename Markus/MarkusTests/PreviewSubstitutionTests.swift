@@ -276,4 +276,50 @@ struct PreviewSubstitutionTests {
         })
         #expect(ruleParagraph.length > 0)
     }
+
+    // MARK: - T05: table integration (ticket 01's TableAttachment)
+
+    @Test func previewModeRendersTableAsAttachmentAndCollapsesItsOtherSourceLines() throws {
+        let markdown = """
+        Intro.
+
+        | Col | Val |
+        |-----|-----|
+        | a   | b   |
+        | c   | d   |
+
+        After.
+        """
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        var foundTableAttachment: TableAttachment?
+        var tableParagraphString: String?
+        for paragraph in paragraphs {
+            paragraph.enumerateAttribute(.attachment, in: NSRange(location: 0, length: paragraph.length)) { value, _, _ in
+                if let table = value as? TableAttachment {
+                    foundTableAttachment = table
+                    tableParagraphString = paragraph.string
+                }
+            }
+        }
+        let attachment = try #require(foundTableAttachment)
+        #expect(attachment.table.rows.count == 3)
+        // The paragraph carrying the table is the attachment itself, not
+        // pipe-and-dash source text (R11).
+        #expect(!(tableParagraphString ?? "").contains("|"))
+        #expect(!(tableParagraphString ?? "").contains("-----"))
+
+        // The table's delimiter/data rows beyond its first line are
+        // still present as raw text in the content storage (N4: the
+        // buffer — and therefore each paragraph's backing text — is
+        // never rewritten) but a reader never sees them: their layout
+        // fragments collapse to zero height, the same mechanism as
+        // folding (N3).
+        #expect(view.collapsedFragmentCount > 0)
+        #expect(view.textStorage?.string == markdown)
+    }
 }

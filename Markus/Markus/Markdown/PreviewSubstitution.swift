@@ -43,7 +43,7 @@ enum PreviewHeadingScale {
 /// `FoldingSession.applyStyling`'s blind restyle of the buffer.
 enum PreviewElementCollector {
     static func collect(markdown: String, tokens: ThemeTokens, zoomScale: CGFloat) -> [PreviewElement] {
-        markdown.withCString { cString in
+        var elements: [PreviewElement] = markdown.withCString { cString in
             cmark_gfm_core_extensions_ensure_registered()
             let options = CMARK_OPT_DEFAULT | CMARK_OPT_FOOTNOTES | CMARK_OPT_SOURCEPOS
             guard let parser = cmark_parser_new(options) else { return [] }
@@ -65,6 +65,40 @@ enum PreviewElementCollector {
             }
             return elements
         }
+
+        // Tables are collected separately via TableParsing (ticket 01):
+        // a GFM table is a single cmark node spanning several source
+        // lines, and TableParsing already extracts exactly the rows,
+        // alignment, and source range TableAttachment needs to measure
+        // and draw a true grid (R11). The table's other source lines
+        // (delimiter row, data rows) collapse via the same
+        // continuation-hiding path as any other multi-line element.
+        let sourceMap = SourceMap(markdown: markdown)
+        let font = PlatformFont.monospaced(size: 14 * zoomScale)
+        for table in TableParsing.parseTables(in: markdown) {
+            let attachment = TableAttachment(table: table, font: font)
+            let lines = lineRange(forByteRange: table.sourceRange, sourceMap: sourceMap)
+            elements.append(PreviewElement(lines: lines, rendered: NSAttributedString(attachment: attachment)))
+        }
+        return elements
+    }
+
+    /// Converts a UTF-8 byte range (as produced by cmark sourcepos) to a
+    /// 1-based source line range, using the same line numbering as
+    /// `SourceMap`/`UTF16LineOffsets`.
+    private static func lineRange(forByteRange bytes: Range<Int>, sourceMap: SourceMap) -> Range<Int> {
+        let startLine = lineNumber(forByteOffset: bytes.lowerBound, sourceMap: sourceMap)
+        let lastByte = max(bytes.lowerBound, bytes.upperBound - 1)
+        let endLine = lineNumber(forByteOffset: lastByte, sourceMap: sourceMap)
+        return startLine..<(max(startLine, endLine) + 1)
+    }
+
+    private static func lineNumber(forByteOffset offset: Int, sourceMap: SourceMap) -> Int {
+        var line = 1
+        for (index, start) in sourceMap.lineStarts.enumerated() where start <= offset {
+            line = index + 1
+        }
+        return line
     }
 
     /// Dispatches one block-level node. `quoteDepth`/`listDepth` are
