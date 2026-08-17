@@ -1,28 +1,27 @@
 ---
 id: 20260816-12-fold-persistence-and-repair
-title: "Fold persistence and repair"
+title: Fold persistence and repair
 type: feature
 priority: medium
-status: todo
+status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-04-fold-all-unfold-all-and-fence-placeholder
+- 20260816-04-fold-all-unfold-all-and-fence-placeholder
 subtasks:
-  - id: T1
-    title: Add FoldID.anchor (short digest of the block's opening line)
-    status: todo
-  - id: T2
-    title: Persist fold set per file in app storage
-    status: todo
-  - id: T3
-    title: Repair fold IDs against anchors when the block index rebuilds
-    status: todo
+- id: T1
+  title: Add FoldID.anchor (short digest of the block's opening line)
+  status: todo
+- id: T2
+  title: Persist fold set per file in app storage
+  status: todo
+- id: T3
+  title: Repair fold IDs against anchors when the block index rebuilds
+  status: todo
 ---
-
 ## Description
 
 `FoldID` is `kind + startLine`, and rebuilding the block index after an
