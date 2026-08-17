@@ -94,5 +94,112 @@ struct MacMainMenuTests {
         #expect(titles.contains("File"))
         #expect(titles.contains("Edit"))
     }
+
+    // Walks the real responder chain starting at `responder` (not via
+    // `NSApplication`/system key-window resolution, which is arbitrated
+    // machine-wide and flaky whenever another process on the same
+    // desktop also owns a window — e.g. sibling test runs). This proves
+    // the same mechanism AppKit's nil-targeted action dispatch relies on
+    // (`nextResponder` chain walking) without that external dependency.
+    private func resolveAndPerform(_ action: Selector, startingAt responder: NSResponder) -> Bool {
+        var current: NSResponder? = responder
+        while let candidate = current {
+            if candidate.responds(to: action) {
+                _ = candidate.perform(action, with: nil)
+                return true
+            }
+            current = candidate.nextResponder
+        }
+        return false
+    }
+
+    @Test func windowContentViewControllerIsSplicedIntoTheResponderChain() throws {
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        let window = try #require(document.windowControllers.first?.window)
+        let viewController = try #require(window.contentViewController as? MarkdownDocumentViewController)
+
+        // AppKit automatically inserts a window's contentViewController
+        // into the responder chain between the content view and the
+        // window itself; that's what lets nil-targeted Edit/Open-Folder
+        // menu items resolve here.
+        #expect(viewController.nextResponder === window)
+    }
+
+    @Test func customEditAndOpenFolderActionsResolveThroughTheResponderChainToTheDocument() throws {
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        let window = try #require(document.windowControllers.first?.window)
+        let viewController = try #require(window.contentViewController as? MarkdownDocumentViewController)
+
+        #expect(!document.host.isFindPresented)
+        #expect(resolveAndPerform(MacMainMenuAction.performFind, startingAt: viewController))
+        #expect(document.host.isFindPresented)
+
+        #expect(!document.host.isGoToLinePresented)
+        #expect(resolveAndPerform(MacMainMenuAction.performGoToLine, startingAt: viewController))
+        #expect(document.host.isGoToLinePresented)
+
+        #expect(!document.host.isFolderImporterPresented)
+        #expect(resolveAndPerform(MacMainMenuAction.performOpenFolder, startingAt: viewController))
+        #expect(document.host.isFolderImporterPresented)
+    }
+
+    @Test func foldAllAndUnfoldAllTargetNilAndResolveWithoutCrashingAheadOfTheFoldService() throws {
+        // Per the ticket: Fold All / Unfold All are wired to the responder
+        // chain only in this ticket. The fold service itself lands in a
+        // later ticket, so this only proves the action resolves and runs
+        // safely, not that folding happens.
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        let window = try #require(document.windowControllers.first?.window)
+        let viewController = try #require(window.contentViewController as? MarkdownDocumentViewController)
+
+        #expect(resolveAndPerform(MacMainMenuAction.performFoldAll, startingAt: viewController))
+        #expect(resolveAndPerform(MacMainMenuAction.performUnfoldAll, startingAt: viewController))
+    }
+
+    @Test func standardDocumentActionsAreImplementedByNSDocumentControllerAndNSDocumentWithoutCustomWiring() {
+        // New/Open/Save use AppKit's own document-architecture action
+        // methods (menu items built with target `nil`, per MacMainMenu);
+        // confirm the objects that automatic nil-targeted dispatch would
+        // reach actually implement them, rather than depending on which
+        // window the OS currently treats as key/main (arbitrated
+        // machine-wide, and flaky under concurrent processes).
+        #expect(NSDocumentController.shared.responds(to: #selector(NSDocumentController.newDocument(_:))))
+        #expect(NSDocumentController.shared.responds(to: #selector(NSDocumentController.openDocument(_:))))
+
+        let document = MarkdownDocument()
+        #expect(document.responds(to: #selector(NSDocument.save(_:))))
+    }
+
+    @Test func recentDocumentItemsAreBuiltFromTheGivenURLsWithClearMenuAtTheEnd() throws {
+        let first = URL(fileURLWithPath: "/tmp/markus-recent-a.md")
+        let second = URL(fileURLWithPath: "/tmp/markus-recent-b.md")
+
+        let items = MacMainMenu.recentDocumentItems(for: [first, second])
+        #expect(items.count == 4) // 2 documents + separator + Clear Menu
+        #expect(items[0].title == "markus-recent-a.md")
+        #expect(items[0].representedObject as? URL == first)
+        #expect(items[1].title == "markus-recent-b.md")
+        #expect(items[1].representedObject as? URL == second)
+        #expect(items[2].isSeparatorItem)
+        #expect(items[3].title == "Clear Menu")
+        #expect(items[3].action == #selector(NSDocumentController.clearRecentDocuments(_:)))
+
+        let empty = MacMainMenu.recentDocumentItems(for: [])
+        #expect(empty.count == 1)
+        #expect(empty[0].title == "No Recent Documents")
+        #expect(!empty[0].isEnabled)
+    }
+
+    @Test func openRecentSubmenuDelegateReadsFromNSDocumentController() throws {
+        let menu = MacMainMenu.build()
+        let fileItem = try #require(menu.items.first { $0.title == "File" })
+        let file = try #require(fileItem.submenu)
+        let openRecent = try #require(file.items.first { $0.title == "Open Recent" })
+        let submenu = try #require(openRecent.submenu)
+        #expect(submenu.delegate != nil)
+    }
 }
 #endif

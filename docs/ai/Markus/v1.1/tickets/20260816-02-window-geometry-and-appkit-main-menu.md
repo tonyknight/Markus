@@ -19,14 +19,14 @@ subtasks:
   status: done
 - id: T3
   title: Route custom menu actions through the responder chain
-  status: todo
+  status: done
 - id: T4
   title: Title-bar cleanup — remove buttons now owned by menus
   status: todo
 - id: T5
   title: Fix stacked .fileImporter bug (dead Open button)
   status: done
-current_task: T04
+current_task: T05
 plan_status: in-progress
 ---
 ## Description
@@ -87,7 +87,7 @@ just the Source/Preview control.
 ## Implementation plan
 
 Status: in-progress
-Current task: T04
+Current task: T05
 
 ### T01: Window geometry — three-quarter visibleFrame, pinned top-left
 Size and position the window in `MarkdownDocument.makeWindowControllers()`
@@ -143,7 +143,7 @@ Files: `Markus/Markus/Document/MarkdownDocument.swift`,
 `Markus/MarkusTests/MacMainMenuTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/MacMainMenuTests test`
 - [ ] todo
-
+- [x] done
 ### T05: Title-bar cleanup and tabbing regression check
 On macOS, `DocumentToolbar` shows only the Source/Preview control; Open,
 Open Folder, Save, Revert, Fold, Toggle, Find, Go to Line, Tree,

@@ -12,6 +12,24 @@ enum MacMainMenuAction {
     static let performGoToLine = Selector(("performGoToLine:"))
     static let performFoldAll = Selector(("performFoldAll:"))
     static let performUnfoldAll = Selector(("performUnfoldAll:"))
+    static let openRecentDocument = #selector(RecentDocumentsMenuDelegate.openRecentDocument(_:))
+}
+
+/// Populates the "Open Recent" submenu from `NSDocumentController`'s own
+/// `recentDocumentURLs` each time the menu is about to open, and opens
+/// the chosen document through the same `MacDocumentLaunch` path used
+/// elsewhere (so it creates a proper tabbable `NSDocument` window).
+final class RecentDocumentsMenuDelegate: NSObject, NSMenuDelegate {
+    static let shared = RecentDocumentsMenuDelegate()
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.items = MacMainMenu.recentDocumentItems(for: NSDocumentController.shared.recentDocumentURLs)
+    }
+
+    @objc func openRecentDocument(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        _ = try? MacDocumentLaunch.openFile(url)
+    }
 }
 
 /// Builds the AppKit main menu: File (New, Open…, Open Folder…, Open
@@ -72,8 +90,37 @@ enum MacMainMenu {
 
     private static func openRecentMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
-        item.submenu = NSMenu(title: "Open Recent")
+        let submenu = NSMenu(title: "Open Recent")
+        submenu.delegate = RecentDocumentsMenuDelegate.shared
+        item.submenu = submenu
         return item
+    }
+
+    /// Builds the "Open Recent" submenu contents from `urls`, in the shape
+    /// AppKit's own recent-documents menus use: one item per URL (newest
+    /// first, as `NSDocumentController` already orders them), then a
+    /// separator and "Clear Menu". A pure function so tests can assert its
+    /// output without mutating the user's real, persisted recent-documents
+    /// list.
+    static func recentDocumentItems(for urls: [URL]) -> [NSMenuItem] {
+        guard !urls.isEmpty else {
+            let empty = NSMenuItem(title: "No Recent Documents", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            return [empty]
+        }
+        var items = urls.map { url -> NSMenuItem in
+            let item = NSMenuItem(title: url.lastPathComponent, action: MacMainMenuAction.openRecentDocument, keyEquivalent: "")
+            item.representedObject = url
+            item.target = RecentDocumentsMenuDelegate.shared
+            return item
+        }
+        items.append(.separator())
+        items.append(NSMenuItem(
+            title: "Clear Menu",
+            action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+            keyEquivalent: ""
+        ))
+        return items
     }
 
     // MARK: Edit menu

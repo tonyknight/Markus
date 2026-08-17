@@ -77,6 +77,48 @@ enum MacDocumentLaunch {
     }
 }
 
+/// Hosts `ContentView` as the window's `contentViewController`. AppKit
+/// automatically splices a window's `contentViewController` into the
+/// responder chain (between the content view and the window itself), so
+/// this is where the Edit-menu and Open-Folder actions — built with
+/// `target == nil` in `MacMainMenu` — resolve when this document's window
+/// is key.
+final class MarkdownDocumentViewController: NSHostingController<ContentView> {
+    let host: DocumentHost
+
+    init(host: DocumentHost) {
+        self.host = host
+        super.init(rootView: ContentView(host: host))
+    }
+
+    @available(*, unavailable)
+    @MainActor required dynamic init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc func performOpenFolder(_ sender: Any?) {
+        host.isFolderImporterPresented = true
+    }
+
+    @objc func performFind(_ sender: Any?) {
+        EditorCommands.presentFind(on: host)
+    }
+
+    @objc func performGoToLine(_ sender: Any?) {
+        EditorCommands.presentGoToLine(on: host)
+    }
+
+    @objc func performFoldAll(_ sender: Any?) {
+        // Wiring only: the responder chain must resolve this action so the
+        // Edit > Fold All menu item is live, but the fold-all service
+        // itself lands in a later ticket of this project.
+    }
+
+    @objc func performUnfoldAll(_ sender: Any?) {
+        // Wiring only — see performFoldAll(_:).
+    }
+}
+
 final class MarkdownDocument: NSDocument {
     nonisolated(unsafe) let session: DocumentSession
     nonisolated(unsafe) let host: DocumentHost
@@ -110,7 +152,7 @@ final class MarkdownDocument: NSDocument {
                 defer: false
             )
             MacDocumentChrome.applyPreferredTabbing(to: window)
-            window.contentViewController = NSHostingController(rootView: ContentView(host: host))
+            window.contentViewController = MarkdownDocumentViewController(host: host)
             window.title = fileURL?.lastPathComponent ?? session.fileURL?.lastPathComponent ?? "Untitled"
             // Set geometry last: assigning contentViewController can trigger
             // NSHostingController's automatic content-size-driven window
