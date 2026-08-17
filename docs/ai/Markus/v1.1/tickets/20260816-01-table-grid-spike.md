@@ -26,7 +26,7 @@ subtasks:
 - id: T5
   title: Go/no-go call; if impractical, stop and reopen design
   status: todo
-current_task: T03
+current_task: T04
 plan_status: in-progress
 ---
 ## Description
@@ -82,7 +82,7 @@ Detailed checklist (mirrors frontmatter `subtasks`):
 ## Implementation plan
 
 Status: in-progress
-Current task: T03
+Current task: T04
 
 ### T01: Parse GFM table structure from cmark AST
 
@@ -119,7 +119,7 @@ Files: `Markus/Markus/Editor/TableAttachment.swift`; extends
 (non-empty image, size matches measured bounds, border pixels present).
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/TableAttachmentTests`
-
+- [x] done
 ### T04: Carry source range; resolve selection back to it
 
 Add `sourceRange: Range<Int>` to `TableAttachment` (from T01's parsed
