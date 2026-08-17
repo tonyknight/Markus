@@ -1,28 +1,27 @@
 ---
 id: 20260816-06-settings-surface
-title: "Settings surface"
+title: Settings surface
 type: feature
 priority: medium
-status: todo
+status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-05-ribbon-rail-and-library-panel
+- 20260816-05-ribbon-rail-and-library-panel
 subtasks:
-  - id: T1
-    title: Full-viewport settings scene (category list + detail panel)
-    status: todo
-  - id: T2
-    title: Working close box, not nested in another NavigationStack
-    status: todo
-  - id: T3
-    title: Remove the old side-panel settings and its dead Done button
-    status: todo
+- id: T1
+  title: Full-viewport settings scene (category list + detail panel)
+  status: todo
+- id: T2
+  title: Working close box, not nested in another NavigationStack
+  status: todo
+- id: T3
+  title: Remove the old side-panel settings and its dead Done button
+  status: todo
 ---
-
 ## Description
 
 Today's settings side panel cannot be dismissed because its Done button
