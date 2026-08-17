@@ -4,6 +4,19 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum MacWindowGeometry {
+    /// Three-quarters of `visibleFrame`'s width and height, pinned to the
+    /// screen's top-left corner. AppKit's y-axis is bottom-up, so "pinned
+    /// to the top" means the window's `maxY` matches the screen's `maxY`.
+    static func windowFrame(forVisibleFrame visibleFrame: NSRect) -> NSRect {
+        let width = visibleFrame.width * 0.75
+        let height = visibleFrame.height * 0.75
+        let x = visibleFrame.minX
+        let y = visibleFrame.maxY - height
+        return NSRect(x: x, y: y, width: width, height: height)
+    }
+}
+
 final class MarkusDocumentController: NSDocumentController {
     override var defaultType: String? {
         "net.daringfireball.markdown"
@@ -64,6 +77,48 @@ enum MacDocumentLaunch {
     }
 }
 
+/// Hosts `ContentView` as the window's `contentViewController`. AppKit
+/// automatically splices a window's `contentViewController` into the
+/// responder chain (between the content view and the window itself), so
+/// this is where the Edit-menu and Open-Folder actions — built with
+/// `target == nil` in `MacMainMenu` — resolve when this document's window
+/// is key.
+final class MarkdownDocumentViewController: NSHostingController<ContentView> {
+    let host: DocumentHost
+
+    init(host: DocumentHost) {
+        self.host = host
+        super.init(rootView: ContentView(host: host))
+    }
+
+    @available(*, unavailable)
+    @MainActor required dynamic init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc func performOpenFolder(_ sender: Any?) {
+        host.isFolderImporterPresented = true
+    }
+
+    @objc func performFind(_ sender: Any?) {
+        EditorCommands.presentFind(on: host)
+    }
+
+    @objc func performGoToLine(_ sender: Any?) {
+        EditorCommands.presentGoToLine(on: host)
+    }
+
+    @objc func performFoldAll(_ sender: Any?) {
+        // Wiring only: the responder chain must resolve this action so the
+        // Edit > Fold All menu item is live, but the fold-all service
+        // itself lands in a later ticket of this project.
+    }
+
+    @objc func performUnfoldAll(_ sender: Any?) {
+        // Wiring only — see performFoldAll(_:).
+    }
+}
+
 final class MarkdownDocument: NSDocument {
     nonisolated(unsafe) let session: DocumentSession
     nonisolated(unsafe) let host: DocumentHost
@@ -97,8 +152,15 @@ final class MarkdownDocument: NSDocument {
                 defer: false
             )
             MacDocumentChrome.applyPreferredTabbing(to: window)
-            window.contentViewController = NSHostingController(rootView: ContentView(host: host))
+            window.contentViewController = MarkdownDocumentViewController(host: host)
             window.title = fileURL?.lastPathComponent ?? session.fileURL?.lastPathComponent ?? "Untitled"
+            // Set geometry last: assigning contentViewController can trigger
+            // NSHostingController's automatic content-size-driven window
+            // resize, which would otherwise clobber this frame.
+            let screen = window.screen ?? NSScreen.main
+            if let visibleFrame = screen?.visibleFrame {
+                window.setFrame(MacWindowGeometry.windowFrame(forVisibleFrame: visibleFrame), display: false)
+            }
             addWindowController(NSWindowController(window: window))
         }
     }
@@ -139,6 +201,10 @@ final class MarkdownDocument: NSDocument {
 
 final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
     private let documentController = MarkusDocumentController()
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = MacMainMenu.build()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
