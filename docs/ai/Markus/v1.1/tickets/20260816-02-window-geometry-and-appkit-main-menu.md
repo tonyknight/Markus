@@ -25,8 +25,8 @@ subtasks:
   status: todo
 - id: T5
   title: Fix stacked .fileImporter bug (dead Open button)
-  status: todo
-current_task: T02
+  status: done
+current_task: T03
 plan_status: in-progress
 ---
 ## Description
@@ -87,7 +87,7 @@ just the Source/Preview control.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Window geometry — three-quarter visibleFrame, pinned top-left
 Size and position the window in `MarkdownDocument.makeWindowControllers()`
@@ -112,7 +112,7 @@ Files: `Markus/Markus/ContentView.swift`, `Markus/Markus/Document/DocumentHost.s
 or a new `Markus/MarkusTests/FileImporterChromeTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests test`
 - [ ] todo
-
+- [x] done
 ### T03: Build AppKit NSMenu hierarchy in MarkusAppDelegate
 A new `MacMainMenu` type builds an `NSMenu` — File (New, Open…, Open
 Folder…, Open Recent submenu, Save) and Edit (Find, Go to Line, Fold

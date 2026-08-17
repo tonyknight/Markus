@@ -13,32 +13,14 @@ struct ContentView: View {
                 #endif
                 .toolbar { DocumentToolbar(host: host) }
                 .fileImporter(
-                    isPresented: $host.isImporterPresented,
-                    allowedContentTypes: Self.markdownTypes,
+                    isPresented: Binding(
+                        get: { FileImporterChrome.isPresented(for: host) },
+                        set: { FileImporterChrome.setPresented($0, on: host) }
+                    ),
+                    allowedContentTypes: FileImporterChrome.allowedContentTypes(for: host),
                     allowsMultipleSelection: false
                 ) { result in
-                    switch result {
-                    case .success(let urls):
-                        if let url = urls.first {
-                            host.openStandaloneFile(url)
-                        }
-                    case .failure:
-                        host.errorMessage = "Could not open file."
-                    }
-                }
-                .fileImporter(
-                    isPresented: $host.isFolderImporterPresented,
-                    allowedContentTypes: FolderChrome.folderContentTypes,
-                    allowsMultipleSelection: false
-                ) { result in
-                    switch result {
-                    case .success(let urls):
-                        if let url = urls.first {
-                            host.openFolder(url)
-                        }
-                    case .failure:
-                        host.errorMessage = "Could not open folder."
-                    }
+                    FileImporterChrome.handle(result, on: host)
                 }
                 .modifier(SettingsSheetModifier(host: host))
                 .sheet(isPresented: $host.isOutlinePresented) {
@@ -101,14 +83,6 @@ struct ContentView: View {
                 EditorStatusBar(host: host)
             }
         }
-    }
-
-    private static var markdownTypes: [UTType] {
-        var types: [UTType] = [.plainText]
-        if let markdown = UTType(filenameExtension: "md") {
-            types.insert(markdown, at: 0)
-        }
-        return types
     }
 }
 
