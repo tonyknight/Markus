@@ -41,24 +41,24 @@ just the Source/Preview control.
 
 ## Acceptance criteria
 
-- [ ] On launch, the window is sized and positioned to three-quarters of
+- [x] On launch, the window is sized and positioned to three-quarters of
       the active screen's `visibleFrame` width and height, pinned to the
       top-left corner (R1).
-- [ ] File menu contains New, Open…, Open Folder…, Open Recent (submenu,
+- [x] File menu contains New, Open…, Open Folder…, Open Recent (submenu,
       populated by `NSDocumentController`), and Save, all with standard
       shortcuts and all functional (R2).
-- [ ] Edit menu contains Find, Go to Line, Fold All, and Unfold All, with
+- [x] Edit menu contains Find, Go to Line, Fold All, and Unfold All, with
       shortcuts (R3). (Fold All/Unfold All routing only — the fold
       service itself lands in ticket 04.)
-- [ ] Custom menu items target `nil` and resolve through the responder
+- [x] Custom menu items target `nil` and resolve through the responder
       chain to the active document/content view controller (N5).
-- [ ] Title bar contains only the Source/Preview control; Open, Open
+- [x] Title bar contains only the Source/Preview control; Open, Open
       Folder, Save, Revert, Recents, Fold, Toggle, Find, Go to Line, and
       Tree buttons are removed (R4).
-- [ ] The two stacked `.fileImporter` modifiers are resolved so Open
+- [x] The two stacked `.fileImporter` modifiers are resolved so Open
       actually presents a picker; whatever replaces them does not repeat
       the silent-winner bug (A.5).
-- [ ] `NSDocument` window tabbing still works; no SwiftUI `WindowGroup`
+- [x] `NSDocument` window tabbing still works; no SwiftUI `WindowGroup`
       was added to `MarkusApp` (N5).
 
 ## Context
@@ -73,15 +73,15 @@ just the Source/Preview control.
 
 ## Subtasks
 
-- [ ] Implement window geometry on `makeWindowControllers`.
-- [ ] Build the `NSMenu` hierarchy in `MarkusAppDelegate` at launch.
-- [ ] Wire File items to `NSDocumentController` (New/Open/Open
+- [x] Implement window geometry on `makeWindowControllers`.
+- [x] Build the `NSMenu` hierarchy in `MarkusAppDelegate` at launch.
+- [x] Wire File items to `NSDocumentController` (New/Open/Open
       Folder/Save); confirm Open Recent populates automatically.
-- [ ] Add Edit items (Find, Go to Line, Fold All, Unfold All) targeting
+- [x] Add Edit items (Find, Go to Line, Fold All, Unfold All) targeting
       `nil`, resolved via the responder chain.
-- [ ] Remove the title-bar buttons superseded by menu items.
-- [ ] Diagnose and fix the chained `.fileImporter` bug.
-- [ ] Regression-check `NSDocument` tabbing after the menu change.
+- [x] Remove the title-bar buttons superseded by menu items.
+- [x] Diagnose and fix the chained `.fileImporter` bug.
+- [x] Regression-check `NSDocument` tabbing after the menu change.
 
 ## Implementation plan
 
