@@ -108,6 +108,45 @@ struct MacMinimapTests {
         #expect(colours.count >= 3)
     }
 
+    // MARK: - Viewport indicator overlay (T02)
+
+    private var longFixture: String {
+        (1...40).map { "Paragraph line \($0) with enough words to take up real vertical space." }.joined(separator: "\n\n")
+    }
+
+    @Test func viewportIndicatorIsShorterThanTheMinimapWhenContentExceedsTheViewport() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 200), foldStore: FoldStore())
+        view.loadMarkdown(longFixture)
+        view.setMode(.source)
+        view.ensureLayout()
+        #expect(view.layoutHeight > view.bounds.height)
+
+        let snapshot = MacMinimapChrome.snapshot(from: view)
+        let minimapBounds = CGRect(x: 0, y: 0, width: 120, height: 400)
+        let indicator = MacMinimapChrome.viewportRect(in: minimapBounds, snapshot: snapshot)
+
+        #expect(indicator.height < minimapBounds.height)
+        #expect(indicator.origin.y == 0)
+    }
+
+    @Test func viewportIndicatorHeightGrowsWithTheEditorsVisibleHeight() throws {
+        let shortView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 150), foldStore: FoldStore())
+        shortView.loadMarkdown(longFixture)
+        shortView.setMode(.source)
+        shortView.ensureLayout()
+
+        let tallView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 450), foldStore: FoldStore())
+        tallView.loadMarkdown(longFixture)
+        tallView.setMode(.source)
+        tallView.ensureLayout()
+
+        let minimapBounds = CGRect(x: 0, y: 0, width: 120, height: 400)
+        let shortIndicator = MacMinimapChrome.viewportRect(in: minimapBounds, snapshot: MacMinimapChrome.snapshot(from: shortView))
+        let tallIndicator = MacMinimapChrome.viewportRect(in: minimapBounds, snapshot: MacMinimapChrome.snapshot(from: tallView))
+
+        #expect(tallIndicator.height > shortIndicator.height)
+    }
+
     private func distinctOpaqueColours(in rep: NSBitmapImageRep) -> Set<[Int]> {
         var colours: Set<[Int]> = []
         for x in stride(from: 0, to: rep.pixelsWide, by: 4) {

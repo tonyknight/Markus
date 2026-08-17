@@ -606,6 +606,13 @@ final class FoldingTextView: PlatformView {
         return y >= vis.minY && y <= vis.maxY
     }
 
+    /// The packed-layout rect currently on screen, in the same packed
+    /// coordinate space as `SourceLineMap`/`layoutHeight` — used by the
+    /// minimap to draw a viewport indicator (R18).
+    func currentVisiblePackedRect() -> CGRect {
+        visiblePackedRect()
+    }
+
     func scrollPackedYOnScreen(_ packedY: CGFloat) {
         let lineHeight = sourceLineHeight(forSourceLine: sourceLine(atY: packedY) ?? 1) ?? 20
         let target = CGRect(x: 0, y: packedY, width: max(bounds.width, 1), height: max(lineHeight, 1))

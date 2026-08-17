@@ -193,6 +193,22 @@ struct FoldingTextViewTests {
         #expect(!view.foldStore.foldedIDs.contains(blockAOriginal.id))
     }
 
+    // MARK: - Viewport exposure (minimap T02)
+
+    @Test func currentVisiblePackedRectExposesTheEditorsVisibleRegion() {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 300), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        // No enclosing NSScrollView in this headless test, so the editor
+        // falls back to reporting its own bounds as the visible region —
+        // the same fallback `scrollPackedYOnScreen` already relies on.
+        let visible = view.currentVisiblePackedRect()
+        #expect(visible.size == view.bounds.size)
+        #expect(visible.origin == .zero)
+    }
+
     private func usesCollapsedParagraphStyles(_ storage: NSTextStorage) -> Bool {
         var found = false
         storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, _, stop in

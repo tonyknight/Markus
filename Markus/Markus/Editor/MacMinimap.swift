@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 #if os(macOS)
 import AppKit
@@ -30,6 +31,7 @@ struct MinimapSnapshot: Equatable {
     var map: SourceLineMap
     var headingLines: Set<Int>
     var fenceLines: Set<Int>
+    var visiblePackedRect: CGRect
 
     func sourceLine(atMinimapY y: CGFloat) -> Int? {
         map.sourceLine(atY: y)
@@ -90,8 +92,20 @@ enum MacMinimapChrome {
             visibleSourceLines: editor.visibleSourceLines,
             map: editor.session.sourceLineMap(),
             headingLines: headingLines,
-            fenceLines: fenceLines
+            fenceLines: fenceLines,
+            visiblePackedRect: editor.currentVisiblePackedRect()
         )
+    }
+
+    /// Scales `snapshot.visiblePackedRect` (in packed layout coordinates)
+    /// into `minimapBounds` using the same scale factor the bars are drawn
+    /// with, so the viewport indicator lines up with the bars beneath it.
+    static func viewportRect(in minimapBounds: CGRect, snapshot: MinimapSnapshot) -> CGRect {
+        guard snapshot.packedHeight > 0, minimapBounds.height > 0 else { return .zero }
+        let scale = minimapBounds.height / snapshot.packedHeight
+        let y = minimapBounds.minY + snapshot.visiblePackedRect.minY * scale
+        let height = max(2, snapshot.visiblePackedRect.height * scale)
+        return CGRect(x: minimapBounds.minX, y: y, width: minimapBounds.width, height: height)
     }
 }
 
@@ -117,6 +131,9 @@ final class MacMinimapView: NSView {
             let rect = NSRect(x: 4, y: bar.y * scale, width: width, height: height)
             rect.fill()
         }
+
+        NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
+        MacMinimapChrome.viewportRect(in: bounds, snapshot: snapshot).fill()
     }
 
     private func color(for kind: MinimapBarKind) -> NSColor {
