@@ -14,15 +14,14 @@ depends_on:
 subtasks:
 - id: T1
   title: Build ribbon rail SwiftUI column (hamburger top, gear bottom)
-  status: todo
+  status: done
 - id: T2
   title: Library panel closed-by-default / hamburger-toggle logic
-  status: todo
+  status: done
 - id: T3
   title: Empty state offering Open Folder… with no folder session
-  status: todo
-plan_status: in-progress
-current_task: T03
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -68,8 +67,8 @@ do nothing.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Ribbon rail SwiftUI column + host toggle state + gear stub
 Build the macOS-only ribbon rail (`RibbonRailView`: hamburger icon top,
@@ -91,6 +90,7 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 task before commit: `-destination 'platform=iOS Simulator,name=iPhone 17'`
 and `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`,
 same `-only-testing:MarkusTests/RibbonRailTests test`)
+- [ ] todo
 - [x] done
 
 ### T02: Library panel closed-by-default / hamburger-toggle logic
@@ -117,6 +117,7 @@ on `-destination 'platform=iOS Simulator,name=iPhone 17'` and
 `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
 - [ ] todo
 - [x] done
+
 ### T03: Empty state offering Open Folder… with no folder session
 Add `LibraryEmptyStateView` (macOS-only, in `RibbonRail.swift`): shown
 by `LibraryPanelView` when the panel is open but `host.folderSession`
@@ -133,6 +134,7 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 change in this task beyond what T01/T02 already exercised on all three
 destinations — macOS alone suffices here)
 - [ ] todo
+- [x] done
 
 ## Notes
 

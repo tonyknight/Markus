@@ -8,6 +8,18 @@ enum RibbonRailChrome {
     }
 }
 
+/// Pure logic behind the library panel's empty state, kept out of the
+/// view body so it is testable without rendering SwiftUI. Opening one
+/// file only grants a security scope for that file — its parent folder
+/// cannot be enumerated under the sandbox (N7) — so there is no
+/// "show the containing folder" fallback here, only Open Folder….
+enum LibraryChrome {
+    @MainActor
+    static func openFolderFromEmptyState(on host: DocumentHost) {
+        host.isFolderImporterPresented = true
+    }
+}
+
 #if os(macOS)
 /// A slim vertical rail pinned to the left of the document: a hamburger
 /// at the top toggles the library panel (the relocated folder tree from
@@ -51,12 +63,38 @@ struct RibbonRailView: View {
 /// The library panel behind the ribbon rail's hamburger: it *is* the
 /// `FolderTreeView` from ticket 03 (unmodified, relocated here rather
 /// than duplicated), given a home and a toggle affordance. Shown by
-/// `ContentView` whenever `host.isLibraryPanelOpen` is true.
+/// `ContentView` whenever `host.isLibraryPanelOpen` is true. With no
+/// folder session (e.g. a single file open, or the panel opened before
+/// any folder was ever chosen) it falls back to an empty state instead
+/// of a blank column.
 struct LibraryPanelView: View {
     @ObservedObject var host: DocumentHost
 
     var body: some View {
-        FolderTreeView(host: host)
+        if host.folderSession != nil {
+            FolderTreeView(host: host)
+        } else {
+            LibraryEmptyStateView(host: host)
+        }
+    }
+}
+
+/// Shown in place of the tree when the library panel is open but no
+/// folder session exists yet. Offers **Open Folder…** rather than
+/// silently doing nothing.
+struct LibraryEmptyStateView: View {
+    @ObservedObject var host: DocumentHost
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("No Folder Open", systemImage: "folder")
+        } description: {
+            Text("Open a folder to browse its Markdown files.")
+        } actions: {
+            Button("Open Folder…") {
+                LibraryChrome.openFolderFromEmptyState(on: host)
+            }
+        }
     }
 }
 #endif

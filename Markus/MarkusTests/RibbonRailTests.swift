@@ -62,4 +62,14 @@ struct RibbonRailTests {
         host.openPicked(lone)
         #expect(!host.isLibraryPanelOpen)
     }
+
+    @Test func emptyStateActionPresentsTheFolderImporterWithoutAFolderSession() {
+        let host = makeHost()
+        #expect(host.folderSession == nil)
+        #expect(!host.isFolderImporterPresented)
+
+        LibraryChrome.openFolderFromEmptyState(on: host)
+
+        #expect(host.isFolderImporterPresented)
+    }
 }
