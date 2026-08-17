@@ -3,10 +3,10 @@ id: 20260816-02-window-geometry-and-appkit-main-menu
 title: Window geometry and AppKit main menu
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-16
-closed:
+closed: 2026-08-16
 notes: ''
 parent:
 depends_on: []
@@ -197,3 +197,13 @@ All 5 plan tasks (T01-T05) complete and committed. Window opens at three-quarter
 
 ### 2026-08-16
 Post-review fixes (T06, T07) for the two Important findings from a fresh review pass. T06: removed Settings and Outline from the macOS title bar - the ticket's own AC says the title bar contains 'only' the Source/Preview control with no carve-out, so both are now #if os(iOS)-guarded like the other superseded buttons; MacTitleBarChromeTests now asserts a live NSToolbar.items.count of 1 (was 4). Neither has a macOS entry point until a later ticket's ribbon rail / settings surface lands, so macOS temporarily has no in-app way to reach Settings - accepted as this ticket's honest scope rather than rationalized around. T07: replaced the responder-chain tests in MacMainMenuTests that started their manual chain-walk directly at MarkdownDocumentViewController (which already implements the action, so no real walk occurred) with two stronger tests - one that makes a real SwiftUI-hosted content view the window's first responder and dispatches from there, and one that opens two documents/windows and confirms a routed action resolves to the specific window's document, not the other. Both pass immediately against the existing T04 production code - no responder-chain bug found, the gap was purely evidentiary. Also deleted the N9-violating standardDocumentActionsAreImplementedByNSDocumentControllerAndNSDocumentWithoutCustomWiring test (could only fail if AppKit itself were broken); the correct selectors/targets on the standard File items are already covered structurally by the existing fileMenu... test. Verify: xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -> TEST SUCCEEDED. Working tree fully committed.
+
+## Review
+
+**2026-08-16 — Verdict: Important issues found, then fixed; clean on re-review.**
+
+First pass (fresh subagent, against R1–R4, N5, N9, Testing requirements): Important — Settings button left unconditionally visible on the macOS title bar, contradicting R4's explicit list, the ticket's own "only the Source/Preview control" AC, and the ticket's own T05 plan text (which said Settings would be removed) — flagged as a divergence rationalized after the fact rather than an AC amendment made before marking done. Important — `MacMainMenuTests`' responder-chain routing tests started the manual chain-walk at `MarkdownDocumentViewController` itself, which already implements the target selectors, so no real chain-walk occurred and no test proved routing resolves to the correct document across multiple open windows. Minor — two N9-violating assertions that could only fail if AppKit itself were broken. Verified sound on first pass: R1 geometry math, the fileImporter stacking fix, N5 (no WindowGroup added, real tabbing test), Fold All/Unfold All as honest stubs (fold service is ticket 04), commit format.
+
+Fixes (T06, T07): Settings and Outline both moved behind `#if os(iOS)`, matching the AC's unconditional "only" wording — `MacTitleBarChromeTests` now asserts a live `NSToolbar.items.count == 1` on a real window. Two new tests added: one dispatches from a real `NSWindow.firstResponder` (a SwiftUI content view that does *not* implement the target selectors, forcing a genuine `nextResponder` climb to the spliced view controller), and one opens two real document/window pairs and confirms a routed action lands only on the correct window's document. The N9-violating test was deleted.
+
+Re-review (fresh subagent, scoped to the fix commits, independently re-ran both affected test targets — both `TEST SUCCEEDED`): confirmed the toolbar removal is real (not cosmetic-hidden-but-reachable), confirmed the first-responder test cannot pass by accident (the SwiftUI content view genuinely doesn't respond to the custom selectors), confirmed the two-window test genuinely asserts per-window resolution rather than absence-of-crash, and confirmed the Notes entry documents the trade-off honestly (Settings/Outline are now temporarily unreachable on macOS until a later ticket adds an entry point — disclosed, not glossed over). One Minor/FYI noted for the record: `host.isSettingsPresented`/`isOutlinePresented` are now write-only on macOS (no compiler warning, since Swift can't detect runtime-unreachable bindings) — expected consequence of the fix, not a new regression. Verdict: clean, ready for done.
