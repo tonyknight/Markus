@@ -6,9 +6,10 @@
 
 macOS-first: real menus, rendered Preview, Source-mode editing, working chrome, 5 MB performance
 
-## In progress (0)
+## In progress (1)
 
-_No tickets in progress._
+- **20260816-11-minimap** Minimap [medium]
+  - subtasks: 0/5 · checkboxes: 0/12
 
 ## Blocked (5)
 
@@ -23,11 +24,10 @@ _No tickets in progress._
 - **20260816-14-test-integrity-pass** Test integrity pass [low]
   - depends on: 20260816-13-text-input-in-source (not yet marked blocked)
 
-## Up next (3)
+## Up next (2)
 
 - **20260816-08-preview-rendering-via-paragraph-substitution** Preview rendering via paragraph substitution [high]
 - **20260816-06-settings-surface** Settings surface [medium]
-- **20260816-11-minimap** Minimap [medium]
 
 ## Recently completed (last 6 of 6)
 
@@ -40,5 +40,5 @@ _No tickets in progress._
 
 ## Stats
 
-- Total: 14 tickets · 6 done · 8 todo · 0 in-progress · 0 blocked
+- Total: 14 tickets · 6 done · 7 todo · 1 in-progress · 0 blocked
 - By type: 10 feature · 2 chore · 1 spike · 1 bug
