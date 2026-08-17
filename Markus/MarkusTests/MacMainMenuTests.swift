@@ -145,18 +145,48 @@ struct MacMainMenuTests {
         #expect(document.host.isFolderImporterPresented)
     }
 
-    @Test func foldAllAndUnfoldAllTargetNilAndResolveWithoutCrashingAheadOfTheFoldService() throws {
-        // Per the ticket: Fold All / Unfold All are wired to the responder
-        // chain only in this ticket. The fold service itself lands in a
-        // later ticket, so this only proves the action resolves and runs
-        // safely, not that folding happens.
+    @Test func foldAllAndUnfoldAllResolveThroughTheResponderChainAndActuallyFoldTheDocument() throws {
+        // Supersedes the earlier placeholder test (which only proved
+        // dispatch didn't crash, ahead of the fold service existing).
+        // Now that ticket T01 built a real fold service, this proves live
+        // fold state changes end to end: menu item -> responder chain ->
+        // MarkdownDocumentViewController -> EditorCommands -> DocumentHost
+        // -> FoldingTextView.foldAll()/unfoldAll() -> FoldStore (N9).
         let document = MarkdownDocument()
         document.makeWindowControllers()
         let window = try #require(document.windowControllers.first?.window)
         let viewController = try #require(window.contentViewController as? MarkdownDocumentViewController)
 
+        let fixture = """
+        ## Heading two
+
+        A paragraph under the H2.
+
+        ### Nested three
+
+        ```swift
+        let answer = 42
+        ```
+
+        ## Following two
+        """
+        document.session.editor.loadMarkdown(fixture)
+
+        let foldableBlocks = document.session.editor.blocks.filter { $0.foldExtent != nil }
+        #expect(foldableBlocks.count == 3)
+        for block in foldableBlocks {
+            #expect(!document.session.editor.foldStore.isFolded(block.id))
+        }
+
         #expect(resolveAndPerform(MacMainMenuAction.performFoldAll, startingAt: viewController))
+        for block in foldableBlocks {
+            #expect(document.session.editor.foldStore.isFolded(block.id))
+        }
+
         #expect(resolveAndPerform(MacMainMenuAction.performUnfoldAll, startingAt: viewController))
+        for block in foldableBlocks {
+            #expect(!document.session.editor.foldStore.isFolded(block.id))
+        }
     }
 
     @Test func customActionsResolveFromTheRealFirstResponderNotJustTheViewControllerItself() throws {

@@ -370,4 +370,14 @@ final class DocumentHost: ObservableObject {
         session.editor.foldCurrent()
         objectWillChange.send()
     }
+
+    func foldAll() {
+        session.editor.foldAll()
+        objectWillChange.send()
+    }
+
+    func unfoldAll() {
+        session.editor.unfoldAll()
+        objectWillChange.send()
+    }
 }

@@ -109,13 +109,11 @@ final class MarkdownDocumentViewController: NSHostingController<ContentView> {
     }
 
     @objc func performFoldAll(_ sender: Any?) {
-        // Wiring only: the responder chain must resolve this action so the
-        // Edit > Fold All menu item is live, but the fold-all service
-        // itself lands in a later ticket of this project.
+        EditorCommands.foldAll(on: host)
     }
 
     @objc func performUnfoldAll(_ sender: Any?) {
-        // Wiring only — see performFoldAll(_:).
+        EditorCommands.unfoldAll(on: host)
     }
 }
 

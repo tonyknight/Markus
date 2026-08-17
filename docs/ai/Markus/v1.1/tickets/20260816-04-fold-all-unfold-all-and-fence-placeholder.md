@@ -21,7 +21,7 @@ subtasks:
 - id: T3
   title: Fence placeholder — opening fence line plus short placeholder
   status: todo
-current_task: T02
+current_task: T03
 plan_status: in-progress
 ---
 ## Description
@@ -69,7 +69,7 @@ wired to the Edit menu items ticket 02 creates.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Fold-all / unfold-all traversal over the block index
 
@@ -119,7 +119,7 @@ Files: `Markus/Markus/Document/MarkdownDocument.swift`,
 `Markus/MarkusTests/MacMainMenuTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/MacMainMenuTests`
-
+- [x] done
 ### T03: Fence placeholder — opening fence line plus short placeholder
 
 Today a folded fence's `foldExtent` (end of opening fence line through

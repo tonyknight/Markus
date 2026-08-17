@@ -30,4 +30,14 @@ enum EditorCommands {
     static func presentGoToLine(on host: DocumentHost) {
         host.presentGoToLine()
     }
+
+    @MainActor
+    static func foldAll(on host: DocumentHost) {
+        host.foldAll()
+    }
+
+    @MainActor
+    static func unfoldAll(on host: DocumentHost) {
+        host.unfoldAll()
+    }
 }
