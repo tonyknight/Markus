@@ -1,34 +1,33 @@
 ---
 id: 20260816-08-preview-rendering-via-paragraph-substitution
-title: "Preview rendering via paragraph substitution"
+title: Preview rendering via paragraph substitution
 type: feature
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-16
 updated: 2026-08-16
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-01-table-grid-spike
+- 20260816-01-table-grid-spike
 subtasks:
-  - id: T1
-    title: Implement NSTextContentStorageDelegate substitution path
-    status: todo
-  - id: T2
-    title: Full GFM span coverage (emphasis, strong, quotes, lists, breaks, links)
-    status: todo
-  - id: T3
-    title: Integrate table attachment from ticket 01
-    status: todo
-  - id: T4
-    title: Degrade images to readable styled text, not raw syntax
-    status: todo
-  - id: T5
-    title: Fixtures/assertions that exercise what a reader actually sees
-    status: todo
+- id: T1
+  title: Implement NSTextContentStorageDelegate substitution path
+  status: todo
+- id: T2
+  title: Full GFM span coverage (emphasis, strong, quotes, lists, breaks, links)
+  status: todo
+- id: T3
+  title: Integrate table attachment from ticket 01
+  status: todo
+- id: T4
+  title: Degrade images to readable styled text, not raw syntax
+  status: todo
+- id: T5
+  title: Fixtures/assertions that exercise what a reader actually sees
+  status: todo
 ---
-
 ## Description
 
 Preview today only adds attributes to the untouched buffer, so a reader

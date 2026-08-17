@@ -6,9 +6,10 @@
 
 macOS-first: real menus, rendered Preview, Source-mode editing, working chrome, 5 MB performance
 
-## In progress (0)
+## In progress (1)
 
-_No tickets in progress._
+- **20260816-08-preview-rendering-via-paragraph-substitution** Preview rendering via paragraph substitution [high]
+  - subtasks: 0/5 · checkboxes: 0/11
 
 ## Blocked (9)
 
@@ -31,10 +32,9 @@ _No tickets in progress._
 - **20260816-14-test-integrity-pass** Test integrity pass [low]
   - depends on: 20260816-13-text-input-in-source (not yet marked blocked)
 
-## Up next (3)
+## Up next (2)
 
 - **20260816-02-window-geometry-and-appkit-main-menu** Window geometry and AppKit main menu [high]
-- **20260816-08-preview-rendering-via-paragraph-substitution** Preview rendering via paragraph substitution [high]
 - **20260816-05-ribbon-rail-and-library-panel** Ribbon rail and library panel [medium]
 
 ## Recently completed (last 2 of 2)
@@ -44,5 +44,5 @@ _No tickets in progress._
 
 ## Stats
 
-- Total: 14 tickets · 2 done · 12 todo · 0 in-progress · 0 blocked
+- Total: 14 tickets · 2 done · 11 todo · 1 in-progress · 0 blocked
 - By type: 10 feature · 2 chore · 1 spike · 1 bug
