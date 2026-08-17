@@ -21,7 +21,6 @@ subtasks:
   title: Regression test against a sandboxed fixture folder
   status: done
 plan_status: approved
-current_task: T02
 ---
 ## Description
 
@@ -61,7 +60,7 @@ depends on to have anything to show.
 ## Implementation plan
 
 Status: approved
-Current task: T02
+Current task: 
 
 ### T01: URL-based, security-scope-safe folder enumeration
 
@@ -120,3 +119,6 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-16
 bora-debug: T02's regression test initially referenced URL.BookmarkCreationOptions/.BookmarkResolutionOptions .withSecurityScope directly and unconditionally, which is unavailable on iOS/iPadOS -- broke the iPhone 17 simulator build (N6). Root cause: should have reused RecentDocuments' existing #if os(macOS) cross-platform bookmark handling instead of reimplementing it. Fixed by rewriting the test to go through RecentDocuments.record/startAccessing (same pattern as RecentDocumentsTests), matching the real production FolderSession flow on every platform. Verified GREEN on macOS and iPhone 17 simulator after the fix.
+
+### 2026-08-16
+Ticket complete (implementation only; not marked done -- that is the controlling session's call). T01: MarkdownFolderTree.build(root:listDirectoryContents:) now enumerates exclusively via URL-based FileManager APIs (contentsOfDirectory(at:), URL.resourceValues), never atPath:/fileExists(atPath:), threaded through an injectable lister proven by a deterministic unit test (RED against the old atPath body, GREEN after the fix). T02: added a fixture-backed regression test (3+ nesting levels, mixed extensions, dotfile file+dir, non-Markdown-only dir, empty dir) driven through RecentDocuments' real bookmark/security-scope round trip, matching FolderSession's production flow; asserts full live nested/filtered output (N9). All acceptance criteria and subtasks checked. Full suite green on all three required destinations: macOS 79/79, iPhone 17 simulator 72/72, iPad Pro 13-inch (M5) simulator 72/72. Working tree clean, three commits (T01, T02, and a T02 iOS-build fix caught by bora-debug: initial test used macOS-only .withSecurityScope bookmark options unconditionally, breaking iOS/iPadOS -- fixed by routing through RecentDocuments' existing cross-platform bookmark handling). Caveat for reviewer: a real macOS App Sandbox permission denial for path-based enumeration could not be reproduced deterministically in this automated environment (confirmed empirically: temp-dir and downloads-entitled fixtures behave identically under contentsOfDirectory(atPath:) and contentsOfDirectory(at:) even with an active security scope, since those locations don't require a runtime-granted extension) -- true denial needs a folder outside all static entitlements, only reachable via a real interactive NSOpenPanel grant. T01's injectable-lister test substitutes for this: it proves the mechanism is exclusively URL-based deterministically, without depending on OS sandbox specifics.
