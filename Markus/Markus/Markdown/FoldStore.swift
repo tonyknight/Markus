@@ -12,6 +12,20 @@ enum EditorMode: Equatable, Hashable, Sendable {
 
 final class FoldStore {
     private(set) var foldedIDs: Set<FoldID> = []
+    private let persistence: FoldPersistence
+    private var boundURL: URL?
+
+    init(persistence: FoldPersistence = FoldPersistence()) {
+        self.persistence = persistence
+    }
+
+    /// Binds this store to a file, loading whatever fold set was
+    /// persisted for it (empty if none). Every subsequent mutation is
+    /// persisted back under this file's key (R16).
+    func bind(to url: URL?) {
+        boundURL = url
+        foldedIDs = url.map(persistence.load(for:)) ?? []
+    }
 
     func toggle(_ id: FoldID) {
         if foldedIDs.contains(id) {
@@ -19,6 +33,7 @@ final class FoldStore {
         } else {
             foldedIDs.insert(id)
         }
+        persist()
     }
 
     func isFolded(_ id: FoldID) -> Bool {
@@ -27,10 +42,12 @@ final class FoldStore {
 
     func foldAll<S: Sequence>(_ ids: S) where S.Element == FoldID {
         foldedIDs.formUnion(ids)
+        persist()
     }
 
     func unfoldAll() {
         foldedIDs.removeAll()
+        persist()
     }
 
     func foldedIDs(for mode: EditorMode) -> Set<FoldID> {
@@ -42,6 +59,11 @@ final class FoldStore {
             guard isFolded(block.id) else { return nil }
             return block.foldExtent
         }
+    }
+
+    private func persist() {
+        guard let boundURL else { return }
+        persistence.save(foldedIDs, for: boundURL)
     }
 }
 

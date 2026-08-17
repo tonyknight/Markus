@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated struct FoldID: Hashable, Sendable {
+nonisolated struct FoldID: Hashable, Sendable, Codable {
     enum Kind: String, Hashable, Sendable, Codable {
         case heading
         case fence

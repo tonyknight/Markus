@@ -21,7 +21,7 @@ subtasks:
 - id: T3
   title: Repair fold IDs against anchors when the block index rebuilds
   status: todo
-current_task: T02
+current_task: T03
 plan_status: in-progress
 ---
 ## Description
@@ -69,7 +69,7 @@ typing does.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Add `FoldID.anchor` (short digest of the block's opening line)
 
@@ -125,7 +125,7 @@ Files: `Markus/Markus/Markdown/FoldPersistence.swift`,
 `Markus/MarkusTests/FoldStoreTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/FoldStoreTests`
-- [ ] done
+- [x] done
 ### T03: Repair fold IDs against anchors when the block index rebuilds
 
 Add `FoldStore.repair(against blocks: [Block])`: for each currently
