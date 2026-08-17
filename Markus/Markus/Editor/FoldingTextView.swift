@@ -62,6 +62,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
     private weak var textStorage: NSTextStorage?
+    let contentStorageDelegate = PreviewContentStorageDelegate()
 
     init(foldStore: FoldStore = FoldStore(), mode: EditorMode = .preview, tokens: ThemeTokens = .default) {
         self.foldStore = foldStore
@@ -73,6 +74,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         self.layoutManager = layoutManager
         self.contentStorage = contentStorage
         layoutManager.delegate = self
+        contentStorage.delegate = contentStorageDelegate
     }
 
     func loadMarkdown(_ markdown: String, into textStorage: NSTextStorage) {
@@ -181,14 +183,47 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             ?? contentStorage?.textStorage?.string
             ?? (layoutManager?.textContentManager as? NSTextContentStorage)?.textStorage?.string
         guard let string, !string.isEmpty else { return [] }
-        return foldStore.hiddenByteRanges(in: blocks).compactMap { bytes in
+        var ranges = foldStore.hiddenByteRanges(in: blocks).compactMap { bytes -> NSRange? in
             let range = UTF8NSRange.nsRange(utf8Bytes: bytes, in: string)
             guard range.location != NSNotFound, range.length > 0 else { return nil }
             return range
         }
+        // Continuation lines of a multi-line Preview substitution (e.g.
+        // a table's delimiter/data rows beyond its first line) collapse
+        // the same way a folded block does: a zero-height owned
+        // fragment (N3), never a rewritten buffer or near-zero font
+        // size (N4).
+        if mode == .preview, let index = contentStorageDelegate.index {
+            ranges.append(contentsOf: index.continuationUTF16Ranges)
+        }
+        return ranges
+    }
+
+    /// Rebuilds the Preview substitution index from the current buffer,
+    /// theme, and zoom. Deliberately produces data that lives only on
+    /// `contentStorageDelegate` — never as attributes on `textStorage`
+    /// — so `applyStyling`'s blind `setAttributes(_:range:)` below
+    /// cannot clobber it (the integration risk flagged for this
+    /// ticket): there is nothing substitution-related on the buffer to
+    /// clobber. `applyStyling` still forces `NSTextContentStorage` to
+    /// invalidate its cached paragraphs and re-query this delegate,
+    /// which is the desired refresh on every mode/theme/zoom/fold
+    /// change.
+    private func rebuildSubstitutionIndex(textStorage: NSTextStorage) {
+        contentStorageDelegate.isPreviewMode = (mode == .preview)
+        guard mode == .preview else {
+            contentStorageDelegate.index = nil
+            return
+        }
+        contentStorageDelegate.index = PreviewSubstitutionIndex.build(
+            markdown: textStorage.string,
+            tokens: tokens,
+            zoomScale: zoomScale
+        )
     }
 
     private func applyStyling(to textStorage: NSTextStorage) {
+        rebuildSubstitutionIndex(textStorage: textStorage)
         let full = NSRange(location: 0, length: textStorage.length)
         textStorage.beginEditing()
         switch mode {

@@ -27,6 +27,8 @@ subtasks:
 - id: T5
   title: Fixtures/assertions that exercise what a reader actually sees
   status: todo
+plan_status: approved
+current_task: T01
 ---
 ## Description
 
@@ -90,8 +92,93 @@ mode substitutes nothing and the buffer stays raw Markdown throughout.
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: approved
+Current task: T01
+
+Design note (read before touching FoldingSession): substitution is
+implemented so that no rendered content or attachment is ever stored as
+an attribute on `documentTextStorage` (the one authoritative buffer).
+`PreviewSubstitutionIndex` is rebuilt from the current `String` on
+demand (mode/text change) and handed to a `PreviewContentStorageDelegate`
+which builds fresh `NSTextParagraph`s per query. Because nothing
+substitution-related lives on the backing store, `FoldingSession
+.applyStyling`'s existing blind `setAttributes(_, range: full)` cannot
+"wipe" it — there is nothing on the buffer to wipe. Multi-line elements
+(tables, wrapped paragraphs/quotes, fenced code) render their full
+content on one anchor source line; their remaining source lines are
+hidden by reusing the *already-tested* `FoldingTextLayoutFragment
+.isCollapsed` zero-height mechanism (extended to cover
+"substitution-continuation" ranges alongside fold-hidden ranges) rather
+than inventing a second hiding mechanism — this keeps N3's "zero-height
+owned fragments, never near-zero font size" guarantee intact by
+construction.
+
+- **T01: Delegate scaffolding + heading substitution + risk proof.**
+  Files: `Markus/Markus/Editor/PreviewContentStorageDelegate.swift`
+  (new), `Markus/Markus/Editor/FoldingTextView.swift` (wire
+  `contentStorage.delegate`), `Markus/Markus/Markdown
+  /PreviewSubstitution.swift` (new: `PreviewElement`,
+  `PreviewSubstitutionIndex`, heading-only element collection to start).
+  Prove: Source mode delegate returns nil for every paragraph (raw bytes
+  unchanged); Preview mode substitutes headings with font scaled by
+  level and the substituted text contains no literal `#`; substitution
+  survives `setMode`/`setTheme`/`setZoomScale`/fold-toggle round trips
+  (the FoldingSession risk, exercised directly).
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T02: Inline span rendering.** Emphasis (italic), strong (bold),
+  strikethrough, inline code, links (URL as `.link`, brackets/parens
+  absent from displayed string). Files: `PreviewSubstitution.swift`
+  (inline-node-to-`NSAttributedString` walker), new
+  `MarkusTests/PreviewSubstitutionTests.swift`.
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T03: Block quotes and lists.** Bulleted/ordered/task lists
+  (including nested, via depth-tagged elements), block quotes, shaped
+  via paragraph-style indentation — marker/`>` prefix absent from
+  displayed string. Generalizes the continuation-line hiding from T01 to
+  any multi-line element. Files: `PreviewSubstitution.swift`,
+  `PreviewSubstitutionTests.swift`.
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T04: Thematic breaks.** Drawn as a rule (attachment or paragraph
+  border), not literal `---`/`***`. Files: `PreviewSubstitution.swift`,
+  `PreviewSubstitutionTests.swift`.
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T05: Table integration (ticket 01).** Table elements substitute to a
+  `TableAttachment` built from `TableParsing.parseTables`; the table's
+  other source lines hidden via the same continuation mechanism. Files:
+  `PreviewSubstitution.swift`, `PreviewContentStorageDelegate.swift`,
+  `PreviewSubstitutionTests.swift`.
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T06: Fenced code hiding + image degradation.** Fence delimiter lines
+  hidden (content lines stay visible, monospace); inline images degrade
+  to styled placeholder text carrying the alt text, not raw `![]()`
+  syntax and not a real image (R12). Files: `PreviewSubstitution.swift`,
+  `PreviewSubstitutionTests.swift`.
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T07: Fixture + reader-visible assertions.** Extend
+  `MarkusTests/GFMPreviewFixture.swift` (or add a sibling preview
+  fixture) covering bold, italic, block quote, nested list, image,
+  heading below H1, table, and thematic break. Assertions read the
+  *substituted/rendered* string a reader would see (no literal `#`,
+  `**`, `>`, `- [ ]`, `[]()`, backticks; bold/italic traits present;
+  table renders via `TableAttachment`; Source mode round-trips raw
+  bytes unchanged). Files: `MarkusTests/GFMPreviewFixture.swift`,
+  `MarkusTests/PreviewSubstitutionTests.swift` or new
+  `MarkusTests/PreviewRenderingSubstitutionTests.swift`.
+  Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+
+- **T08: Ticket-level verification.** No production changes expected;
+  fix whatever the three-destination run surfaces on iOS/iPadOS.
+  Verify (all three, per Requirements — this ticket touches the shared
+  editor/renderer):
+  `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
+  `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' test`
+  `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test`
 
 ## Notes
 
