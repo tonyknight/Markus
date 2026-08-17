@@ -79,6 +79,38 @@ struct FoldingTextViewTests {
         #expect(view.string == beforeEdit)
     }
 
+    @Test func foldAllCollapsesEveryFoldableBlockAndUnfoldAllRestoresLayoutHeight() throws {
+        let view = FoldingTextView()
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+        let unfoldedHeight = view.layoutHeight
+        #expect(unfoldedHeight > 0)
+
+        let foldableBlocks = view.blocks.filter { $0.foldExtent != nil }
+        // Fixture has two headings and one fence, all foldable.
+        #expect(foldableBlocks.count == 3)
+        for block in foldableBlocks {
+            #expect(!view.foldStore.isFolded(block.id))
+        }
+
+        view.foldAll()
+        for block in foldableBlocks {
+            #expect(view.foldStore.isFolded(block.id))
+        }
+        #expect(view.collapsedFragmentCount > 0)
+        #expect(view.layoutHeight < unfoldedHeight)
+        #expect(view.string == fixture)
+        let storage = try #require(view.textStorage)
+        #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
+
+        view.unfoldAll()
+        for block in foldableBlocks {
+            #expect(!view.foldStore.isFolded(block.id))
+        }
+        #expect(abs(view.layoutHeight - unfoldedHeight) < 1)
+    }
+
     private func usesCollapsedParagraphStyles(_ storage: NSTextStorage) -> Bool {
         var found = false
         storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, _, stop in

@@ -25,6 +25,14 @@ final class FoldStore {
         foldedIDs.contains(id)
     }
 
+    func foldAll<S: Sequence>(_ ids: S) where S.Element == FoldID {
+        foldedIDs.formUnion(ids)
+    }
+
+    func unfoldAll() {
+        foldedIDs.removeAll()
+    }
+
     func foldedIDs(for mode: EditorMode) -> Set<FoldID> {
         foldedIDs
     }

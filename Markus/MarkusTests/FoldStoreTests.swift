@@ -57,4 +57,26 @@ struct FoldStoreTests {
         #expect(String(data: saved, encoding: .utf8) == fixture)
         #expect(storage.string == fixture)
     }
+
+    @Test func foldAllFoldsEveryFoldableBlockAndUnfoldAllClearsAll() throws {
+        let blocks = BlockIndex.build(markdown: fixture)
+        let foldableIDs = blocks.compactMap { $0.foldExtent != nil ? $0.id : nil }
+        // Fixture has two headings and one fence, all foldable.
+        #expect(foldableIDs.count == 3)
+
+        let store = FoldStore()
+        #expect(store.foldedIDs.isEmpty)
+
+        store.foldAll(foldableIDs)
+        for id in foldableIDs {
+            #expect(store.isFolded(id))
+        }
+        #expect(store.foldedIDs == Set(foldableIDs))
+
+        store.unfoldAll()
+        #expect(store.foldedIDs.isEmpty)
+        for id in foldableIDs {
+            #expect(!store.isFolded(id))
+        }
+    }
 }

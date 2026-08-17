@@ -5,7 +5,7 @@ type: feature
 priority: high
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
 notes: ''
 parent:
@@ -21,6 +21,8 @@ subtasks:
 - id: T3
   title: Fence placeholder — opening fence line plus short placeholder
   status: todo
+current_task: T02
+plan_status: in-progress
 ---
 ## Description
 
@@ -66,8 +68,98 @@ wired to the Edit menu items ticket 02 creates.
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Fold-all / unfold-all traversal over the block index
+
+Add `foldAll()` / `unfoldAll()` to `FoldStore` (set-based: fold every
+`FoldID` present in the current block list / clear the set) and thread
+them through `FoldingSession.foldAll(textStorage:)` /
+`unfoldAll(textStorage:)` (mirroring the existing `applyFolds()` shape:
+restyle + `invalidateLayout()`) and `FoldingTextView.foldAll()` /
+`unfoldAll()` (mirroring `foldCurrent()`/`toggleFold(atSourceLine:)`).
+This reuses the existing zero-height `FoldingTextLayoutFragment`
+mechanism (N3) — no new hiding path, just driving `FoldStore` over every
+block instead of one. Test asserts, on the existing folding fixture:
+after `foldAll()`, `foldStore.isFolded(id)` is true for every block with
+a `foldExtent` (heading and fence) and `collapsedFragmentCount > 0`
+after `ensureLayout()`; after `unfoldAll()`, every previously-folded id
+is unfolded and `layoutHeight` is restored to the pre-fold height — live
+fold state, not a flag (N9).
+
+Files: `Markus/Markus/Markdown/FoldStore.swift`,
+`Markus/Markus/Editor/FoldingTextView.swift`,
+`Markus/MarkusTests/FoldStoreTests.swift`,
+`Markus/MarkusTests/FoldingTextViewTests.swift`
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/FoldStoreTests -only-testing:MarkusTests/FoldingTextViewTests`
+- [x] done
+### T02: Wire Edit menu items (from ticket 02) to the fold service
+
+Replace the empty bodies of `MarkdownDocumentViewController.performFoldAll(_:)`
+/ `performUnfoldAll(_:)` in `Markus/Markus/Document/MarkdownDocument.swift`
+with calls through `EditorCommands.foldAll(on:)` /
+`EditorCommands.unfoldAll(on:)` (new cases alongside the existing
+`foldCurrent(on:)`) → `DocumentHost.foldAll()` / `unfoldAll()` →
+`session.editor.foldAll()` / `unfoldAll()` (built in T01) — the same
+responder-chain path `performFind`/`performGoToLine` already use, so
+this is the one invocation path, not a parallel one. Test drives the
+real responder chain exactly as
+`customEditAndOpenFolderActionsResolveThroughTheResponderChainToTheDocument`
+does, but with a document loaded with the folding fixture, and asserts
+live state after dispatch: every foldable block's `foldStore.isFolded`
+is true post-Fold-All and false post-Unfold-All (not just that dispatch
+"ran without crashing", which is what the current placeholder test
+proves and which this task supersedes).
+
+Files: `Markus/Markus/Document/MarkdownDocument.swift`,
+`Markus/Markus/Editor/EditorCommands.swift`,
+`Markus/Markus/Document/DocumentHost.swift`,
+`Markus/MarkusTests/MacMainMenuTests.swift`
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/MacMainMenuTests`
+
+### T03: Fence placeholder — opening fence line plus short placeholder
+
+Today a folded fence's `foldExtent` (end of opening fence line through
+end of block, set in `BlockIndex.build`) collapses every line in that
+range to zero height via `FoldingTextLayoutFragment`, so the block
+vanishes after its opening line — an empty gap, not a placeholder (R15
+violation). Give `FoldingTextLayoutFragment` a non-collapsing
+"placeholder" state: a fixed short line of text (e.g. "⋯") drawn in
+place of the fragment's real content, sized to one line's height rather
+than zero. In `FoldingSession`, when resolving the layout fragment for a
+text element (`textLayoutManager(_:textLayoutFragmentFor:in:)`),
+designate the first hidden line inside a folded **fence**'s
+`foldExtent` as the placeholder element for that block (heading folds
+keep collapsing fully — R15 only asks for fences) and mark every other
+hidden line in that block's extent fully collapsed as today. This stays
+a layout concern per N3: the real fenced-body text is never removed
+from `NSTextStorage` and no paragraph style is collapsed to hide it —
+only the owned fragment's drawn glyphs and reported height change for
+that one designated line. Test loads the existing fixture's fenced
+block, folds it, calls `ensureLayout()`, and asserts: the opening
+` ```swift ` line's fragment is not collapsed (still contributes its
+real height to `layoutHeight`), exactly one collapsed-and-visible
+placeholder fragment exists with non-zero height between the opening
+fence line and the following block, the real fenced body text
+(`let answer = 42`) is absent from anything drawn/enumerated as visible,
+and `documentTextStorage.string`/`DocumentSave.writeUTF8` are still
+byte-identical to the source fixture (buffer never rewritten, N3/N9).
+
+Files: `Markus/Markus/Editor/FoldingTextView.swift`,
+`Markus/MarkusTests/FoldingTextViewTests.swift`
+
+Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/FoldingTextViewTests`
+
+### Ticket-scope verify (after T03)
+
+```
+xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test
+xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test
+```
 
 ## Notes
 

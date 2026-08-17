@@ -112,6 +112,19 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         invalidateLayout()
     }
 
+    func foldAll(textStorage: NSTextStorage) {
+        self.textStorage = textStorage
+        let foldableIDs = blocks.compactMap { $0.foldExtent != nil ? $0.id : nil }
+        foldStore.foldAll(foldableIDs)
+        applyFolds()
+    }
+
+    func unfoldAll(textStorage: NSTextStorage) {
+        self.textStorage = textStorage
+        foldStore.unfoldAll()
+        applyFolds()
+    }
+
     func ensureLayout() {
         guard let layoutManager else { return }
         layoutManager.ensureLayout(for: layoutManager.documentRange)
@@ -764,6 +777,16 @@ final class FoldingTextView: PlatformView {
 
     func applyFolds() {
         session.applyFolds()
+    }
+
+    func foldAll() {
+        session.foldAll(textStorage: documentTextStorage)
+        ensureLayout()
+    }
+
+    func unfoldAll() {
+        session.unfoldAll(textStorage: documentTextStorage)
+        ensureLayout()
     }
 
     func ensureLayout() {
