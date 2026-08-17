@@ -3,10 +3,10 @@ id: 20260816-04-fold-all-unfold-all-and-fence-placeholder
 title: Fold All / Unfold All and fence placeholder
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-17
-closed:
+closed: 2026-08-17
 notes: ''
 parent:
 depends_on:
@@ -14,13 +14,13 @@ depends_on:
 subtasks:
 - id: T1
   title: Fold-all / unfold-all traversal over the block index
-  status: todo
+  status: done
 - id: T2
   title: Wire Edit menu items (from ticket 02) to the fold service
-  status: todo
+  status: done
 - id: T3
   title: Fence placeholder — opening fence line plus short placeholder
-  status: todo
+  status: done
 plan_status: done
 ---
 ## Description
@@ -34,15 +34,15 @@ wired to the Edit menu items ticket 02 creates.
 
 ## Acceptance criteria
 
-- [ ] Fold All collapses every foldable block in the document; Unfold
+- [x] Fold All collapses every foldable block in the document; Unfold
       All restores them (R14).
-- [ ] Both are reachable from the Edit menu built in ticket 02 (R14).
-- [ ] A folded fence shows its opening fence line plus a short
+- [x] Both are reachable from the Edit menu built in ticket 02 (R14).
+- [x] A folded fence shows its opening fence line plus a short
       placeholder, not an empty gap (R15).
-- [ ] Folding stays a layout concern: zero-height owned fragments; the
+- [x] Folding stays a layout concern: zero-height owned fragments; the
       buffer is never rewritten and paragraph styles are never collapsed
       to hide text (N3).
-- [ ] Tests assert live fold state (blocks actually collapsed/restored),
+- [x] Tests assert live fold state (blocks actually collapsed/restored),
       not a flag that can't fail (N9).
 
 ## Context
@@ -57,12 +57,12 @@ wired to the Edit menu items ticket 02 creates.
 
 ## Subtasks
 
-- [ ] Implement fold-all / unfold-all traversal over the block index.
-- [ ] Wire the Edit menu's Fold All / Unfold All items (added in ticket
+- [x] Implement fold-all / unfold-all traversal over the block index.
+- [x] Wire the Edit menu's Fold All / Unfold All items (added in ticket
       02, currently targeting `nil` with no handler) to this service.
-- [ ] Render the fence placeholder (opening fence line + short
+- [x] Render the fence placeholder (opening fence line + short
       placeholder text) for a folded fenced block.
-- [ ] Tests: fold-all collapses every foldable block; unfold-all restores
+- [x] Tests: fold-all collapses every foldable block; unfold-all restores
       them; a folded fence shows the placeholder, not nothing.
 
 ## Implementation plan
@@ -166,3 +166,13 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-17
 All three plan tasks complete. T01: FoldStore.foldAll(_:)/unfoldAll() plus FoldingTextView.foldAll()/unfoldAll(), driving the existing zero-height FoldingTextLayoutFragment mechanism over every foldable block (N3). T02: MarkdownDocumentViewController.performFoldAll(_:)/performUnfoldAll(_:) now call EditorCommands.foldAll(on:)/unfoldAll(on:) -> DocumentHost -> FoldingTextView, the same responder-chain path as performFind/performGoToLine — one invocation path, not a parallel one; superseded the old dispatch-doesn't-crash test with one asserting live FoldStore state after real responder-chain dispatch. T03: FoldingTextLayoutFragment gained a non-collapsing placeholder state (draws U+22EF instead of zero height); FoldingSession designates the first hidden line inside a folded fence's foldExtent as that block's placeholder (headings still fold fully, per R15's fence-only scope) — buffer is never rewritten, no paragraph style collapsed to hide text. All tests assert live state (isFolded/isPlaceholder/isCollapsed/collapsedFragmentCount/layoutHeight), not flags. Ticket-scope verify: xcodebuild macOS, iOS Simulator iPhone 17, and iOS Simulator iPad Pro 13-inch (M5) all TEST SUCCEEDED. bora dev lint clean. Working tree clean after 3 commits (T01, T02, T03). AC checkboxes and status left untouched for the controlling session's review per process boundary.
+
+## Review
+
+**2026-08-17 — Verdict: minors-only (clean).** Reviewed by a fresh subagent against R14, R15, N3, N9, independently re-running `FoldStoreTests`/`FoldingTextViewTests`/`MacMainMenuTests` on macOS (all pass, including the new/rewritten `foldAllFoldsEveryFoldableBlockAndUnfoldAllClearsAll`, `foldAllCollapsesEveryFoldableBlockAndUnfoldAllRestoresLayoutHeight`, `foldedFenceShowsOpeningLinePlusPlaceholderInsteadOfAnEmptyGap`, `foldAllAndUnfoldAllResolveThroughTheResponderChainAndActuallyFoldTheDocument`); iOS Simulator destinations not re-run (already green in the implementer's own verify pass, diff has no platform-specific risk beyond pre-exercised `PlatformFont`/`PlatformColor` shims).
+
+Confirmed: files touched match T01–T03 exactly; commit history is one commit per task (`c2fce13`, `96672fe`, `3fe45eb`) formatted `20260816-04 T0N: <title>`; buffer never rewritten (`view.string == fixture` and `DocumentSave.writeUTF8` byte-identical, asserted directly); zero-height collapse mechanism unchanged for non-placeholder lines; placeholder restricted to fence folds only, headings still fold fully; Fold All/Unfold All dispatch verified through the real responder chain (`resolveAndPerform` walking `nextResponder`), not a direct method call; tests assert live `foldStore.isFolded`/`layoutHeight`/`collapsedFragmentCount`, not booleans (N9).
+
+Findings (both Minor, neither blocking):
+1. `FoldingTextView.swift:39-45` (`layoutFragmentFrame`) — placeholder height derives from the underlying element's natural frame, not an explicit one-line clamp; works here because the fixture's first hidden fence line is unwrapped, but a genuinely long first line would report a taller-than-one-line placeholder. Untested edge case, not a functional break.
+2. `FoldingTextViewTests.swift:117-152` — the T03 placeholder test doesn't independently assert the real body text is absent from drawn output (structurally guaranteed by the mutually-exclusive `isPlaceholder` branch in `draw(at:in:)`, so a coverage gap rather than a risk).
