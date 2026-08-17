@@ -147,6 +147,60 @@ struct MacMinimapTests {
         #expect(tallIndicator.height > shortIndicator.height)
     }
 
+    // MARK: - Click-to-scroll (T03)
+
+    @Test func clickingTheMinimapInvokesCallbackWithTheSourceLineUnderThePoint() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let minimap = MacMinimapView(frame: CGRect(x: 0, y: 0, width: 120, height: 400))
+        minimap.snapshot = MacMinimapChrome.snapshot(from: view)
+
+        var clickedLine: Int?
+        minimap.onClickSourceLine = { clickedLine = $0 }
+
+        // The paragraph line (3) is where jumpToSourceLine should land —
+        // find its view-space y by inverting sourceLine(atViewY:)'s scale.
+        let paragraphLine = 3
+        let snapshot = try #require(minimap.snapshot)
+        let packedY = try #require(snapshot.map.y(forSourceLine: paragraphLine))
+        let scale = minimap.bounds.height / snapshot.packedHeight
+        let viewY = packedY * scale + 1
+
+        let handled = minimap.handleClick(at: CGPoint(x: 10, y: viewY))
+        #expect(handled)
+        #expect(clickedLine == paragraphLine)
+    }
+
+    @Test func clickingBelowAllContentDoesNotInvokeTheCallback() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let minimap = MacMinimapView(frame: CGRect(x: 0, y: 0, width: 120, height: 400))
+        minimap.snapshot = MacMinimapChrome.snapshot(from: view)
+
+        var clickedLine: Int?
+        minimap.onClickSourceLine = { clickedLine = $0 }
+
+        let handled = minimap.handleClick(at: CGPoint(x: 10, y: minimap.bounds.height + 50))
+        #expect(!handled)
+        #expect(clickedLine == nil)
+    }
+
+    @Test func clickingWithNoSnapshotDoesNotInvokeTheCallback() throws {
+        let minimap = MacMinimapView(frame: CGRect(x: 0, y: 0, width: 120, height: 400))
+        var clickedLine: Int?
+        minimap.onClickSourceLine = { clickedLine = $0 }
+
+        let handled = minimap.handleClick(at: CGPoint(x: 10, y: 10))
+        #expect(!handled)
+        #expect(clickedLine == nil)
+    }
+
     private func distinctOpaqueColours(in rep: NSBitmapImageRep) -> Set<[Int]> {
         var colours: Set<[Int]> = []
         for x in stride(from: 0, to: rep.pixelsWide, by: 4) {

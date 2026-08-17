@@ -152,6 +152,28 @@ final class MacMinimapView: NSView {
         let packedY = y * (snapshot.packedHeight / bounds.height)
         return snapshot.sourceLine(atMinimapY: packedY)
     }
+
+    /// Invoked with the source line under a click, so the host can scroll
+    /// there via the existing `jumpToSourceLine` (R18) — set by
+    /// `MacMinimapRepresentable`, not called directly by this view.
+    var onClickSourceLine: ((Int) -> Void)?
+
+    /// Resolves `point` to a source line via `sourceLine(atViewY:)` and
+    /// invokes `onClickSourceLine`, mirroring
+    /// `FoldingTextView.handleGutterClick(at:)`'s shape. Returns whether a
+    /// line was found under the point.
+    @discardableResult
+    func handleClick(at point: CGPoint) -> Bool {
+        guard let line = sourceLine(atViewY: point.y) else { return false }
+        onClickSourceLine?(line)
+        return true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if handleClick(at: point) { return }
+        super.mouseDown(with: event)
+    }
 }
 
 struct MacMinimapRepresentable: NSViewRepresentable {
@@ -160,6 +182,9 @@ struct MacMinimapRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> MacMinimapView {
         let view = MacMinimapView()
         view.snapshot = MacMinimapChrome.snapshot(from: editor)
+        view.onClickSourceLine = { [editor] line in
+            editor.jumpToSourceLine(line)
+        }
         return view
     }
 
