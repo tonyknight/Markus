@@ -36,6 +36,11 @@ enum SettingsChrome {
         static let close = "settings.close"
         static let categoryRowPrefix = "settings.category."
     }
+
+    @MainActor
+    static func close(on host: DocumentHost) {
+        host.isSettingsPresented = false
+    }
 }
 
 #if os(macOS)
@@ -44,7 +49,10 @@ enum SettingsChrome {
 /// a sibling of the document `NavigationStack` — never nested inside it
 /// — whenever `host.isSettingsPresented` is true, so it replaces the
 /// whole window content rather than appending a column next to the
-/// editor (R7; Architecture component 5). The close box lands in T02.
+/// editor (R7; Architecture component 5). The close box is a plain
+/// button reached via `.overlay`, never `.toolbar` — the latter is what
+/// let the old side panel's Done button get hoisted into the window
+/// toolbar and become unreachable.
 struct SettingsScene: View {
     @ObservedObject var host: DocumentHost
     @State private var selectedCategory: SettingsCategory = .themes
@@ -59,6 +67,18 @@ struct SettingsScene: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .topTrailing) {
+            Button {
+                SettingsChrome.close(on: host)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .imageScale(.large)
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+            .accessibilityLabel("Close Settings")
+            .accessibilityIdentifier(SettingsChrome.Identifier.close)
+        }
     }
 
     private var categoryList: some View {

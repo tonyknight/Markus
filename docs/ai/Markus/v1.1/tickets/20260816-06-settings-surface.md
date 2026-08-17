@@ -21,7 +21,7 @@ subtasks:
 - id: T3
   title: Remove the old side-panel settings and its dead Done button
   status: todo
-current_task: T02
+current_task: T03
 plan_status: in-progress
 ---
 ## Description
@@ -64,7 +64,7 @@ working close box — reachable from the ribbon rail's gear (ticket 05).
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Settings chrome logic + full-viewport scene view
 Add `SettingsCategory` (enum, `.themes` case for now — ticket 07 extends
@@ -121,7 +121,7 @@ Files: `Markus/Markus/Document/SettingsScene.swift`,
 `Markus/MarkusTests/SettingsSceneTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/SettingsSceneTests test`
 - [ ] todo
-- [ ] done
+- [x] done
 
 ### T03: Remove the old side-panel settings and its dead Done button
 Delete the macOS side-panel branch from `ContentView.documentChrome`

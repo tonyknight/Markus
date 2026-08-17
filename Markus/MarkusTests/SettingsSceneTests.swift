@@ -24,4 +24,13 @@ struct SettingsSceneTests {
     @Test func onlyOneCategoryExistsForNow() {
         #expect(SettingsCategory.allCases == [.themes])
     }
+
+    @Test func closingSettingsFlipsPresentedStateBackToFalse() {
+        let host = makeHost()
+        host.presentSettings()
+        #expect(host.isSettingsPresented)
+
+        SettingsChrome.close(on: host)
+        #expect(!host.isSettingsPresented)
+    }
 }
