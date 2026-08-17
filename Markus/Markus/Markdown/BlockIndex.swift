@@ -1,13 +1,31 @@
 import Foundation
 
 nonisolated struct FoldID: Hashable, Sendable {
-    enum Kind: Hashable, Sendable {
+    enum Kind: String, Hashable, Sendable, Codable {
         case heading
         case fence
     }
 
     var kind: Kind
     var startLine: Int
+    /// A short digest of the block's opening line content, used to
+    /// re-match a fold to the same logical block after the block index
+    /// rebuilds and `startLine` shifts (R17).
+    var anchor: String
+}
+
+/// A short, stable digest of a single line of text — deliberately not
+/// cryptographic, just enough entropy to re-identify a block's opening
+/// line across a block-index rebuild.
+nonisolated enum FoldAnchor {
+    static func digest(_ line: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in line.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16)
+    }
 }
 
 nonisolated struct Block: Equatable, Sendable {
@@ -30,6 +48,10 @@ nonisolated enum BlockIndex: Sendable {
             }
         }
 
+        // Built once and shared by every block (P5) — also needed by every
+        // block, not just fences, to read the opening line for the anchor.
+        let sourceMap = SourceMap(markdown: markdown)
+
         return foldable.enumerated().map { index, parsedBlock in
             let foldExtent: Range<Int>?
             let foldKind: FoldID.Kind
@@ -47,21 +69,29 @@ nonisolated enum BlockIndex: Sendable {
                 foldExtent = proposed.isEmpty ? nil : proposed
             case .fencedCode:
                 foldKind = .fence
-                let openerEnd = SourceMap(markdown: markdown).endOffset(ofLine: parsedBlock.lines.lowerBound)
+                let openerEnd = sourceMap.endOffset(ofLine: parsedBlock.lines.lowerBound)
                 let proposed = openerEnd..<parsedBlock.bytes.upperBound
                 foldExtent = proposed.isEmpty ? nil : proposed
             case .other:
                 preconditionFailure("filtered out")
             }
 
+            let anchor = FoldAnchor.digest(openingLineText(markdown: markdown, sourceMap: sourceMap, line: parsedBlock.lines.lowerBound))
+
             return Block(
-                id: FoldID(kind: foldKind, startLine: parsedBlock.lines.lowerBound),
+                id: FoldID(kind: foldKind, startLine: parsedBlock.lines.lowerBound, anchor: anchor),
                 kind: parsedBlock.kind,
                 bytes: parsedBlock.bytes,
                 lines: parsedBlock.lines,
                 foldExtent: foldExtent
             )
         }
+    }
+
+    private static func openingLineText(markdown: String, sourceMap: SourceMap, line: Int) -> String {
+        let bytes = sourceMap.offset(ofLine: line)..<sourceMap.endOffset(ofLine: line)
+        let scalars = Array(markdown.utf8)[bytes]
+        return String(decoding: scalars, as: UTF8.self).trimmingCharacters(in: .newlines)
     }
 }
 
