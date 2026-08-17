@@ -63,5 +63,65 @@ struct MacMinimapTests {
         #expect(abs(restored.packedHeight - unfoldedHeight) < 1)
         #expect(restored.mode == .preview)
     }
+
+    // MARK: - Structural rendering (T01)
+
+    @Test func snapshotClassifiesHeadingFenceAndBodyLinesInsteadOfUniformBars() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let snapshot = MacMinimapChrome.snapshot(from: view)
+        #expect(snapshot.kind(forSourceLine: 1) == .heading)
+        #expect(snapshot.kind(forSourceLine: 3) == .body)
+        #expect(snapshot.kind(forSourceLine: 5) == .fence)
+    }
+
+    @Test func renderPlanCoversAllThreeStructuralKindsRatherThanOneUniformKind() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let snapshot = MacMinimapChrome.snapshot(from: view)
+        let bars = MinimapRenderer.bars(from: snapshot)
+        #expect(bars.count == snapshot.map.entries.count)
+        let kinds = Set(bars.map(\.kind))
+        #expect(kinds == [.heading, .fence, .body])
+    }
+
+    @Test func minimapDrawsMoreThanOneDistinctColourRatherThanUniformGreyBars() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let minimap = MacMinimapView(frame: CGRect(x: 0, y: 0, width: 120, height: 400))
+        minimap.snapshot = MacMinimapChrome.snapshot(from: view)
+
+        let rep = try #require(minimap.bitmapImageRepForCachingDisplay(in: minimap.bounds))
+        minimap.cacheDisplay(in: minimap.bounds, to: rep)
+
+        let colours = distinctOpaqueColours(in: rep)
+        // Background fill plus at least two differently-coloured bar kinds.
+        #expect(colours.count >= 3)
+    }
+
+    private func distinctOpaqueColours(in rep: NSBitmapImageRep) -> Set<[Int]> {
+        var colours: Set<[Int]> = []
+        for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
+            for y in stride(from: 0, to: rep.pixelsHigh, by: 2) {
+                guard let colour = rep.colorAt(x: x, y: y), colour.alphaComponent > 0.01 else { continue }
+                let bucket = [
+                    Int(colour.redComponent * 20),
+                    Int(colour.greenComponent * 20),
+                    Int(colour.blueComponent * 20),
+                ]
+                colours.insert(bucket)
+            }
+        }
+        return colours
+    }
     #endif
 }
