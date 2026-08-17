@@ -184,4 +184,74 @@ struct PreviewSubstitutionTests {
         let url = paragraph.attribute(.link, at: range.location, effectiveRange: nil) as? URL
         #expect(url == URL(string: "https://example.com"))
     }
+
+    // MARK: - T03: block quotes and lists
+
+    @Test func previewModeShapesBlockQuoteWithIndentAndNoLiteralCaret() throws {
+        let markdown = "> Quoted wisdom.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let paragraph = try #require(paragraphs.first { $0.string.contains("Quoted wisdom") })
+        #expect(!paragraph.string.contains(">"))
+        let style = paragraph.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect((style?.headIndent ?? 0) > 0)
+    }
+
+    @Test func previewModeRendersUnorderedListItemsWithBulletMarkerAndNoLiteralDash() throws {
+        let markdown = "- One\n- Two\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let one = try #require(paragraphs.first { $0.string.contains("One") })
+        let two = try #require(paragraphs.first { $0.string.contains("Two") })
+        #expect(!one.string.hasPrefix("-"))
+        #expect(!two.string.hasPrefix("-"))
+        #expect(one.string != "One")
+        #expect(two.string != "Two")
+    }
+
+    @Test func previewModeRendersNestedListItemsAtGreaterIndent() throws {
+        let markdown = "- Parent\n  - Child\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let parent = try #require(paragraphs.first { $0.string.contains("Parent") })
+        let child = try #require(paragraphs.first { $0.string.contains("Child") })
+        #expect(!parent.string.contains("-"))
+        #expect(!child.string.contains("-"))
+
+        let parentIndent = (parent.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)?.headIndent ?? 0
+        let childIndent = (child.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)?.headIndent ?? 0
+        #expect(childIndent > parentIndent)
+    }
+
+    @Test func previewModeDistinguishesCheckedAndUncheckedTaskListItems() throws {
+        let markdown = "- [ ] todo\n- [x] done\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let todo = try #require(paragraphs.first { $0.string.contains("todo") })
+        let done = try #require(paragraphs.first { $0.string.contains("done") })
+        #expect(!todo.string.contains("["))
+        #expect(!todo.string.contains("]"))
+        #expect(!done.string.contains("["))
+        #expect(!done.string.contains("]"))
+        // The checked and unchecked markers must actually differ.
+        let todoMarker = todo.string.replacingOccurrences(of: "todo", with: "")
+        let doneMarker = done.string.replacingOccurrences(of: "done", with: "")
+        #expect(todoMarker != doneMarker)
+    }
 }

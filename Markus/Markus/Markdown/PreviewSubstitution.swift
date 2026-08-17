@@ -60,40 +60,167 @@ enum PreviewElementCollector {
             var elements: [PreviewElement] = []
             var child = cmark_node_first_child(document)
             while let node = child {
-                collectBlock(node, tokens: tokens, zoomScale: zoomScale, into: &elements)
+                collectBlock(node, tokens: tokens, zoomScale: zoomScale, quoteDepth: 0, listDepth: 0, into: &elements)
                 child = cmark_node_next(node)
             }
             return elements
         }
     }
 
+    /// Dispatches one block-level node. `quoteDepth`/`listDepth` are
+    /// 0-based ancestor counts (how many block quotes / how many levels
+    /// of list nesting this node sits inside); both drive the
+    /// paragraph-style indent applied to the rendered element (R10:
+    /// "lists and block quotes shaped ... via paragraph styles").
     private static func collectBlock(
         _ node: UnsafeMutablePointer<cmark_node>?,
         tokens: ThemeTokens,
         zoomScale: CGFloat,
+        quoteDepth: Int,
+        listDepth: Int,
         into elements: inout [PreviewElement]
     ) {
         guard let node else { return }
         let type = cmark_node_get_type(node)
+
+        if type == CMARK_NODE_BLOCK_QUOTE {
+            var child = cmark_node_first_child(node)
+            while let n = child {
+                collectBlock(n, tokens: tokens, zoomScale: zoomScale, quoteDepth: quoteDepth + 1, listDepth: listDepth, into: &elements)
+                child = cmark_node_next(n)
+            }
+            return
+        }
+
+        if type == CMARK_NODE_LIST {
+            let listType = cmark_node_get_list_type(node)
+            let listStart = Int(cmark_node_get_list_start(node))
+            var item = cmark_node_first_child(node)
+            while let itemNode = item {
+                collectListItem(
+                    itemNode,
+                    listType: listType,
+                    listStart: listStart,
+                    tokens: tokens,
+                    zoomScale: zoomScale,
+                    quoteDepth: quoteDepth,
+                    listDepth: listDepth,
+                    into: &elements
+                )
+                item = cmark_node_next(itemNode)
+            }
+            return
+        }
+
         let startLine = Int(cmark_node_get_start_line(node))
         let endLine = Int(cmark_node_get_end_line(node))
         guard startLine > 0, endLine >= startLine else { return }
         let lines = startLine..<(endLine + 1)
+        let indentLevel = quoteDepth + listDepth
 
         if type == CMARK_NODE_HEADING {
             let level = Int(cmark_node_get_heading_level(node))
             let font = PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale))
             let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.heading)
-            elements.append(PreviewElement(lines: lines, rendered: attributed))
+            elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
         } else if type == CMARK_NODE_PARAGRAPH {
             let font = PlatformFont.body(size: 16 * zoomScale)
-            let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.body)
-            elements.append(PreviewElement(lines: lines, rendered: attributed))
+            let color = quoteDepth > 0 ? tokens.list : tokens.body
+            let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: color)
+            elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
         }
-        // Lists, block quotes, thematic breaks, tables, fenced code,
-        // and images are added by later tasks (T03–T06). Until then
-        // this block kind is simply not substituted — the default raw
-        // text lays out unchanged, same as Source mode.
+        // Thematic breaks, tables, fenced code, and images are added by
+        // later tasks (T04–T06). Until then this block kind is simply
+        // not substituted — the default raw text lays out unchanged,
+        // same as Source mode.
+    }
+
+    /// One list item: the marker (bullet, ordinal, or task checkbox)
+    /// prefixes its own leading paragraph's rendered text; any further
+    /// block content in the item (a nested list, a loose item's extra
+    /// paragraph) is collected at the appropriate depth without a
+    /// marker of its own.
+    private static func collectListItem(
+        _ item: UnsafeMutablePointer<cmark_node>,
+        listType: cmark_list_type,
+        listStart: Int,
+        tokens: ThemeTokens,
+        zoomScale: CGFloat,
+        quoteDepth: Int,
+        listDepth: Int,
+        into elements: inout [PreviewElement]
+    ) {
+        let typeName = String(cString: cmark_node_get_type_string(item))
+        let isTask = typeName == "tasklist"
+        let checked = isTask && cmark_gfm_extensions_get_tasklist_item_checked(item)
+
+        let marker: String
+        if isTask {
+            marker = checked ? "\u{2611} " : "\u{2610} " // ☑ / ☐
+        } else if listType == CMARK_ORDERED_LIST {
+            let index = Int(cmark_node_get_item_index(item))
+            marker = "\(listStart + index). "
+        } else {
+            marker = "\u{2022} " // •
+        }
+
+        let font = PlatformFont.body(size: 16 * zoomScale)
+        var markerConsumed = false
+        var child = cmark_node_first_child(item)
+        while let n = child {
+            let childType = cmark_node_get_type(n)
+            if !markerConsumed, childType == CMARK_NODE_PARAGRAPH {
+                let startLine = Int(cmark_node_get_start_line(n))
+                let endLine = Int(cmark_node_get_end_line(n))
+                if startLine > 0, endLine >= startLine {
+                    let inline = renderInlineChildren(of: n, font: font, tokens: tokens, defaultColor: tokens.list)
+                    let prefixed = NSMutableAttributedString(
+                        string: marker,
+                        attributes: [.font: font, .foregroundColor: tokens.list]
+                    )
+                    prefixed.append(inline)
+                    elements.append(PreviewElement(
+                        lines: startLine..<(endLine + 1),
+                        rendered: applyIndent(prefixed, level: quoteDepth + listDepth)
+                    ))
+                }
+                markerConsumed = true
+            } else if childType == CMARK_NODE_LIST {
+                let nestedListType = cmark_node_get_list_type(n)
+                let nestedListStart = Int(cmark_node_get_list_start(n))
+                var nestedItem = cmark_node_first_child(n)
+                while let ni = nestedItem {
+                    collectListItem(
+                        ni,
+                        listType: nestedListType,
+                        listStart: nestedListStart,
+                        tokens: tokens,
+                        zoomScale: zoomScale,
+                        quoteDepth: quoteDepth,
+                        listDepth: listDepth + 1,
+                        into: &elements
+                    )
+                    nestedItem = cmark_node_next(ni)
+                }
+            } else {
+                collectBlock(n, tokens: tokens, zoomScale: zoomScale, quoteDepth: quoteDepth, listDepth: listDepth, into: &elements)
+            }
+            child = cmark_node_next(n)
+        }
+    }
+
+    /// Applies a per-nesting-level indent via paragraph style —
+    /// "shaping" a list or block quote without ever touching the
+    /// buffer or hiding text behind a collapsed style (N3/N4 forbid
+    /// exactly that trick in another guise).
+    private static func applyIndent(_ attributed: NSAttributedString, level: Int) -> NSAttributedString {
+        guard level > 0 else { return attributed }
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = CGFloat(level) * 20
+        style.headIndent = CGFloat(level) * 20
+        mutable.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: mutable.length))
+        return mutable
     }
 
     // MARK: - Inline rendering
