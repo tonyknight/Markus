@@ -99,19 +99,27 @@ private struct DocumentToolbar: ToolbarContent {
         ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
             DocumentModePicker(host: host)
         }
-        #endif
         ToolbarItemGroup(placement: .automatic) {
             Button("Open") { host.isImporterPresented = true }
+                .accessibilityIdentifier(ToolbarChrome.Identifier.open)
             Button("Open Folder") { host.isFolderImporterPresented = true }
+                .accessibilityIdentifier(ToolbarChrome.Identifier.openFolder)
             Button("Save") { host.save() }
                 .disabled(!host.canSave)
+                .accessibilityIdentifier(ToolbarChrome.Identifier.save)
             Button("Revert") { host.revert() }
                 .disabled(host.session.fileURL == nil || !host.session.isDirty)
+                .accessibilityIdentifier(ToolbarChrome.Identifier.revert)
         }
         ToolbarItem(placement: .automatic) {
             Button("Fold") { EditorCommands.foldCurrent(on: host) }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+                .accessibilityIdentifier(ToolbarChrome.Identifier.fold)
         }
+        #endif
+        // Outline stays on both platforms: it isn't superseded by the
+        // AppKit File/Edit menus built for this ticket (R2/R3 only cover
+        // File and Edit), so it's out of this ticket's removal list.
         ToolbarItem(placement: .automatic) {
             Menu("Outline") {
                 Button("Show Outline") { EditorCommands.presentOutline(on: host) }
@@ -125,22 +133,31 @@ private struct DocumentToolbar: ToolbarContent {
                 }
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+            .accessibilityIdentifier(ToolbarChrome.Identifier.outline)
         }
+        #if os(iOS)
         ToolbarItem(placement: .automatic) {
             Button("Toggle Mode") { EditorCommands.toggleSourcePreview(on: host) }
                 .keyboardShortcut("e", modifiers: [.command])
                 .accessibilityLabel("Toggle Source Preview")
+                .accessibilityIdentifier(ToolbarChrome.Identifier.toggleMode)
         }
         ToolbarItemGroup(placement: .automatic) {
             Button("Find") { EditorCommands.presentFind(on: host) }
                 .keyboardShortcut("f", modifiers: [.command])
+                .accessibilityIdentifier(ToolbarChrome.Identifier.find)
             Button("Go to Line") { EditorCommands.presentGoToLine(on: host) }
                 .keyboardShortcut("l", modifiers: [.command])
+                .accessibilityIdentifier(ToolbarChrome.Identifier.goToLine)
             Button("Tree") { EditorCommands.focusTree(on: host) }
                 .keyboardShortcut("1", modifiers: [.command])
+                .accessibilityIdentifier(ToolbarChrome.Identifier.tree)
         }
+        #endif
         ToolbarItemGroup(placement: .automatic) {
             Button("Settings") { host.isSettingsPresented = true }
+                .accessibilityIdentifier(ToolbarChrome.Identifier.settings)
+            #if os(iOS)
             Menu("Recents") {
                 if host.recents.items.isEmpty {
                     Text("No Recents")
@@ -152,7 +169,30 @@ private struct DocumentToolbar: ToolbarContent {
                     }
                 }
             }
+            .accessibilityIdentifier(ToolbarChrome.Identifier.recents)
+            #endif
         }
+    }
+}
+
+/// Stable accessibility identifiers for `DocumentToolbar`'s items, used by
+/// tests to inspect the real `NSToolbar` this SwiftUI toolbar materializes
+/// into on macOS, rather than a compile-time platform flag.
+enum ToolbarChrome {
+    enum Identifier {
+        static let mode = "toolbar.mode"
+        static let open = "toolbar.open"
+        static let openFolder = "toolbar.openFolder"
+        static let save = "toolbar.save"
+        static let revert = "toolbar.revert"
+        static let fold = "toolbar.fold"
+        static let outline = "toolbar.outline"
+        static let toggleMode = "toolbar.toggleMode"
+        static let find = "toolbar.find"
+        static let goToLine = "toolbar.goToLine"
+        static let tree = "toolbar.tree"
+        static let settings = "toolbar.settings"
+        static let recents = "toolbar.recents"
     }
 }
 

@@ -22,12 +22,11 @@ subtasks:
   status: done
 - id: T4
   title: Title-bar cleanup — remove buttons now owned by menus
-  status: todo
+  status: done
 - id: T5
   title: Fix stacked .fileImporter bug (dead Open button)
   status: done
-current_task: T05
-plan_status: in-progress
+plan_status: done
 ---
 ## Description
 
@@ -86,8 +85,8 @@ just the Source/Preview control.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T05
+Status: done
+Current task: 
 
 ### T01: Window geometry — three-quarter visibleFrame, pinned top-left
 Size and position the window in `MarkdownDocument.makeWindowControllers()`
@@ -161,7 +160,7 @@ Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
 
 ### Ticket-scope verify
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.

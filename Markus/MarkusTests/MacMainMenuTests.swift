@@ -39,7 +39,7 @@ struct MacMainMenuTests {
         #expect(openItem.target == nil)
 
         let openFolderItem = try #require(file.items.first { $0.title == "Open Folder\u{2026}" })
-        #expect(openFolderItem.keyEquivalent == "o")
+        #expect(openFolderItem.keyEquivalent == "f")
         #expect(openFolderItem.keyEquivalentModifierMask == [.command, .shift])
         #expect(openFolderItem.target == nil)
         #expect(openFolderItem.action != nil)

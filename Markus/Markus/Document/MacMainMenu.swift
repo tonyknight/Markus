@@ -75,7 +75,10 @@ enum MacMainMenu {
         menu.addItem(withTitle: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
         menu.addItem(withTitle: "Open\u{2026}", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
 
-        let openFolder = menu.addItem(withTitle: "Open Folder\u{2026}", action: MacMainMenuAction.performOpenFolder, keyEquivalent: "o")
+        // Cmd+Shift+F, not Cmd+Shift+O: the title bar keeps its
+        // Cmd+Shift+O "Outline" jump button (out of this ticket's scope),
+        // so Open Folder needs a different shortcut to avoid colliding.
+        let openFolder = menu.addItem(withTitle: "Open Folder\u{2026}", action: MacMainMenuAction.performOpenFolder, keyEquivalent: "f")
         openFolder.keyEquivalentModifierMask = [.command, .shift]
         openFolder.target = nil
 

@@ -40,6 +40,30 @@ struct MacTabsTests {
         #expect(document.windowControllers.first?.window != nil)
     }
 
+    /// Regression check for the AppKit-main-menu ticket: window geometry
+    /// now gets set as the last step of `makeWindowControllers()` (T01),
+    /// and `contentViewController` is now `MarkdownDocumentViewController`
+    /// rather than a bare `NSHostingController` (T04). Neither change may
+    /// disturb the real window's tabbing configuration, and two documents'
+    /// windows must still carry the same tabbing identifier so AppKit can
+    /// group them.
+    @Test func windowsFromMakeWindowControllersKeepMatchingTabbingConfigurationAfterTheMenuChange() throws {
+        let first = MarkdownDocument()
+        first.makeWindowControllers()
+        let second = MarkdownDocument()
+        second.makeWindowControllers()
+
+        let firstWindow = try #require(first.windowControllers.first?.window)
+        let secondWindow = try #require(second.windowControllers.first?.window)
+
+        #expect(firstWindow.tabbingMode == .preferred)
+        #expect(secondWindow.tabbingMode == .preferred)
+        #expect(firstWindow.tabbingIdentifier == MacDocumentChrome.tabbingIdentifier)
+        #expect(firstWindow.tabbingIdentifier == secondWindow.tabbingIdentifier)
+        #expect(NSWindow.allowsAutomaticWindowTabbing)
+        #expect(firstWindow.contentViewController is MarkdownDocumentViewController)
+    }
+
     @Test func documentControllerOpensUntitledMarkdownDocumentWithWindow() throws {
         let document = try MacDocumentLaunch.openUntitledDocument()
         let markdown = try #require(document as? MarkdownDocument)

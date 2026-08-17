@@ -66,5 +66,6 @@ struct DocumentModePicker: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .accessibilityLabel("Editor mode")
+        .accessibilityIdentifier(ToolbarChrome.Identifier.mode)
     }
 }
