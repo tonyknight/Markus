@@ -128,4 +128,43 @@ struct FoldStoreTests {
         store.bind(to: secondURL)
         #expect(!store.isFolded(heading.id))
     }
+
+    @Test func repairMatchesFoldedAnchorsToTheirBlocksNewStartLineAndDropsUnmatched() throws {
+        let originalMarkdown = """
+        ## Drop
+
+        Body drop.
+
+        ## Keep
+
+        Body keep.
+        """
+        let editedMarkdown = """
+        Preface paragraph inserted before everything.
+
+        ## Keep
+
+        Body keep.
+        """
+        let originalBlocks = BlockIndex.build(markdown: originalMarkdown)
+        let dropOriginal = try #require(originalBlocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+        let keepOriginal = try #require(originalBlocks.first { $0.id.kind == .heading && $0.id.startLine != 1 })
+
+        let store = FoldStore()
+        store.toggle(dropOriginal.id)
+        store.toggle(keepOriginal.id)
+        #expect(store.isFolded(dropOriginal.id))
+        #expect(store.isFolded(keepOriginal.id))
+
+        let editedBlocks = BlockIndex.build(markdown: editedMarkdown)
+        let keepEdited = try #require(editedBlocks.first { $0.id.kind == .heading && $0.id.anchor == keepOriginal.id.anchor })
+        #expect(keepEdited.id.startLine != keepOriginal.id.startLine)
+        #expect(!editedBlocks.contains { $0.id.anchor == dropOriginal.id.anchor })
+
+        store.repair(against: editedBlocks)
+
+        #expect(store.isFolded(keepEdited.id))
+        #expect(!store.foldedIDs.contains(keepOriginal.id))
+        #expect(store.foldedIDs == Set([keepEdited.id]))
+    }
 }

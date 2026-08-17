@@ -61,6 +61,21 @@ final class FoldStore {
         }
     }
 
+    /// Re-matches every folded `FoldID` against the current block index by
+    /// `kind` + `anchor`, replacing stale `startLine`s with the block's
+    /// current one. A fold whose anchor no longer matches any block (its
+    /// block was deleted) is dropped rather than left dangling (R17).
+    func repair(against blocks: [Block]) {
+        var repaired: Set<FoldID> = []
+        for id in foldedIDs {
+            if let match = blocks.first(where: { $0.id.kind == id.kind && $0.id.anchor == id.anchor }) {
+                repaired.insert(match.id)
+            }
+        }
+        foldedIDs = repaired
+        persist()
+    }
+
     private func persist() {
         guard let boundURL else { return }
         persistence.save(foldedIDs, for: boundURL)

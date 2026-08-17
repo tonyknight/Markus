@@ -49,6 +49,7 @@ final class DocumentSession: ObservableObject {
             fileURL = url
             lastSavedText = markdown
             editor.loadMarkdown(markdown)
+            editor.restoreFolds(for: url)
             objectWillChange.send()
         } catch {
             if accessing {

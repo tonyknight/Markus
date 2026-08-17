@@ -15,6 +15,13 @@ struct DocumentSessionTests {
             .appendingPathComponent("markus-session-\(UUID().uuidString).md")
     }
 
+    private func isolatedFoldDefaults() -> UserDefaults {
+        let suite = "markus.folds.session.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
     @Test func openLoadsUTF8IntoTextStorageAndFoldingTextView() throws {
         let url = uniqueTempMarkdownURL()
         let markdown = "# Hello\n\nCafé — UTF-8.\n"
@@ -155,5 +162,50 @@ struct DocumentSessionTests {
         #expect(session.isDirty)
         #expect(published)
         _ = cancellable
+    }
+
+    @Test func openTimeRestoreRepairsPersistedFoldsAgainstTheFreshlyLoadedIndex() throws {
+        let url = uniqueTempMarkdownURL()
+        let original = """
+        ## Drop
+
+        Body drop.
+
+        ## Keep
+
+        Body keep.
+        """
+        try Data(original.utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let defaults = isolatedFoldDefaults()
+        let firstStore = FoldStore(persistence: FoldPersistence(defaults: defaults))
+        let firstSession = DocumentSession(editor: FoldingTextView(foldStore: firstStore))
+        try firstSession.open(url: url)
+
+        let keepOriginal = try #require(firstSession.editor.blocks.first { $0.id.kind == .heading && $0.id.startLine != 1 })
+        firstSession.editor.foldStore.toggle(keepOriginal.id)
+        firstSession.editor.applyFolds()
+        firstSession.editor.ensureLayout()
+        #expect(firstSession.editor.foldStore.isFolded(keepOriginal.id))
+
+        // Edit the file on disk (as if edited elsewhere before the app
+        // reopens it), removing "## Drop" and shifting "## Keep" up.
+        let edited = """
+        ## Keep
+
+        Body keep.
+        """
+        try Data(edited.utf8).write(to: url)
+
+        // A brand-new session sharing only the same persistence suite and
+        // file URL — simulating relaunch, then reopening the same file.
+        let secondStore = FoldStore(persistence: FoldPersistence(defaults: defaults))
+        let secondSession = DocumentSession(editor: FoldingTextView(foldStore: secondStore))
+        try secondSession.open(url: url)
+
+        let keepRepaired = try #require(secondSession.editor.blocks.first { $0.id.kind == .heading && $0.id.anchor == keepOriginal.id.anchor })
+        #expect(keepRepaired.id.startLine != keepOriginal.id.startLine)
+        #expect(secondSession.editor.foldStore.isFolded(keepRepaired.id))
     }
 }
