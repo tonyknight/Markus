@@ -3,10 +3,10 @@ id: 20260816-03-folder-tree-under-sandbox
 title: Folder tree under sandbox
 type: bug
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-16
-closed:
+closed: 2026-08-16
 notes: ''
 parent:
 depends_on: []
@@ -122,3 +122,11 @@ bora-debug: T02's regression test initially referenced URL.BookmarkCreationOptio
 
 ### 2026-08-16
 Ticket complete (implementation only; not marked done -- that is the controlling session's call). T01: MarkdownFolderTree.build(root:listDirectoryContents:) now enumerates exclusively via URL-based FileManager APIs (contentsOfDirectory(at:), URL.resourceValues), never atPath:/fileExists(atPath:), threaded through an injectable lister proven by a deterministic unit test (RED against the old atPath body, GREEN after the fix). T02: added a fixture-backed regression test (3+ nesting levels, mixed extensions, dotfile file+dir, non-Markdown-only dir, empty dir) driven through RecentDocuments' real bookmark/security-scope round trip, matching FolderSession's production flow; asserts full live nested/filtered output (N9). All acceptance criteria and subtasks checked. Full suite green on all three required destinations: macOS 79/79, iPhone 17 simulator 72/72, iPad Pro 13-inch (M5) simulator 72/72. Working tree clean, three commits (T01, T02, and a T02 iOS-build fix caught by bora-debug: initial test used macOS-only .withSecurityScope bookmark options unconditionally, breaking iOS/iPadOS -- fixed by routing through RecentDocuments' existing cross-platform bookmark handling). Caveat for reviewer: a real macOS App Sandbox permission denial for path-based enumeration could not be reproduced deterministically in this automated environment (confirmed empirically: temp-dir and downloads-entitled fixtures behave identically under contentsOfDirectory(atPath:) and contentsOfDirectory(at:) even with an active security scope, since those locations don't require a runtime-granted extension) -- true denial needs a folder outside all static entitlements, only reachable via a real interactive NSOpenPanel grant. T01's injectable-lister test substitutes for this: it proves the mechanism is exclusively URL-based deterministically, without depending on OS sandbox specifics.
+
+## Review
+
+**2026-08-16 — Verdict: clean.** Reviewed by a fresh subagent against R6 and N7, independently re-running the suite (macOS: 79/79; iPhone 17 build-for-testing succeeds, confirming the claimed iOS fix is real).
+
+Confirmed: no remaining `atPath:`-style enumeration anywhere in the touched code (grepped the whole codebase, not just the diff — two pre-existing single-file `fileExists(atPath:)` calls elsewhere are out of scope, unrelated to directory enumeration); the injectable `listDirectoryContents` parameter's production default is wired to the real URL-based implementation, not a stub; extension filtering is case-insensitive; dotfile-directory exclusion happens via early `continue` before recursion, so contents are never listed, not just filtered after the fact; nested recursion terminates and prunes empty subdirectories correctly; the mid-flight iOS build break (macOS-only `.withSecurityScope` bookmark options) and its fix are documented honestly in both commit and Notes, not glossed over; files touched match the Implementation plan.
+
+The one flagged gap — inability to reproduce a genuine sandbox *denial* deterministically in CI (no interactive `NSOpenPanel` grant available in automation) — was judged an acceptable, transparently-documented trade-off, not a blocker: the injectable-lister test proves the mechanism is exclusively URL-based independent of live sandbox specifics, and the second test exercises the real `RecentDocuments` bookmark/security-scope round trip end to end. No findings raised; ready for `done`.
