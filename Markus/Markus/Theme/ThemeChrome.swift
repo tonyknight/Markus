@@ -123,7 +123,7 @@ struct ThemePickerView: View {
     }
 }
 
-private struct ThemeCard: View {
+struct ThemeCard: View {
     let title: String
     let tokens: ThemeTokens
     let isSelected: Bool
@@ -133,7 +133,7 @@ private struct ThemeCard: View {
     var body: some View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 8) {
-                ThemeSampleView(tokens: tokens)
+                ThemeSwatch(tokens: tokens)
                     .frame(height: 88)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 Text(title)
@@ -152,6 +152,51 @@ private struct ThemeCard: View {
         .onHover { hovering in
             onHover(hovering)
         }
+        #endif
+    }
+}
+
+/// A card's miniature theme preview, drawn entirely in SwiftUI (no
+/// embedded `NSViewRepresentable`/`UIViewRepresentable`). Cards used to
+/// embed a real `FoldingTextView` here (`ThemeSampleView`, now used only
+/// by the single proxy document below the grid) — that embed was the
+/// actual cause of the "cards cannot be selected" bug: a click landing
+/// over the embedded view's region never reached the card's `Button`,
+/// even though the embedded view's own `hitTest` already returned `nil`.
+/// A plain SwiftUI view can't intercept AppKit/UIKit hit-testing that
+/// way, so this swatch dissolves the bug by construction. The fill is
+/// deliberately never `.clear` — a fully transparent region was
+/// separately observed to fail hit-testing too in the same real-event
+/// test harness, unrelated to the embedded-view bug.
+private struct ThemeSwatch: View {
+    let tokens: ThemeTokens
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            colorFromPlatform(tokens.background)
+            VStack(alignment: .leading, spacing: 5) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(colorFromPlatform(tokens.heading))
+                    .frame(width: 64, height: 8)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(colorFromPlatform(tokens.body))
+                    .frame(width: 96, height: 5)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(colorFromPlatform(tokens.body))
+                    .frame(width: 72, height: 5)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(colorFromPlatform(tokens.link))
+                    .frame(width: 44, height: 5)
+            }
+            .padding(10)
+        }
+    }
+
+    private func colorFromPlatform(_ color: PlatformColorType) -> Color {
+        #if os(macOS)
+        Color(nsColor: color)
+        #else
+        Color(uiColor: color)
         #endif
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 #if os(macOS)
 import AppKit
 #else
@@ -98,6 +99,58 @@ struct ThemePickerTests {
     }
 
     #if os(macOS)
+    /// Proves card selection actually works end to end: a genuine AppKit
+    /// mouse-down/mouse-up pair, synthesized and dispatched through a real
+    /// `NSWindow`'s `sendEvent(_:)` at the swatch's on-screen point, must
+    /// reach the card's `onSelect` closure. This is deliberately *not* a
+    /// direct call to `onSelect` or `ThemeChrome.select` — that would only
+    /// prove the closure works, not that a real click reaches it (N9;
+    /// R8; C.10 — "selection must be proven working, not assumed"). Before
+    /// this ticket's fix, the same harness against the old
+    /// `ThemeSampleView`-embedding card reproduced the reported bug: the
+    /// click was silently swallowed and `onSelect` never ran, even though
+    /// the embedded view's own `hitTest` already returned `nil`.
+    @Test func clickOnCardSwatchDispatchesRealAppKitEventThatInvokesOnSelect() {
+        var selected: ThemeSelection?
+        let card = ThemeCard(
+            title: "Harbor",
+            tokens: NamedThemeCatalog.tokens(for: .harbor),
+            isSelected: false,
+            onSelect: { selected = .named(.harbor) },
+            onHover: { _ in }
+        )
+        .frame(width: 180, height: 140)
+
+        let hostingView = NSHostingView(rootView: card)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 180, height: 140)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.titled, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        hostingView.layoutSubtreeIfNeeded()
+
+        // A point inside the swatch band (the card's top ~88pt) — the
+        // region the old embedded FoldingTextView occupied.
+        let point = NSPoint(x: 90, y: 70)
+        let downEvent = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        )!
+        let upEvent = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        )!
+        window.sendEvent(downEvent)
+        window.sendEvent(upEvent)
+        window.orderOut(nil)
+
+        #expect(selected == .named(.harbor))
+    }
+
     @Test func macHoverPreviewChangesTokensWithoutPersistingUntilApply() {
         let store = isolatedStore()
         let host = hostWithStore(store)
