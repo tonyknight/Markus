@@ -46,10 +46,18 @@ struct ContentView: View {
     @ViewBuilder
     private var documentChrome: some View {
         HStack(spacing: 0) {
+            #if os(macOS)
+            RibbonRailView(host: host)
+            if host.isLibraryPanelOpen {
+                LibraryPanelView(host: host)
+                    .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
+            }
+            #else
             if FolderChrome.showsTree(for: host) {
                 FolderTreeView(host: host)
                     .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
             }
+            #endif
             editorColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             if !ThemeChrome.presentsSettingsAsModalSheet, host.isSettingsPresented {

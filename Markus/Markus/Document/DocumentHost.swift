@@ -12,6 +12,7 @@ final class DocumentHost: ObservableObject {
     @Published var isImporterPresented = false
     @Published var isFolderImporterPresented = false
     @Published var isSettingsPresented = false
+    @Published var isLibraryPanelOpen = false
     @Published var isOutlinePresented = false
     @Published var isFindPresented = false
     @Published var isGoToLinePresented = false
@@ -170,6 +171,10 @@ final class DocumentHost: ObservableObject {
         folderSession = FolderSession(rootURL: url, alreadyAccessing: alreadyAccessing)
         recents.record(url: url, isFolder: true)
         errorMessage = nil
+        // Opening a folder — via Open Folder… or Recents — is an explicit
+        // request to see it, so the ribbon rail's library panel opens
+        // automatically (it can still be closed manually afterward).
+        isLibraryPanelOpen = true
         objectWillChange.send()
     }
 
@@ -306,6 +311,20 @@ final class DocumentHost: ObservableObject {
 
     func presentOutline() {
         isOutlinePresented = true
+        objectWillChange.send()
+    }
+
+    func presentSettings() {
+        isSettingsPresented = true
+        objectWillChange.send()
+    }
+
+    /// Toggles the left ribbon rail's library panel (macOS-only chrome).
+    /// The panel starts closed; the hamburger flips this regardless of
+    /// whether a folder session exists — `LibraryPanelView` decides
+    /// whether to show the tree or an empty state for that case.
+    func toggleLibraryPanel() {
+        isLibraryPanelOpen.toggle()
         objectWillChange.send()
     }
 
