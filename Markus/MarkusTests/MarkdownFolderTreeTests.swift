@@ -113,26 +113,22 @@ struct MarkdownFolderTreeTests {
 
     @Test func regressionEnumerationThroughRealSecurityScopedBookmarkPopulatesFullFilteredTree() throws {
         // Mirrors the production folder-open flow (RecentDocuments /
-        // FolderSession): a security-scoped bookmark is created for the
-        // fixture root, resolved with .withSecurityScope, and access is
-        // started before MarkdownFolderTree ever sees the URL. Every
+        // FolderSession) exactly, via RecentDocuments' own cross-platform
+        // bookmark handling (security-scoped on macOS, plain resolution on
+        // iOS/iPadOS where .withSecurityScope doesn't exist -- N6): a
+        // bookmark is created for the fixture root, resolved, and access
+        // is started before MarkdownFolderTree ever sees the URL. Every
         // assertion below is on MarkdownFolderTree.build's live output --
         // it fails outright if enumeration silently returns empty, or if
         // an excluded entry leaks through (N9).
         let root = try makeSandboxedFixture()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let bookmark = try root.bookmarkData(options: [.withSecurityScope])
-        var isStale = false
-        let resolved = try URL(
-            resolvingBookmarkData: bookmark,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-        let started = resolved.startAccessingSecurityScopedResource()
-        defer { if started { resolved.stopAccessingSecurityScopedResource() } }
-        #expect(started)
+        let recents = RecentDocuments(defaults: UserDefaults(suiteName: "markus.folder.sandboxed.\(UUID().uuidString)")!)
+        recents.record(url: root, isFolder: true)
+        let item = try #require(recents.items.first)
+        let resolved = try recents.startAccessing(item)
+        defer { recents.stopAccessing(resolved) }
 
         let tree = MarkdownFolderTree.build(root: resolved)
 

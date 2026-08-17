@@ -117,3 +117,6 @@ xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platfor
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-16
+bora-debug: T02's regression test initially referenced URL.BookmarkCreationOptions/.BookmarkResolutionOptions .withSecurityScope directly and unconditionally, which is unavailable on iOS/iPadOS -- broke the iPhone 17 simulator build (N6). Root cause: should have reused RecentDocuments' existing #if os(macOS) cross-platform bookmark handling instead of reimplementing it. Fixed by rewriting the test to go through RecentDocuments.record/startAccessing (same pattern as RecentDocumentsTests), matching the real production FolderSession flow on every platform. Verified GREEN on macOS and iPhone 17 simulator after the fix.
