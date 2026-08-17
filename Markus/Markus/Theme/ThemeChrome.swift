@@ -16,14 +16,6 @@ enum ThemeChrome {
         #endif
     }
 
-    static var presentsSettingsAsModalSheet: Bool {
-        #if os(macOS)
-        false
-        #else
-        true
-        #endif
-    }
-
     static let sampleMarkdown = """
     # Heading
     Body with a [link](https://example.com) and `code`.

@@ -81,10 +81,8 @@ struct ThemePickerTests {
         #expect(ThemeChrome.hostsPickerInSettings)
         #if os(macOS)
         #expect(ThemeChrome.showsHoverPreview)
-        #expect(!ThemeChrome.presentsSettingsAsModalSheet)
         #else
         #expect(!ThemeChrome.showsHoverPreview)
-        #expect(ThemeChrome.presentsSettingsAsModalSheet)
         #endif
     }
 

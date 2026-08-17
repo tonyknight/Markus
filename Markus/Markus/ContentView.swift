@@ -5,6 +5,22 @@ struct ContentView: View {
     @ObservedObject var host: DocumentHost
 
     var body: some View {
+        #if os(macOS)
+        // The settings surface fills the entire viewport as a sibling of
+        // the document `NavigationStack`, never nested inside it (R7) —
+        // the old side panel's bug was a nested `NavigationStack`'s
+        // toolbar item getting hoisted into the window toolbar.
+        if host.isSettingsPresented {
+            SettingsScene(host: host)
+        } else {
+            documentScene
+        }
+        #else
+        documentScene
+        #endif
+    }
+
+    private var documentScene: some View {
         NavigationStack {
             documentChrome
                 .navigationTitle(host.session.fileURL?.lastPathComponent ?? host.folderSession?.rootURL.lastPathComponent ?? "Markus")
@@ -60,10 +76,6 @@ struct ContentView: View {
             #endif
             editorColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if !ThemeChrome.presentsSettingsAsModalSheet, host.isSettingsPresented {
-                SettingsPane(host: host)
-                    .frame(minWidth: 380, idealWidth: 400, maxWidth: 480)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -336,6 +348,13 @@ struct SessionEditorRepresentable: UIViewRepresentable {
     AppRootView()
 }
 
+// iOS-only settings sheet. This is a pre-existing, already-functional
+// modal presentation (unrelated to the macOS side-panel bug this ticket
+// fixes — a `.sheet` owns its own presentation context, so its
+// `ToolbarItem` never gets hoisted into a window toolbar the way the old
+// macOS side panel's did). macOS gets the new full-viewport
+// `SettingsScene` instead (see `SettingsScene.swift`); per the "no new
+// iPhone/iPad chrome" non-goal, iOS keeps this sheet unchanged.
 private struct SettingsPane: View {
     @ObservedObject var host: DocumentHost
 
@@ -361,13 +380,13 @@ private struct SettingsSheetModifier: ViewModifier {
     @ObservedObject var host: DocumentHost
 
     func body(content: Content) -> some View {
-        if ThemeChrome.presentsSettingsAsModalSheet {
-            content.sheet(isPresented: $host.isSettingsPresented) {
-                SettingsPane(host: host)
-            }
-        } else {
-            content
+        #if os(iOS)
+        content.sheet(isPresented: $host.isSettingsPresented) {
+            SettingsPane(host: host)
         }
+        #else
+        content
+        #endif
     }
 }
 
