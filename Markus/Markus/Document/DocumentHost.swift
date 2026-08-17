@@ -171,6 +171,10 @@ final class DocumentHost: ObservableObject {
         folderSession = FolderSession(rootURL: url, alreadyAccessing: alreadyAccessing)
         recents.record(url: url, isFolder: true)
         errorMessage = nil
+        // Opening a folder — via Open Folder… or Recents — is an explicit
+        // request to see it, so the ribbon rail's library panel opens
+        // automatically (it can still be closed manually afterward).
+        isLibraryPanelOpen = true
         objectWillChange.send()
     }
 

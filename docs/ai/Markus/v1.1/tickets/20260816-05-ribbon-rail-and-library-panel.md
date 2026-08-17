@@ -22,7 +22,7 @@ subtasks:
   title: Empty state offering Open Folder… with no folder session
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -69,7 +69,7 @@ do nothing.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Ribbon rail SwiftUI column + host toggle state + gear stub
 Build the macOS-only ribbon rail (`RibbonRailView`: hamburger icon top,
@@ -116,7 +116,7 @@ iOS/iPadOS per task before commit, same `-only-testing:MarkusTests/RibbonRailTes
 on `-destination 'platform=iOS Simulator,name=iPhone 17'` and
 `-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`)
 - [ ] todo
-
+- [x] done
 ### T03: Empty state offering Open Folder… with no folder session
 Add `LibraryEmptyStateView` (macOS-only, in `RibbonRail.swift`): shown
 by `LibraryPanelView` when the panel is open but `host.folderSession`

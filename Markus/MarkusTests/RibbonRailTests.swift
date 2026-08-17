@@ -31,4 +31,35 @@ struct RibbonRailTests {
         host.presentSettings()
         #expect(host.isSettingsPresented)
     }
+
+    @Test func openingAFolderAutoOpensTheLibraryPanelAndHamburgerCanStillCloseIt() throws {
+        let host = makeHost()
+        #expect(!host.isLibraryPanelOpen)
+
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-ribbon-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("# Notes\n".utf8).write(to: root.appendingPathComponent("notes.md"))
+
+        // Opening a folder (Open Folder… or Recents) auto-opens the panel.
+        host.openFolder(root)
+        #expect(host.isLibraryPanelOpen)
+
+        // The hamburger can still manually close it even with a folder
+        // session present — toggling is independent of session state.
+        host.toggleLibraryPanel()
+        #expect(!host.isLibraryPanelOpen)
+    }
+
+    @Test func singleFileOpenLeavesTheLibraryPanelClosed() throws {
+        let host = makeHost()
+        let lone = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-ribbon-lone-\(UUID().uuidString).md")
+        try Data("# Lone\n".utf8).write(to: lone)
+        defer { try? FileManager.default.removeItem(at: lone) }
+
+        host.openPicked(lone)
+        #expect(!host.isLibraryPanelOpen)
+    }
 }

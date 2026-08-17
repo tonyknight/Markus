@@ -47,4 +47,16 @@ struct RibbonRailView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
+
+/// The library panel behind the ribbon rail's hamburger: it *is* the
+/// `FolderTreeView` from ticket 03 (unmodified, relocated here rather
+/// than duplicated), given a home and a toggle affordance. Shown by
+/// `ContentView` whenever `host.isLibraryPanelOpen` is true.
+struct LibraryPanelView: View {
+    @ObservedObject var host: DocumentHost
+
+    var body: some View {
+        FolderTreeView(host: host)
+    }
+}
 #endif
