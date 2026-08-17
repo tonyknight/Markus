@@ -14,23 +14,44 @@ struct FolderTreeNode: Equatable, Identifiable {
 enum MarkdownFolderTree {
     static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
 
-    static func build(root: URL) -> [FolderTreeNode] {
-        children(of: root)
+    /// Builds the Markdown folder tree rooted at `root`.
+    ///
+    /// `listDirectoryContents` is how a directory's entries are obtained.
+    /// It defaults to `defaultListDirectoryContents`, which enumerates via
+    /// the **URL** (`FileManager.contentsOfDirectory(at:)`), never a path
+    /// string. Under the App Sandbox a folder is only reachable through its
+    /// security-scoped URL (see `Markus.entitlements`,
+    /// `startAccessingSecurityScopedResource()`); path-based enumeration
+    /// (`contentsOfDirectory(atPath:)`) is silently denied there (N7). The
+    /// parameter exists so tests can prove the mechanism is exclusively
+    /// URL-based without depending on live OS sandbox behavior.
+    static func build(
+        root: URL,
+        listDirectoryContents: (URL) -> [URL] = defaultListDirectoryContents
+    ) -> [FolderTreeNode] {
+        children(of: root, listDirectoryContents: listDirectoryContents)
     }
 
-    private static func children(of directory: URL) -> [FolderTreeNode] {
-        let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else {
-            return []
-        }
+    static func defaultListDirectoryContents(_ directory: URL) -> [URL] {
+        (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: []
+        )) ?? []
+    }
+
+    private static func children(
+        of directory: URL,
+        listDirectoryContents: (URL) -> [URL]
+    ) -> [FolderTreeNode] {
+        let entries = listDirectoryContents(directory)
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
         var nodes: [FolderTreeNode] = []
-        for name in names.sorted() {
+        for url in entries {
+            let name = url.lastPathComponent
             if name.hasPrefix(".") { continue }
-            let url = directory.appendingPathComponent(name)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { continue }
-            if isDir.boolValue {
-                let nested = children(of: url)
+            if isDirectory(url) {
+                let nested = children(of: url, listDirectoryContents: listDirectoryContents)
                 guard !nested.isEmpty else { continue }
                 nodes.append(FolderTreeNode(name: name, url: url, isDirectory: true, children: nested))
             } else if isMarkdownFile(name) {
@@ -38,6 +59,18 @@ enum MarkdownFolderTree {
             }
         }
         return nodes
+    }
+
+    /// Determines directory-ness purely from the URL: `resourceValues`
+    /// (URL-based, never a path string) when the resource is reachable,
+    /// falling back to the URL's own directory-path hint otherwise (e.g.
+    /// for synthetic URLs in tests).
+    private static func isDirectory(_ url: URL) -> Bool {
+        if let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
+           let isDir = values.isDirectory {
+            return isDir
+        }
+        return url.hasDirectoryPath
     }
 
     private static func isMarkdownFile(_ name: String) -> Bool {
