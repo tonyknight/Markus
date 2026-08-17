@@ -16,7 +16,7 @@ subtasks:
   status: done
 - id: T2
   title: Build AppKit NSMenu hierarchy in MarkusAppDelegate
-  status: todo
+  status: done
 - id: T3
   title: Route custom menu actions through the responder chain
   status: todo
@@ -26,7 +26,7 @@ subtasks:
 - id: T5
   title: Fix stacked .fileImporter bug (dead Open button)
   status: done
-current_task: T03
+current_task: T04
 plan_status: in-progress
 ---
 ## Description
@@ -87,7 +87,7 @@ just the Source/Preview control.
 ## Implementation plan
 
 Status: in-progress
-Current task: T03
+Current task: T04
 
 ### T01: Window geometry — three-quarter visibleFrame, pinned top-left
 Size and position the window in `MarkdownDocument.makeWindowControllers()`
@@ -125,7 +125,7 @@ Files: new `Markus/Markus/Document/MacMainMenu.swift`,
 new `Markus/MarkusTests/MacMainMenuTests.swift`
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -only-testing:MarkusTests/MacMainMenuTests test`
 - [ ] todo
-
+- [x] done
 ### T04: Route custom menu actions through the responder chain
 File's New/Open/Save use the standard `NSDocumentController`/`NSDocument`
 action selectors (target `nil`) so they resolve automatically through the

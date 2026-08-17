@@ -160,6 +160,10 @@ final class MarkdownDocument: NSDocument {
 final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
     private let documentController = MarkusDocumentController()
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = MacMainMenu.build()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
         _ = documentController
