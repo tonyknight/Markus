@@ -288,3 +288,89 @@ xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platfor
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-18
+
+All three plan tasks complete. T01: Preview's gutter now numbers a
+source line only at each rendered block's true start (R13) instead of
+one per visible source line — a cached `FoldingSession
+.previewBlockAnchorLines: Set<Int>` (rebuilt only in `reparse`, never
+per frame, P2) built from every `ParsedPreviewBlock` anchor except
+`.fenceDelimiter` (a fence emits one of those per delimiter, purely so
+ticket 08's substitution machinery can hide each independently — a
+reader sees one fence, not two) unioned with every foldable block's own
+`FoldID.startLine`. Source mode's `drawGutter` path is untouched
+(`drawSourceGutterNumbersAndChevrons`, byte-for-byte the old loop); a
+new `drawPreviewGutterNumbersAndChevrons` handles Preview. T02:
+confirmed, not reimplemented — a direct test with a genuinely
+multi-physical-line paragraph passed against T01's already-landed code
+on its first run, including a geometric check (rendered height matches
+a single-physical-line reference) rather than absence alone. T03: fixed
+a real gap in `FoldingSession.y(forSourceLine:)` (nil for a continuation
+line of a multi-line Preview block, so go-to-line silently placed the
+caret but never scrolled there) with a fallback to the containing
+block's anchor, then to the nearest genuinely visible line; confirmed
+(no production change) that outline jump and minimap click were never
+affected, since both only ever target/resolve a line that already has a
+`SourceLineMap.Entry` by construction — added Preview-mode regression
+tests for both since neither had any prior Preview-mode coverage.
+
+Found via T01's own RED, not assumed, and the most consequential finding
+in this ticket: **Preview never drew a fence's fold chevron at all**
+before this fix, a pre-existing bug orthogonal to numbering. A fence's
+opening delimiter is always `isMarkupOnly` (ticket 08's R10 handling),
+which makes `PreviewSubstitutionIndex.build` collapse the delimiter's
+own line to zero height — so it never had a `SourceLineMap.Entry`, and
+both the old chevron loop and `foldableSourceLines()`/
+`handleGutterClick` keyed strictly off `block.id.startLine` being
+present in that entry list. Confirmed empirically before writing any
+fix: `foldableSourceLines() → [1]` on a fixture with a heading (chevron
+present) and a fence (chevron absent). Fixed generally, not just for
+numbering: a new `FoldingSession.nearestVisibleLine(atOrAfter:in:)`
+resolves a block's chevron/number position, and — symmetrically —
+`handleGutterClick`'s reverse lookup, to the nearest line that actually
+has an entry when the block's own anchor doesn't (a fence's opening
+delimiter, always; an empty heading, sometimes, per ticket 08's
+zero-length-substitution guard applying equally to headings). The
+*number drawn* is always the block's true anchor line; only *where* it
+draws, and what a click there resolves to, can differ. A dedicated test
+(`previewFenceChevronResolvesToItsFirstVisibleLineAndStaysClickable`)
+proves this isn't just cosmetic: a real `handleGutterClick` at the
+resolved position actually toggles `foldStore.isFolded` for the fence's
+own `FoldID`, not merely that a chevron shape appears somewhere.
+
+A second, smaller finding worth recording: adding T03's fallback to
+`FoldingSession.y(forSourceLine:)` broke two of T01/T02's own
+assertions as a direct, correct consequence (the same "later task
+changes an earlier task's function, earlier test must be updated"
+pattern ticket 08's Notes recorded for `SourceLineMapTests`) — both had
+asserted `view.y(forSourceLine:) == nil` for lines with no entry of
+their own, which is no longer true now that the convenience accessor
+resolves through a fallback. Both were updated to assert against
+`view.session.sourceLineMap().y(forSourceLine:)` directly (the raw map,
+bypassing the fallback) instead, preserving their original intent
+(proving the map itself has no entry there) rather than weakening or
+deleting them.
+
+All tests assert live, observable state per N9: actual
+`gutterLineNumbers()`/`foldableSourceLines()` output (not attribute
+presence), a real `handleGutterClick` call toggling real
+`foldStore.isFolded` state, geometric height/position comparisons
+against independently-rendered reference fixtures rather than
+re-deriving expectations from the same code path under test, and a real
+`jumpToSourceLine`/`MacMinimapView.handleClick` round trip rather than
+inspecting internal state in isolation.
+
+Verify (fresh, this session, worktree/branch confirmed via `pwd`/`git
+branch --show-current` before every xcodebuild/git invocation): macOS
+`xcodebuild ... test` → TEST SUCCEEDED (102s); iOS Simulator iPhone 17 →
+TEST SUCCEEDED (112s); iOS Simulator iPad Pro 13-inch (M5) → TEST
+SUCCEEDED (109s). `bora dev lint` reports one pre-existing error on
+ticket 08 (`current_task`/`### Tnn:` heading-format mismatch, already
+flagged and confirmed predating this ticket's work by tickets 08's and
+10's own Notes) — out of scope here, same as those tickets noted.
+Working tree clean after four commits (T01, T02, T03, plus one
+`Status.md` refresh after the ticket-scope verify). Ticket `status:`
+left `in-progress`, Acceptance Criteria/Subtask checkboxes left
+unchecked, `bora-review` not run — per this project's convention, that
+is the controlling session's job.
