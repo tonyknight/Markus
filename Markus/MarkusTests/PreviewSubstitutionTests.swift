@@ -162,7 +162,7 @@ struct PreviewSubstitutionTests {
         #expect(!paragraph.string.contains("`"))
         let range = (paragraph.string as NSString).range(of: "inline code")
         let font = try #require(paragraph.attribute(.font, at: range.location, effectiveRange: nil) as? PlatformFontType)
-        #expect(font.isFixedPitch || PlatformFont.monospaced(size: font.pointSize).fontName == font.fontName)
+        #expect(PlatformFont.monospaced(size: font.pointSize).fontName == font.fontName)
     }
 
     @Test func previewModePresentsLinksWithURLAndNoLiteralBracketsOrParens() throws {
