@@ -3,10 +3,10 @@ id: 20260816-08-preview-rendering-via-paragraph-substitution
 title: Preview rendering via paragraph substitution
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-17
-closed:
+closed: 2026-08-17
 notes: ''
 parent:
 depends_on:
@@ -14,19 +14,19 @@ depends_on:
 subtasks:
 - id: T1
   title: Implement NSTextContentStorageDelegate substitution path
-  status: todo
+  status: done
 - id: T2
   title: Full GFM span coverage (emphasis, strong, quotes, lists, breaks, links)
-  status: todo
+  status: done
 - id: T3
   title: Integrate table attachment from ticket 01
-  status: todo
+  status: done
 - id: T4
   title: Degrade images to readable styled text, not raw syntax
-  status: todo
+  status: done
 - id: T5
   title: Fixtures/assertions that exercise what a reader actually sees
-  status: todo
+  status: done
 plan_status: approved
 current_task: T08
 ---
@@ -44,20 +44,20 @@ mode substitutes nothing and the buffer stays raw Markdown throughout.
 
 ## Acceptance criteria
 
-- [ ] In Preview, headings are scaled by level, emphasis and strong are
+- [x] In Preview, headings are scaled by level, emphasis and strong are
       applied, lists and block quotes are shaped, thematic breaks are
       drawn, links are presented as links, and Markdown punctuation is
       not displayed as literal text (R10).
-- [ ] Tables render via the attachment from ticket 01 as a true grid with
+- [x] Tables render via the attachment from ticket 01 as a true grid with
       aligned columns (R11).
-- [ ] Images are **not** rendered; they degrade to readable styled text,
+- [x] Images are **not** rendered; they degrade to readable styled text,
       not raw syntax (R12).
-- [ ] In Source mode, the delegate substitutes nothing; raw bytes lay out
+- [x] In Source mode, the delegate substitutes nothing; raw bytes lay out
       unchanged.
-- [ ] The buffer is never rewritten; rendered text is never written back
+- [x] The buffer is never rewritten; rendered text is never written back
       to it; markup is never hidden via clear foreground colours or
       near-zero font sizes (N4).
-- [ ] Fixtures cover bold, italic, block quote, nested list, image,
+- [x] Fixtures cover bold, italic, block quote, nested list, image,
       heading below H1, table, and thematic break — and assertions check
       what a reader actually sees, not just that an attribute was
       attached to a source range (E.14, N9).
@@ -80,13 +80,13 @@ mode substitutes nothing and the buffer stays raw Markdown throughout.
 
 ## Subtasks
 
-- [ ] Implement `NSTextContentStorageDelegate` returning a substituted
+- [x] Implement `NSTextContentStorageDelegate` returning a substituted
       `NSTextParagraph` per source paragraph in Preview mode.
-- [ ] Cover emphasis, strong, block quotes, lists (incl. nested),
+- [x] Cover emphasis, strong, block quotes, lists (incl. nested),
       thematic breaks, links, and heading levels.
-- [ ] Integrate the ticket-01 table attachment for GFM tables.
-- [ ] Degrade images to styled placeholder text.
-- [ ] Build/extend the GFM fixture to exercise every covered element;
+- [x] Integrate the ticket-01 table attachment for GFM tables.
+- [x] Degrade images to styled placeholder text.
+- [x] Build/extend the GFM fixture to exercise every covered element;
       write assertions against rendered output, not attribute presence
       alone.
 
@@ -214,3 +214,13 @@ Fixed generally rather than case-by-case, per the reviewer's own recommendation:
 Added `previewModeHandlesAnEmptyHeadingWithoutHangingOrLeavingItVisible` (`PreviewSubstitutionTests.swift`) as a direct regression test — it calls `ensureLayout()` on an empty-heading fixture, which would hang (not just fail) if this guard regressed, exactly as the original bug did.
 
 Verify (fresh, correct worktree confirmed): `-only-testing:MarkusTests/PreviewSubstitutionTests` → TEST SUCCEEDED, 36/36; full macOS suite → TEST SUCCEEDED, 116/116, zero failures, no hang.
+
+## Review
+
+**2026-08-17 — Verdict: Important-or-Critical found, then fixed, then clean.** First full review by a fresh subagent against R10, R11, R12, N4, N9, Architecture components 7/8, independently re-running the full macOS suite (115/115 at that point). It confirmed the T06 `isMarkupOnly` fence-delimiter fix was itself correct and non-tautological, the `SourceLineMapTests` and `GFMPreviewFixture` consumer-test updates were honest (not weakened), the T08 `isFixedPitch` fix was minimal and legitimate, table integration genuinely reuses ticket 01's `TableAttachment`, N4/N9 hold throughout, and the pre-existing `bora dev lint` errors on this file predate this ticket's work (confirmed via `git stash` against the T05 commit).
+
+One **Critical** finding: an empty ATX heading (CommonMark-valid, e.g. `# ` alone) produced a zero-length `PreviewElement.rendered` with `isMarkupOnly` defaulted `false` — the same hazard class as T06's original fence-delimiter bug (a zero-length `NSAttributedString` reaching `NSTextParagraph(attributedString:)` for a non-empty source range breaks TextKit 2's incremental layout), just via a different AST node, uncaught because the T06 guard was only applied at the two fence-delimiter call sites rather than centrally. Verified empirically via a scoped unit test that inspected `PreviewElementCollector.collect` output directly (without calling `ensureLayout()`, to avoid re-triggering the hang) — confirmed `rendered.length == 0` for an empty heading.
+
+Fixed by generalizing the guard rather than patching headings alone: `PreviewElement.rendered`/`isMarkupOnly` became `private(set)`, and a single `init(lines:rendered:isMarkupOnly:)` now normalizes *any* zero-length `rendered` (regardless of call site — heading, paragraph, list item, thematic break, fence delimiter, or anything added in the future) to a single space with `isMarkupOnly` forced `true`, so no caller can construct a zero-length substitution for a non-empty source range, by construction. Added a direct regression test that calls `ensureLayout()` on an empty-heading fixture (would hang, not just fail, if the guard regressed).
+
+A scoped re-review by a second fresh subagent confirmed the fix: the `init` cannot be bypassed (properties are `private(set)`, no other initializer exists, all 7 construction sites use keyword args through the guarded `init`), non-empty content is untouched, `PreviewSubstitutionIndex.build`'s `isMarkupOnly` check is the sole consumer with no other `rendered.length == 0`-style check left anywhere in `Markus/Markus/`, and the downstream `PreviewContentStorageDelegate`/`PreviewSubstitutionIndex.substitution(atUTF16Offset:)` path is a thin pass-through with no other route for zero-length content to reach TextKit 2. Independently re-ran: `-only-testing:MarkusTests/PreviewSubstitutionTests` → TEST SUCCEEDED, 36/36; full macOS suite → TEST SUCCEEDED, 116/116, zero failures, no hang. No new findings. Ready for `done`.
