@@ -374,3 +374,130 @@ Working tree clean after four commits (T01, T02, T03, plus one
 left `in-progress`, Acceptance Criteria/Subtask checkboxes left
 unchecked, `bora-review` not run — per this project's convention, that
 is the controlling session's job.
+
+## Review
+
+### 2026-08-18
+
+**Verdict: Important**
+
+Reviewed commit range `7cf9f49`..`0e36709` (T01 `7cf9f49`, T02
+`bce4ba2`, T03 `b745e12`, Status refresh `de7b986`, Notes append
+`0e36709`). Spec compliance, TDD evidence, commit-message format, and
+cross-ticket isolation all check out; one performance-invariant
+regression needs fixing before this is clean.
+
+**Spec / correctness — clean.**
+- Source mode's number+chevron path (`drawSourceGutterNumbersAndChevrons`)
+  is a byte-for-byte lift of the pre-ticket loop; confirmed by reading
+  the diff, not just trusting the commit message. Gate is a true no-op
+  outside `.preview`.
+- `previewBlockAnchorLines` is built once in `reparse(markdown:)` from
+  `parsedPreviewBlocks` (excluding `.fenceDelimiter`, correctly — a
+  fence emits two delimiter blocks but must number once) unioned with
+  foldable-block start lines. Confirmed cached, not recomputed per
+  frame/viewport.
+- `FoldingSession.y(forSourceLine:)`'s new fallback (T03) checks
+  `map.y(forSourceLine:)` first and only falls through when that is nil
+  **and** `mode == .preview`; Source mode is unreachable through the
+  fallback branch. Verified against the diff directly.
+- The claimed pre-existing bug — Preview never drew a fence's fold
+  chevron, because the opening delimiter is `isMarkupOnly` (ticket 08)
+  and so has no `SourceLineMap.Entry` — is real and the fix
+  (`nearestVisibleLine(atOrAfter:in:)`) is applied symmetrically: the
+  chevron/number draw loop and `handleGutterClick`'s reverse lookup use
+  the same resolution, so what's drawn is what's clickable. Confirmed
+  by reading both call sites, not just the Notes' claim.
+- Cross-ticket isolation confirmed: `git diff` across the full range
+  touches only `Markus/Markus/Editor/FoldingTextView.swift` in
+  production code. Ticket 08's `PreviewSubstitution.swift`
+  (`isMarkupOnly`/`rendered` normalization) and ticket 10's
+  `cachedHiddenUTF16Ranges`/`mergedDisjointRanges` machinery are
+  untouched — no risk of reintroducing either ticket's fixed bugs.
+- `OutlineJumpTests.swift`/`MacMinimapTests.swift` are genuinely
+  untouched across the whole range, matching T03's claim that no
+  production change was needed for either.
+
+**Important — Preview's new gutter-draw loop reintroduces the O(document
+× viewport) shape P2 was written to eliminate.**
+
+`drawPreviewGutterNumbersAndChevrons` (FoldingTextView.swift, T01)
+iterates `blocks` (every foldable block in the *whole document*) and
+`session.previewBlockAnchorLines` (every rendered block's anchor in the
+whole document — one per paragraph/heading/table/fence, not just
+foldable ones) unconditionally, every draw call:
+
+```swift
+for block in blocks where block.foldExtent != nil {
+    guard let displayLine = session.nearestVisibleLine(atOrAfter: block.id.startLine, in: map),
+          let entry = map.entries.first(where: { $0.sourceLine == displayLine })
+    else { continue }
+    ...
+}
+for anchorLine in session.previewBlockAnchorLines.sorted() {
+    guard let displayLine = session.nearestVisibleLine(atOrAfter: anchorLine, in: map),
+          let entry = map.entries.first(where: { $0.sourceLine == displayLine })
+    else { continue }
+    ...
+}
+```
+
+`SourceLineMap.y(forSourceLine:)` (`SourceLineMap.swift`) is a linear
+scan (`entries.first { $0.sourceLine == line }`), not a dictionary
+lookup, and `map.entries` is bounded to the visible rect (call it `V`
+entries) by ticket 10 T02's `sourceLineMap(boundedBy:)`. So each item
+in the two loops above costs up to two full `O(V)` scans inside
+`nearestVisibleLine`, plus a third, entirely redundant `O(V)` scan via
+`map.entries.first(where:)` to recover the `Entry` that
+`nearestVisibleLine` already implicitly located. Total cost per draw:
+`O((blocks + anchors) × V)` — proportional to whole-document size times
+viewport size, not to the viewport alone.
+
+This is the same shape of bug ticket 10 fixed for `packedSourceLineEntries`
+(O(lines × fragments)) and its P2 acceptance criterion was written
+specifically to prevent ("the gutter computes entries for the visible
+range only, never O(lines × fragments)"). Contrast with
+`drawSourceGutterNumbersAndChevrons` (Source mode, untouched by this
+ticket): it also iterates all of `blocks`, but filters with an O(1) Set
+lookup (`visibleLines.contains(...)`), giving `O(blocks + V)` — linear,
+not multiplied. The new Preview path does not use that same pattern.
+
+`previewBlockAnchorLines` is not bounded to foldable blocks — it
+includes one anchor per rendered block (every paragraph, table, heading,
+fence), so for an ordinary prose document this scales with total
+paragraph count, not just heading/fence count. A document with a few
+thousand paragraphs — not an exotic heading-stress fixture — would hit
+this on every scroll frame in Preview mode.
+
+No existing test catches this: ticket 10's own viewport-boundedness
+stress test (`drawFragmentsEnumerationIsBoundedByViewportNotDocumentSize`
+in `FoldingTextViewTests.swift`) uses a 5,000-heading fixture but only
+exercises `.source` mode via `session.drawFragments`, never
+`drawGutter` in `.preview` mode. `sourceLinesScannedLastGutterCompute`
+(ticket 10's N8 counter) only measures `sourceLineMap(boundedBy:)`'s
+own construction, not what `drawPreviewGutterNumbersAndChevrons` does
+with the result afterward — so this ticket's targeted test suite
+(GutterTests/OutlineJumpTests/MacMinimapTests) passing, and even the
+project's fuller suite passing, would not surface this regression.
+
+Suggested fix shape (not applied — Critical/Important findings go back
+through bora-tdd/bora-debug, not fixed by review): iterate `map.entries`
+(already bounded to `V`) as the outer loop instead of `blocks`/
+`previewBlockAnchorLines`, testing anchor/foldable membership with an
+O(1) Set lookup the way `drawSourceGutterNumbersAndChevrons` already
+does — mirroring the existing Source-mode pattern rather than
+introducing a new one. Separately, `nearestVisibleLine` could return the
+resolved `Entry` (or its index) directly instead of just the `Int` line,
+removing the redundant third scan regardless of the outer-loop fix.
+
+**Minor.**
+- `nearestVisibleLine`'s "an empty heading, sometimes" case (mentioned
+  in the Notes as also needing resolution) has no dedicated test fixture
+  — only the fence-delimiter case is exercised directly. The mechanism
+  is shared and generic, so this is a coverage gap, not a suspected bug.
+
+**Not re-run:** the human's fresh `xcodebuild` run this session
+(GutterTests/OutlineJumpTests/MacMinimapTests, TEST SUCCEEDED) is
+trusted as-is; the Important finding above is a latent complexity issue
+no existing test is positioned to catch, so re-running the same suites
+would not have changed the result.
