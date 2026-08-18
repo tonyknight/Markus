@@ -757,6 +757,97 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         }
     }
 
+    // MARK: - Point/offset geometry (T01: caret placement, mouse click,
+    // NSTextInputClient's characterIndex(for:)/firstRect(forCharacterRange:))
+
+    /// Resolves `point` — in the same packed coordinate space
+    /// `drawFragments` draws into (x already gutter-adjusted by the
+    /// caller; y already "packed," skipping the extra space folded/
+    /// collapsed fragments would otherwise leave in TextKit's own raw
+    /// geometry) — to the nearest UTF-16 document offset. There is no
+    /// existing point↔offset helper anywhere in this codebase (T01);
+    /// built from `NSTextLayoutFragment.textLineFragments`/
+    /// `NSTextLineFragment.characterIndex(for:)` composed with the same
+    /// packed-Y fragment walk `drawFragments` already uses, since raw
+    /// TextKit geometry does not skip hidden/folded content on its own.
+    /// `visibleRect`, when non-nil, bounds the walk the same way
+    /// `drawFragments` does (P1) — mouse click/drag is a continuous,
+    /// per-frame interaction and must not become O(document).
+    func utf16Offset(atPackedPoint point: CGPoint, boundedBy visibleRect: CGRect? = nil) -> Int? {
+        var resolved: Int?
+        var lastSeenEnd: Int?
+        enumeratePackedVisibleFragments(boundedBy: visibleRect) { fragment, packedY, utf16Range in
+            guard resolved == nil else { return }
+            let height = fragment.layoutFragmentFrame.height
+            lastSeenEnd = utf16Range.upperBound
+            guard point.y >= packedY, point.y < packedY + max(height, 1) else { return }
+            let local = CGPoint(x: point.x, y: point.y - packedY)
+            resolved = Self.characterOffset(inPackedFragment: fragment, at: local, elementStartUTF16: utf16Range.location)
+        }
+        if let resolved { return resolved }
+        // Below every visible fragment (or the point is past the last
+        // one considered): clamp to the end of the last fragment seen,
+        // matching a standard text view's "click past the last line
+        // places the caret at the very end" behavior.
+        return lastSeenEnd
+    }
+
+    private static func characterOffset(inPackedFragment fragment: NSTextLayoutFragment, at localPoint: CGPoint, elementStartUTF16: Int) -> Int {
+        let lineFragments = fragment.textLineFragments
+        guard !lineFragments.isEmpty else { return elementStartUTF16 }
+        var cumulative = 0
+        for (index, lineFragment) in lineFragments.enumerated() {
+            let bounds = lineFragment.typographicBounds
+            let isLast = index == lineFragments.count - 1
+            if localPoint.y <= bounds.maxY || isLast {
+                let rawIndex = lineFragment.characterIndex(for: localPoint)
+                let clamped = max(0, min(rawIndex, lineFragment.characterRange.length))
+                return elementStartUTF16 + cumulative + clamped
+            }
+            cumulative += lineFragment.characterRange.length
+        }
+        return elementStartUTF16 + cumulative
+    }
+
+    /// The inverse of `utf16Offset(atPackedPoint:boundedBy:)`: the
+    /// packed-coordinate-space caret rect (a thin, full-line-height
+    /// rect) for `offset` — used both for drawing the blinking caret
+    /// and for `NSTextInputClient.firstRect(forCharacterRange:actualRange:)`.
+    /// Returns `nil` when `offset` does not resolve to any visible
+    /// (non-hidden, non-folded) fragment within `visibleRect` — the same
+    /// skip-hidden-content behavior `drawFragments` already has, since
+    /// collapsed fragments are never handed to the enumeration body.
+    func packedCaretRect(forUTF16Offset offset: Int, boundedBy visibleRect: CGRect? = nil) -> CGRect? {
+        var result: CGRect?
+        enumeratePackedVisibleFragments(boundedBy: visibleRect) { fragment, packedY, utf16Range in
+            guard result == nil else { return }
+            guard offset >= utf16Range.location, offset <= utf16Range.upperBound else { return }
+            result = Self.caretRect(inPackedFragment: fragment, atUTF16Offset: offset, elementStartUTF16: utf16Range.location, packedY: packedY)
+        }
+        return result
+    }
+
+    private static func caretRect(inPackedFragment fragment: NSTextLayoutFragment, atUTF16Offset offset: Int, elementStartUTF16: Int, packedY: CGFloat) -> CGRect {
+        let lineFragments = fragment.textLineFragments
+        guard !lineFragments.isEmpty else {
+            return CGRect(x: 0, y: packedY, width: 2, height: max(fragment.layoutFragmentFrame.height, 1))
+        }
+        var cumulative = elementStartUTF16
+        for (index, lineFragment) in lineFragments.enumerated() {
+            let lineEnd = cumulative + lineFragment.characterRange.length
+            let isLast = index == lineFragments.count - 1
+            if offset <= lineEnd || isLast {
+                let localIndex = max(0, min(offset - cumulative, lineFragment.characterRange.length))
+                let point = lineFragment.locationForCharacter(at: localIndex)
+                let bounds = lineFragment.typographicBounds
+                return CGRect(x: point.x, y: packedY + bounds.minY, width: 2, height: max(bounds.height, 1))
+            }
+            cumulative = lineEnd
+        }
+        let bounds = lineFragments[lineFragments.count - 1].typographicBounds
+        return CGRect(x: 0, y: packedY + bounds.minY, width: 2, height: max(bounds.height, 1))
+    }
+
     private func packedLayoutHeight() -> CGFloat {
         var height: CGFloat = 0
         enumeratePackedVisibleFragments { fragment, _, _ in
@@ -1026,6 +1117,22 @@ final class FoldingTextView: PlatformView {
     let textContainer: NSTextContainer
     let documentTextStorage: NSTextStorage
     private let editingUndoManager = UndoManager()
+    #if os(macOS)
+    /// T01: the blinking caret's current on/off phase, and the marked
+    /// (IME/dictation composing) UTF-16 range, if any. Both are
+    /// macOS-only — `NSTextInputClient`/mouse-driven selection are
+    /// AppKit-only per the ticket's Design note; iOS/iPadOS keep
+    /// building and passing the existing non-editing suite (N6) with no
+    /// new editing behaviour required.
+    private var caretBlinkTimer: Timer?
+    private(set) var caretVisible: Bool = true
+    private var markedTextUTF16Range: NSRange?
+    /// The buffer text `markedTextUTF16Range` is standing in for, as it
+    /// was immediately before the current IME/dictation composing
+    /// session began (captured once, on the first `setMarkedText` call
+    /// of a session) — see `mutateSourceText`'s `undoPreviousOverride`.
+    private var composingOriginalText: String?
+    #endif
 
     var foldStore: FoldStore { session.foldStore }
     var blocks: [Block] { session.blocks }
@@ -1327,6 +1434,7 @@ final class FoldingTextView: PlatformView {
         context.translateBy(x: gutterWidth, y: 0)
         session.drawFragments(in: context, visibleRect: dirtyRect)
         context.restoreGState()
+        drawCaret(in: context)
     }
 
     override func layout() {
@@ -1338,6 +1446,29 @@ final class FoldingTextView: PlatformView {
         let point = convert(event.locationInWindow, from: nil)
         if handleGutterClick(at: point) { return }
         super.mouseDown(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard session.mode == .source else {
+            super.keyDown(with: event)
+            return
+        }
+        interpretKeyEvents([event])
+    }
+
+    @discardableResult
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became, session.mode == .source {
+            startCaretBlinking()
+        }
+        return became
+    }
+
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        stopCaretBlinking()
+        return super.resignFirstResponder()
     }
     #else
     override var canBecomeFirstResponder: Bool { true }
@@ -1619,7 +1750,324 @@ final class FoldingTextView: PlatformView {
         editingUndoManager.undo()
         return true
     }
+
+    /// The redo counterpart of `undoLastChange()` (R20/R21 "undo and
+    /// redo work"). No menu item routes to this today — R3 enumerates
+    /// the Edit menu's required items (Find, Go to Line, Fold All,
+    /// Unfold All) and Undo/Redo are not among them, so this is reached
+    /// programmatically (tests; a future menu item, out of this
+    /// ticket's scope) rather than via a `Selector`-based responder-chain
+    /// action the way `undoLastChange` also isn't wired to Cmd+Z today.
+    func redoLastChange() -> Bool {
+        guard editingUndoManager.canRedo else { return false }
+        editingUndoManager.redo()
+        return true
+    }
 }
+
+#if os(macOS)
+extension FoldingTextView {
+    // MARK: - T01: NSTextInputClient — caret geometry, blinking, IME/dictation
+
+    private static let caretBlinkInterval: TimeInterval = 0.5
+
+    private func startCaretBlinking() {
+        caretVisible = true
+        caretBlinkTimer?.invalidate()
+        caretBlinkTimer = Timer.scheduledTimer(withTimeInterval: Self.caretBlinkInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.toggleCaretVisibility()
+            }
+        }
+    }
+
+    private func stopCaretBlinking() {
+        caretBlinkTimer?.invalidate()
+        caretBlinkTimer = nil
+        caretVisible = true
+        needsDisplay = true
+    }
+
+    /// The exact toggle the blink timer calls each tick — exposed
+    /// (rather than only reachable via a real timer firing) so tests can
+    /// assert the toggle's own real effect directly and deterministically
+    /// (N9), instead of sleeping for a wall-clock interval.
+    func toggleCaretVisibility() {
+        caretVisible.toggle()
+        needsDisplay = true
+    }
+
+    /// Draws the blinking caret at `selectedUTF16Range`'s location when
+    /// the selection is a real (zero-length) caret, in Source mode, and
+    /// the current blink phase is on. Internal (not `private`) so tests
+    /// can exercise the real per-frame draw path directly against a
+    /// bitmap `CGContext`, mirroring `drawGutter`'s own testability
+    /// precedent (ticket 10/09).
+    func drawCaret(in context: CGContext) {
+        guard session.mode == .source, selectedUTF16Range.length == 0, caretVisible else { return }
+        guard let packedRect = session.packedCaretRect(forUTF16Offset: selectedUTF16Range.location, boundedBy: currentVisiblePackedRect()) else { return }
+        let rect = CGRect(x: packedRect.minX + gutterWidth, y: packedRect.minY, width: max(packedRect.width, 1.5), height: packedRect.height)
+        context.saveGState()
+        context.setFillColor(PlatformColor.label.cgColor)
+        context.fill(rect)
+        context.restoreGState()
+    }
+
+    /// The single primitive every keystroke-path mutation (`insertText`,
+    /// backspace/delete, IME marked-text updates) routes through for the
+    /// immediate buffer edit — the same "replace range, wrapped in
+    /// begin/endEditing" shape as `FindReplace.replace`/
+    /// `replaceSelection(with:)` (the ticket's Design note names this as
+    /// the existing "mutate then reparse" precedent to reuse). Calls
+    /// `session.syncBlocksFromStorage()` synchronously for now — T05
+    /// moves that one call behind a debounce timer; nothing else about
+    /// this primitive changes then. Mode gating (`session.mode ==
+    /// .source`) happens at each public entry point, not here, so that
+    /// undo/redo — which must keep working even if the user has since
+    /// switched to Preview — is never itself blocked by the gate that
+    /// stops *new* edits.
+    /// `undoPreviousOverride`, when supplied, is registered as the
+    /// undo step's inverse text instead of `range`'s actual current
+    /// contents — needed for committing a marked-text (IME/dictation)
+    /// composition (`insertText` while `hasMarkedText()`, or
+    /// `unmarkText()`): the range being "replaced" at commit time
+    /// already holds the *composed* text (`setMarkedText` writes each
+    /// revision straight into the buffer, per its own doc comment), so
+    /// naively capturing "whatever's there now" as the undo inverse
+    /// would just replace the composed text with itself — a no-op that
+    /// silently drops the whole composition session from the undo
+    /// stack. The override carries the true pre-composition text
+    /// forward instead, so the commit's one undo step restores exactly
+    /// what was there before composition began.
+    @discardableResult
+    private func mutateSourceText(in range: NSRange, with replacement: String, registerUndo: Bool = true, undoPreviousOverride: String? = nil) -> Bool {
+        guard range.location != NSNotFound, NSMaxRange(range) <= documentTextStorage.length else { return false }
+        let previous = undoPreviousOverride ?? (documentTextStorage.string as NSString).substring(with: range)
+        let ok = FindReplace.replace(range, with: replacement, in: documentTextStorage)
+        guard ok else { return false }
+        let insertedLength = (replacement as NSString).length
+        let insertedRange = NSRange(location: range.location, length: insertedLength)
+        if registerUndo {
+            editingUndoManager.registerUndo(withTarget: self) { view in
+                view.mutateSourceText(in: insertedRange, with: previous)
+            }
+        }
+        selectedUTF16Range = NSRange(location: range.location + insertedLength, length: 0)
+        session.syncBlocksFromStorage()
+        onTextDidChange?()
+        needsDisplay = true
+        return true
+    }
+
+    private func deleteBackward() {
+        if selectedUTF16Range.length > 0 {
+            mutateSourceText(in: selectedUTF16Range, with: "")
+            return
+        }
+        guard selectedUTF16Range.location > 0 else { return }
+        let range = NSRange(location: selectedUTF16Range.location - 1, length: 1)
+        mutateSourceText(in: range, with: "")
+    }
+
+    private func deleteForward() {
+        if selectedUTF16Range.length > 0 {
+            mutateSourceText(in: selectedUTF16Range, with: "")
+            return
+        }
+        guard selectedUTF16Range.location < documentTextStorage.length else { return }
+        let range = NSRange(location: selectedUTF16Range.location, length: 1)
+        mutateSourceText(in: range, with: "")
+    }
+}
+
+extension FoldingTextView: NSTextInputClient {
+    /// Real text input, gated to Source mode (R20's "editing decision" —
+    /// Preview stays read-only, R22). Replaces `replacementRange` when
+    /// the input system supplies one, otherwise any active marked
+    /// (composing) range, otherwise the current selection — the standard
+    /// `NSTextInputClient` precedence. Committing while marked text is
+    /// active clears it (`markedTextUTF16Range = nil`) — the composing
+    /// text this replaces was never itself undo-registered (see
+    /// `setMarkedText`), so this one call's undo step is the whole
+    /// composition session's net effect, not just its last keystroke.
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        guard session.mode == .source else { return }
+        let text: String
+        if let string = string as? String {
+            text = string
+        } else if let attributed = string as? NSAttributedString {
+            text = attributed.string
+        } else {
+            return
+        }
+        let range: NSRange
+        let undoOverride: String?
+        if replacementRange.location != NSNotFound {
+            range = replacementRange
+            undoOverride = nil
+        } else if let marked = markedTextUTF16Range {
+            range = marked
+            undoOverride = composingOriginalText
+        } else {
+            range = selectedUTF16Range
+            undoOverride = nil
+        }
+        markedTextUTF16Range = nil
+        composingOriginalText = nil
+        mutateSourceText(in: range, with: text, undoPreviousOverride: undoOverride)
+    }
+
+    /// Keyboard commands `interpretKeyEvents(_:)` routes here when no
+    /// marked text intercepts them first. T01 wires the minimum needed
+    /// alongside `insertText` for basic editing to work at all
+    /// (newline, backspace, forward-delete) — the Design note lists
+    /// backspace/delete as one of the mutation paths that must share
+    /// `insertText`'s mutate primitive, alongside it rather than as a
+    /// separately numbered task. Arrow-key/word-boundary caret movement
+    /// and shift-extended selection are T02's explicit "keyboard
+    /// navigation" scope, not this method's.
+    override func doCommand(by selector: Selector) {
+        guard session.mode == .source else { return }
+        switch selector {
+        case Selector(("insertNewline:")), Selector(("insertNewlineIgnoringFieldEditor:")):
+            mutateSourceText(in: selectedUTF16Range, with: "\n")
+        case Selector(("insertTab:")):
+            mutateSourceText(in: selectedUTF16Range, with: "\t")
+        case Selector(("deleteBackward:")):
+            deleteBackward()
+        case Selector(("deleteForward:")):
+            deleteForward()
+        default:
+            break
+        }
+    }
+
+    /// Real IME/dictation composing support, not a stub: the composing
+    /// text is inserted into the buffer immediately (it is genuinely
+    /// what a reader would see mid-composition — there is only ever one
+    /// authoritative buffer, N4) each time the input system revises it,
+    /// replacing whatever the previous marked range covered. Deliberately
+    /// *not* undo-registered per intermediate revision (`registerUndo:
+    /// false`) — composing "n" → "ni" → "nǐ" → "你" as four separate undo
+    /// steps would be a confusing, meaningless undo stack; `insertText`'s
+    /// eventual commit is the one undoable step for the whole session.
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        guard session.mode == .source else { return }
+        let text: String
+        if let string = string as? String {
+            text = string
+        } else if let attributed = string as? NSAttributedString {
+            text = attributed.string
+        } else {
+            text = ""
+        }
+
+        let replaceRange: NSRange
+        if replacementRange.location != NSNotFound {
+            replaceRange = replacementRange
+        } else if let existing = markedTextUTF16Range {
+            replaceRange = existing
+        } else {
+            replaceRange = selectedUTF16Range
+        }
+
+        if markedTextUTF16Range == nil {
+            // Starting a new composing session: capture what
+            // composition is about to replace, so the eventual commit's
+            // one undo step (`insertText`/`unmarkText`) can restore
+            // exactly this — not "whatever's in the buffer at commit
+            // time," which by then is itself the already-composed text
+            // (see `mutateSourceText`'s `undoPreviousOverride` doc).
+            composingOriginalText = (documentTextStorage.string as NSString).substring(with: replaceRange)
+        }
+
+        guard mutateSourceText(in: replaceRange, with: text, registerUndo: false) else { return }
+        let insertedLength = (text as NSString).length
+        if insertedLength == 0 {
+            markedTextUTF16Range = nil
+            composingOriginalText = nil
+            return
+        }
+        markedTextUTF16Range = NSRange(location: replaceRange.location, length: insertedLength)
+        let clampedLocation = max(0, min(selectedRange.location, insertedLength))
+        let clampedLength = max(0, min(selectedRange.length, insertedLength - clampedLocation))
+        selectedUTF16Range = NSRange(location: replaceRange.location + clampedLocation, length: clampedLength)
+    }
+
+    /// Finalizes whatever marked text is currently in the buffer as-is
+    /// (the characters stay; only the "still composing" marking clears)
+    /// — the standard `NSTextInputClient.unmarkText()` contract. Unlike
+    /// each individual `setMarkedText` revision, this settling is
+    /// registered as one undo step (the composition's pre-session text
+    /// as the inverse) — the input system can finalize a composition
+    /// this way instead of always routing through `insertText`, and
+    /// without this the whole session would otherwise leave no undo
+    /// history at all.
+    func unmarkText() {
+        if let marked = markedTextUTF16Range, let original = composingOriginalText {
+            editingUndoManager.registerUndo(withTarget: self) { view in
+                view.mutateSourceText(in: marked, with: original)
+            }
+        }
+        markedTextUTF16Range = nil
+        composingOriginalText = nil
+    }
+
+    func markedRange() -> NSRange {
+        markedTextUTF16Range ?? NSRange(location: NSNotFound, length: 0)
+    }
+
+    func hasMarkedText() -> Bool {
+        markedTextUTF16Range != nil
+    }
+
+    func selectedRange() -> NSRange {
+        selectedUTF16Range
+    }
+
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+        guard range.location != NSNotFound, range.location >= 0, NSMaxRange(range) <= documentTextStorage.length else { return nil }
+        actualRange?.pointee = range
+        return documentTextStorage.attributedSubstring(from: range)
+    }
+
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        [.underlineStyle]
+    }
+
+    /// Screen-coordinate rect for `range`'s first character — computed
+    /// from `session.packedCaretRect`, then carried view → window →
+    /// screen. Used by the input system to position IME composition
+    /// candidate windows near the caret.
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        actualRange?.pointee = range
+        guard let packedRect = session.packedCaretRect(forUTF16Offset: range.location, boundedBy: currentVisiblePackedRect()) else {
+            let fallback = window?.frame ?? .zero
+            return NSRect(x: fallback.minX, y: fallback.minY, width: 0, height: 0)
+        }
+        let viewRect = CGRect(
+            x: packedRect.minX + gutterWidth,
+            y: packedRect.minY,
+            width: max(packedRect.width, 1),
+            height: packedRect.height
+        )
+        let windowRect = convert(viewRect, to: nil)
+        guard let window else { return windowRect }
+        return window.convertToScreen(windowRect)
+    }
+
+    /// The inverse of `firstRect(forCharacterRange:actualRange:)`:
+    /// screen point → document UTF-16 offset, via `session
+    /// .utf16Offset(atPackedPoint:boundedBy:)` (T01) — the same point↔
+    /// offset helper mouse click/drag selection (T02) uses.
+    func characterIndex(for point: NSPoint) -> Int {
+        let windowPoint = window?.convertPoint(fromScreen: point) ?? point
+        let viewPoint = convert(windowPoint, from: nil)
+        let packedPoint = CGPoint(x: viewPoint.x - gutterWidth, y: viewPoint.y)
+        return session.utf16Offset(atPackedPoint: packedPoint, boundedBy: currentVisiblePackedRect()) ?? 0
+    }
+}
+#endif
 
 #if os(macOS)
 struct FoldingTextViewRepresentable: NSViewRepresentable {
