@@ -64,7 +64,7 @@ of v1's R6**.
 ## Implementation plan
 
 Status: approved
-Current task: T03
+Current task: (all tasks complete; ticket-scope verify remains)
 
 Design note (read before touching `FoldingTextView.swift`): Ticket 08
 already gives every `PreviewElement`/`ParsedPreviewBlock` a `lines:
@@ -244,11 +244,38 @@ correct y — proving gutter, minimap, and go-to-line agree on the same
 underlying map even though the gutter now numbers a strict subset of it.
 
 Files: `Markus/Markus/Editor/FoldingTextView.swift`,
-`Markus/MarkusTests/GutterTests.swift`,
-`Markus/MarkusTests/OutlineJumpTests.swift`,
-`Markus/MarkusTests/MacMinimapTests.swift`
+`Markus/MarkusTests/GutterTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/GutterTests -only-testing:MarkusTests/OutlineJumpTests -only-testing:MarkusTests/MacMinimapTests`
+
+Implementation note: all three new/confirming tests landed in
+`GutterTests.swift` rather than split across `OutlineJumpTests.swift`/
+`MacMinimapTests.swift` as first sketched — they're really about the
+gutter's block-anchoring reconciling with those three features, and
+keeping them together made the shared fixtures (and the contrast with
+T01/T02's fixtures) easier to follow; `OutlineJumpTests.swift`/
+`MacMinimapTests.swift` were left untouched (no existing test needed
+fixing). Outline jump and minimap needed no production change, exactly
+as predicted — both new tests passed on first run. The go-to-line RED
+was real and confirmed for the right reason
+(`view.y(forSourceLine: 4) → nil` against a real 46.0pt expectation, not
+a compile error) before the `FoldingSession.y(forSourceLine:)` fallback
+was added.
+
+The fallback's addition to `y(forSourceLine:)` — the same function T01/
+T02's own tests already called to prove specific lines have *no* visual
+position — broke two of those two earlier commits' assertions as a
+direct, correct consequence (the same "pre-existing test breaks"
+pattern ticket 08's Notes recorded): `previewFenceChevronResolvesTo...`
+asserted `view.y(forSourceLine: 5) == nil` for the fence's invisible
+opening delimiter, and `previewMultiPhysicalLineParagraphAnchorsTo...`
+asserted the same for a paragraph's continuation lines. Both now assert
+against `view.session.sourceLineMap().y(forSourceLine:)` directly (the
+raw map, bypassing the new fallback) instead of the convenience
+`view.y(forSourceLine:)` — preserving their original intent (proving
+the map itself has no entry there) now that the higher-level accessor
+is deliberately smarter for exactly that situation.
+- [x] done
 
 ### Ticket-scope verify (after T03)
 

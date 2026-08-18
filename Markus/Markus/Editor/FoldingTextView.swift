@@ -365,8 +365,23 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         SourceLineMap(entries: packedSourceLineEntries(boundedBy: visibleRect))
     }
 
+    /// Resolves `line`'s visual y directly when it has its own
+    /// `SourceLineMap.Entry`. Otherwise (Preview only), `line` may be a
+    /// non-anchor continuation of a multi-line substituted block (e.g.
+    /// the 2nd/3rd physical line of a wrapped paragraph, or a table's
+    /// data rows) — those never get their own entry by design (the whole
+    /// block renders on its anchor line, T02). Resolving to the block's
+    /// anchor, then to the nearest genuinely visible line at or after it
+    /// (`nearestVisibleLine`, T01 — the anchor itself can also be
+    /// invisible markup, e.g. a fence delimiter), gives go-to-line a real
+    /// scroll target instead of silently doing nothing (T03).
     func y(forSourceLine line: Int) -> CGFloat? {
-        sourceLineMap().y(forSourceLine: line)
+        let map = sourceLineMap()
+        if let y = map.y(forSourceLine: line) { return y }
+        guard mode == .preview else { return nil }
+        let anchorLine = parsedPreviewBlocks.first(where: { $0.lines.contains(line) })?.lines.lowerBound ?? line
+        guard let visibleLine = nearestVisibleLine(atOrAfter: anchorLine, in: map) else { return nil }
+        return map.y(forSourceLine: visibleLine)
     }
 
     func sourceLine(atY y: CGFloat) -> Int? {

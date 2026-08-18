@@ -75,7 +75,11 @@ struct GutterTests {
         // The fence's own opening delimiter (line 5) is markup-only and
         // hidden by design (R10, "Markdown punctuation not displayed as
         // literal text") — it never gets its own `SourceLineMap.Entry`.
-        #expect(view.y(forSourceLine: 5) == nil)
+        // Checked against the raw map, not `view.y(forSourceLine:)`,
+        // since T03 deliberately gives the latter a resolving fallback
+        // for exactly this situation — this assertion is about the
+        // underlying map having no entry, not about what a caller sees.
+        #expect(view.session.sourceLineMap().y(forSourceLine: 5) == nil)
         let fenceBlock = try #require(view.blocks.first { $0.id.kind == .fence })
         #expect(fenceBlock.id.startLine == 5)
 
@@ -130,9 +134,14 @@ struct GutterTests {
         // Lines 4 and 5 have no visual position of their own at all —
         // the whole block rendered on line 3's single fragment ("multi-
         // line elements render their whole content on the anchor line",
-        // `PreviewElement`'s own doc comment).
-        #expect(view.y(forSourceLine: 4) == nil)
-        #expect(view.y(forSourceLine: 5) == nil)
+        // `PreviewElement`'s own doc comment). Checked against the raw
+        // map — T03 gives `view.y(forSourceLine:)` itself a resolving
+        // fallback for exactly this case (see
+        // `goToLineOnAContinuationLineOfAMultiLineBlockScrollsToTheBlocksAnchorPosition`),
+        // so this assertion is about the map having no entry, not about
+        // what a caller resolving through the fallback would see.
+        #expect(view.session.sourceLineMap().y(forSourceLine: 4) == nil)
+        #expect(view.session.sourceLineMap().y(forSourceLine: 5) == nil)
 
         // Geometric proof, not just absence: the anchor's entry occupies
         // the same height a genuinely single-physical-line rendering of
@@ -150,6 +159,111 @@ struct GutterTests {
 
         #expect(abs(multiHeight - singleHeight) < 0.5)
     }
+
+    // MARK: - T03: go-to-line resolves a continuation line to its block's anchor
+
+    @Test func goToLineOnAContinuationLineOfAMultiLineBlockScrollsToTheBlocksAnchorPosition() throws {
+        let multiLine = """
+            ## Heading two
+
+            Alpha bravo.
+            Charlie delta.
+            Echo foxtrot.
+            """
+
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(multiLine)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        // Line 4 is the paragraph's second physical line — a
+        // continuation with no `SourceLineMap.Entry` of its own (T02).
+        // Before this fix, `y(forSourceLine: 4)` returned nil and
+        // `jumpToSourceLine(4)` silently placed the caret but never
+        // scrolled. It must now resolve to the block's own anchor (3).
+        let anchorY = try #require(view.y(forSourceLine: 3))
+        #expect(view.y(forSourceLine: 4) == anchorY)
+
+        view.jumpToSourceLine(4)
+        #expect(view.lastJumpedPackedY == anchorY)
+    }
+
+    // MARK: - T03: outline jump lands correctly in Preview mode too
+
+    @Test func outlineJumpLandsOnTheHeadingsOwnPositionInPreviewModeToo() throws {
+        let headingFixture = """
+            # First
+
+            Hidden under first.
+
+            ## Second
+
+            Body of second.
+            """
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(headingFixture)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let items = OutlineJump.items(from: view.blocks, markdown: view.string)
+        let second = try #require(items.last)
+
+        // Preview substitutes the heading's own rendered line (it is
+        // never a continuation of anything), so it must still resolve
+        // directly — no fallback needed, but only real if genuinely
+        // exercised in Preview mode, which prior coverage never did.
+        let expectedY = try #require(view.y(forSourceLine: second.sourceLine))
+        view.jumpToSourceLine(second.sourceLine)
+        #expect(view.lastJumpedPackedY == expectedY)
+    }
+
+    // MARK: - T03: minimap only ever names a line the map (and go-to-line) can resolve
+
+    #if os(macOS)
+    @Test func minimapClickInPreviewModeOnlyNamesALineTheGutterMapCanAlsoResolve() throws {
+        let multiLine = """
+            ## Heading two
+
+            Alpha bravo.
+            Charlie delta.
+            Echo foxtrot.
+
+            ```swift
+            let answer = 42
+            ```
+            """
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(multiLine)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let minimap = MacMinimapView()
+        minimap.frame = CGRect(x: 0, y: 0, width: 24, height: 400)
+        minimap.snapshot = MacMinimapChrome.snapshot(from: view)
+        var clickedLine: Int?
+        minimap.onClickSourceLine = { clickedLine = $0 }
+
+        // Sample several points down the minimap track — every hit must
+        // land on a line the (now block-anchored) gutter map still
+        // fully understands, even though the gutter itself now numbers
+        // a strict subset of it (R13's "agree" requirement).
+        let visible = Set(view.session.sourceLineMap().visibleSourceLines)
+        var hitCount = 0
+        for step in stride(from: 0, through: 400, by: 20) {
+            clickedLine = nil
+            _ = minimap.handleClick(at: CGPoint(x: 4, y: CGFloat(step)))
+            if let line = clickedLine {
+                hitCount += 1
+                #expect(visible.contains(line))
+                let y = view.y(forSourceLine: line)
+                #expect(y != nil)
+                view.jumpToSourceLine(line)
+                #expect(view.lastJumpedPackedY == y)
+            }
+        }
+        #expect(hitCount > 0)
+    }
+    #endif
 
     @Test func slimFoldRailIsNarrowerThanNumberedGutter() {
         #expect(GutterMetrics.width(showLineNumbers: false) < GutterMetrics.width(showLineNumbers: true))
