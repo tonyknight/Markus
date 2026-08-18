@@ -484,4 +484,59 @@ struct PreviewSubstitutionTests {
         #expect(paragraphs.contains { $0.string.contains("Body text.") })
         #expect(view.textStorage?.string == markdown)
     }
+
+    // MARK: - Zero parses on fold/theme/zoom/mode-switch/resize (T03, P3)
+
+    @Test func styleOnlyChangesNeverReparseButARealTextChangeDoes() throws {
+        let markdown = """
+        ## Heading two
+
+        A paragraph under the H2.
+
+        ```swift
+        let answer = 42
+        ```
+        """
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let afterLoad = view.session.parsesPerformed
+        #expect(afterLoad > 0)
+
+        let heading = try #require(view.blocks.first { $0.id.kind == .heading })
+        view.toggleFold(atSourceLine: heading.id.startLine)
+        #expect(view.session.parsesPerformed == afterLoad)
+
+        view.setTheme(.default)
+        #expect(view.session.parsesPerformed == afterLoad)
+
+        view.setZoomScale(1.3)
+        #expect(view.session.parsesPerformed == afterLoad)
+
+        view.setMode(.source)
+        #expect(view.session.parsesPerformed == afterLoad)
+        view.setMode(.preview)
+        #expect(view.session.parsesPerformed == afterLoad)
+
+        // Container resize (the same path `layout()`/`layoutSubviews()`
+        // drive) must not reparse either.
+        view.frame = CGRect(x: 0, y: 0, width: 700, height: 800)
+        view.ensureLayout()
+        #expect(view.session.parsesPerformed == afterLoad)
+
+        // Preview rendering must still be correct after all those
+        // style-only changes reused the cached structure — not just the
+        // counter staying flat, the actual output too.
+        let paragraphs = attributedParagraphs(view)
+        #expect(paragraphs.contains { $0.string.contains("Heading two") })
+        #expect(!paragraphs.contains { $0.string.contains("##") })
+
+        // A real text change still reparses — proves the counter is a
+        // live assertion that can fail, not a constant (N9).
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        #expect(view.replaceSelection(with: "Extra text.\n\n"))
+        #expect(view.session.parsesPerformed == afterLoad + 1)
+    }
 }

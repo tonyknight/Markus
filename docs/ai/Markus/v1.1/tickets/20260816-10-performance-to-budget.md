@@ -91,7 +91,7 @@ deterministic instrumentation the budget table requires.
 ## Implementation plan
 
 Status: approved
-Current task: T03
+Current task: T04
 
 Design note (read before touching `FoldingTextView.swift`): `BlockIndex
 .build` already hoists a single shared `SourceMap` per build (T04/P5 —
@@ -243,7 +243,7 @@ Files: `Markus/Markus/Markdown/PreviewParsing.swift` (new),
 `Markus/MarkusTests/PreviewSubstitutionTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test`
-- [ ] done
+- [x] done
 
 ### T04: Single SourceMap per BlockIndex.build (P5) — verify, don't reimplement
 

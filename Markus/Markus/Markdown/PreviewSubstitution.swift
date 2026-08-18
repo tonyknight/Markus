@@ -1,6 +1,4 @@
 import Foundation
-import cmark_gfm
-import cmark_gfm_extensions
 #if os(macOS)
 import AppKit
 #else
@@ -65,237 +63,57 @@ enum PreviewHeadingScale {
     }
 }
 
-/// Walks the cmark-gfm AST and produces one `PreviewElement` per
-/// preview-relevant block. Pure data production — `FoldingSession`
-/// hands the result to `PreviewContentStorageDelegate`; nothing here
-/// touches `NSTextStorage`, so nothing here can be clobbered by
-/// `FoldingSession.applyStyling`'s blind restyle of the buffer.
-enum PreviewElementCollector {
-    static func collect(markdown: String, tokens: ThemeTokens, zoomScale: CGFloat) -> [PreviewElement] {
-        var elements: [PreviewElement] = markdown.withCString { cString in
-            cmark_gfm_core_extensions_ensure_registered()
-            let options = CMARK_OPT_DEFAULT | CMARK_OPT_FOOTNOTES | CMARK_OPT_SOURCEPOS
-            guard let parser = cmark_parser_new(options) else { return [] }
-            defer { cmark_parser_free(parser) }
-            for name in ["table", "tasklist", "strikethrough", "autolink", "tagfilter", "footnotes"] {
-                if let ext = cmark_find_syntax_extension(name) {
-                    cmark_parser_attach_syntax_extension(parser, ext)
-                }
-            }
-            cmark_parser_feed(parser, cString, markdown.utf8.count)
-            guard let document = cmark_parser_finish(parser) else { return [] }
-            defer { cmark_node_free(document) }
-
-            var elements: [PreviewElement] = []
-            var child = cmark_node_first_child(document)
-            while let node = child {
-                collectBlock(node, tokens: tokens, zoomScale: zoomScale, quoteDepth: 0, listDepth: 0, into: &elements)
-                child = cmark_node_next(node)
-            }
-            return elements
-        }
-
-        // Tables are collected separately via TableParsing (ticket 01):
-        // a GFM table is a single cmark node spanning several source
-        // lines, and TableParsing already extracts exactly the rows,
-        // alignment, and source range TableAttachment needs to measure
-        // and draw a true grid (R11). The table's other source lines
-        // (delimiter row, data rows) collapse via the same
-        // continuation-hiding path as any other multi-line element.
-        let sourceMap = SourceMap(markdown: markdown)
-        let font = PlatformFont.monospaced(size: 14 * zoomScale)
-        for table in TableParsing.parseTables(in: markdown) {
-            let attachment = TableAttachment(table: table, font: font)
-            let lines = lineRange(forByteRange: table.sourceRange, sourceMap: sourceMap)
-            elements.append(PreviewElement(lines: lines, rendered: NSAttributedString(attachment: attachment)))
-        }
-        return elements
-    }
-
-    /// Converts a UTF-8 byte range (as produced by cmark sourcepos) to a
-    /// 1-based source line range, using the same line numbering as
-    /// `SourceMap`/`UTF16LineOffsets`.
-    private static func lineRange(forByteRange bytes: Range<Int>, sourceMap: SourceMap) -> Range<Int> {
-        let startLine = lineNumber(forByteOffset: bytes.lowerBound, sourceMap: sourceMap)
-        let lastByte = max(bytes.lowerBound, bytes.upperBound - 1)
-        let endLine = lineNumber(forByteOffset: lastByte, sourceMap: sourceMap)
-        return startLine..<(max(startLine, endLine) + 1)
-    }
-
-    private static func lineNumber(forByteOffset offset: Int, sourceMap: SourceMap) -> Int {
-        var line = 1
-        for (index, start) in sourceMap.lineStarts.enumerated() where start <= offset {
-            line = index + 1
-        }
-        return line
-    }
-
-    /// Dispatches one block-level node. `quoteDepth`/`listDepth` are
-    /// 0-based ancestor counts (how many block quotes / how many levels
-    /// of list nesting this node sits inside); both drive the
-    /// paragraph-style indent applied to the rendered element (R10:
-    /// "lists and block quotes shaped ... via paragraph styles").
-    private static func collectBlock(
-        _ node: UnsafeMutablePointer<cmark_node>?,
-        tokens: ThemeTokens,
-        zoomScale: CGFloat,
-        quoteDepth: Int,
-        listDepth: Int,
-        into elements: inout [PreviewElement]
-    ) {
-        guard let node else { return }
-        let type = cmark_node_get_type(node)
-
-        if type == CMARK_NODE_BLOCK_QUOTE {
-            var child = cmark_node_first_child(node)
-            while let n = child {
-                collectBlock(n, tokens: tokens, zoomScale: zoomScale, quoteDepth: quoteDepth + 1, listDepth: listDepth, into: &elements)
-                child = cmark_node_next(n)
-            }
-            return
-        }
-
-        if type == CMARK_NODE_LIST {
-            let listType = cmark_node_get_list_type(node)
-            let listStart = Int(cmark_node_get_list_start(node))
-            var item = cmark_node_first_child(node)
-            while let itemNode = item {
-                collectListItem(
-                    itemNode,
-                    listType: listType,
-                    listStart: listStart,
-                    tokens: tokens,
-                    zoomScale: zoomScale,
-                    quoteDepth: quoteDepth,
-                    listDepth: listDepth,
-                    into: &elements
+/// Turns cmark-free `ParsedPreviewBlock`s (produced once per text
+/// change by `PreviewStructureCollector`) into styled `PreviewElement`s
+/// — the exact same font/color logic the pre-refactor
+/// `PreviewElementCollector` applied while it still walked cmark
+/// directly, just switching over `ParsedPreviewBlock`/
+/// `PreviewInlineNode` instead. Pure Swift, no cmark, safe to call on
+/// every fold toggle/theme change/zoom step/mode switch/resize without
+/// re-parsing (P3).
+enum PreviewElementRenderer {
+    static func render(_ blocks: [ParsedPreviewBlock], tokens: ThemeTokens, zoomScale: CGFloat) -> [PreviewElement] {
+        blocks.map { block in
+            switch block.kind {
+            case .heading(let level, let inline):
+                let font = PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale))
+                let attributed = renderInline(inline, font: font, tokens: tokens, defaultColor: tokens.heading)
+                return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
+            case .paragraph(let inline, let quoted):
+                let font = PlatformFont.body(size: 16 * zoomScale)
+                let color = quoted ? tokens.list : tokens.body
+                let attributed = renderInline(inline, font: font, tokens: tokens, defaultColor: color)
+                return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
+            case .thematicBreak:
+                let attachment = ThematicBreakAttachment(color: tokens.foldMarker)
+                let attributed = NSAttributedString(attachment: attachment)
+                return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
+            case .fenceDelimiter:
+                // Only the fence delimiter lines (```/~~~) are markup;
+                // the code between them is content, not syntax, so it
+                // is left for the default pass-through path (still
+                // monospaced/colored by FoldingSession.applyStyling's
+                // fallback attributes) rather than substituted here. A
+                // single space — never truly empty, see
+                // `PreviewElement.isMarkupOnly` — which
+                // `PreviewSubstitutionIndex.build` collapses to zero
+                // height (a markup-only line is never meant to occupy
+                // space).
+                return PreviewElement(lines: block.lines, rendered: NSAttributedString(string: " "), isMarkupOnly: true)
+            case .listItemLead(let marker, let inline):
+                let font = PlatformFont.body(size: 16 * zoomScale)
+                let inlineAttr = renderInline(inline, font: font, tokens: tokens, defaultColor: tokens.list)
+                let prefixed = NSMutableAttributedString(
+                    string: marker,
+                    attributes: [.font: font, .foregroundColor: tokens.list]
                 )
-                item = cmark_node_next(itemNode)
+                prefixed.append(inlineAttr)
+                return PreviewElement(lines: block.lines, rendered: applyIndent(prefixed, level: block.indentLevel))
+            case .table(let table):
+                let font = PlatformFont.monospaced(size: 14 * zoomScale)
+                let attachment = TableAttachment(table: table, font: font)
+                return PreviewElement(lines: block.lines, rendered: NSAttributedString(attachment: attachment))
             }
-            return
-        }
-
-        let startLine = Int(cmark_node_get_start_line(node))
-        let endLine = Int(cmark_node_get_end_line(node))
-        guard startLine > 0, endLine >= startLine else { return }
-        let lines = startLine..<(endLine + 1)
-        let indentLevel = quoteDepth + listDepth
-
-        if type == CMARK_NODE_HEADING {
-            let level = Int(cmark_node_get_heading_level(node))
-            let font = PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale))
-            let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.heading)
-            elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
-        } else if type == CMARK_NODE_PARAGRAPH {
-            let font = PlatformFont.body(size: 16 * zoomScale)
-            let color = quoteDepth > 0 ? tokens.list : tokens.body
-            let attributed = renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: color)
-            elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
-        } else if type == CMARK_NODE_THEMATIC_BREAK {
-            let attachment = ThematicBreakAttachment(color: tokens.foldMarker)
-            let attributed = NSAttributedString(attachment: attachment)
-            elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
-        } else if type == CMARK_NODE_CODE_BLOCK, isFenced(node) {
-            // Only the fence delimiter lines (```/~~~) are markup; the
-            // code between them is content, not syntax, so it is left
-            // for the default pass-through path (still monospaced/
-            // colored by FoldingSession.applyStyling's fallback
-            // attributes) rather than substituted here. Each delimiter
-            // line gets a markup-only substitution (a single space —
-            // never truly empty, see `PreviewElement.isMarkupOnly`),
-            // which `PreviewSubstitutionIndex.build` also collapses to
-            // zero height (a markup-only line is never meant to occupy
-            // space).
-            elements.append(PreviewElement(lines: startLine..<(startLine + 1), rendered: NSAttributedString(string: " "), isMarkupOnly: true))
-            if endLine > startLine {
-                elements.append(PreviewElement(lines: endLine..<(endLine + 1), rendered: NSAttributedString(string: " "), isMarkupOnly: true))
-            }
-        }
-        // Images are handled inline within paragraph/heading/list-item
-        // text by `renderInlineNode`'s `CMARK_NODE_IMAGE` case.
-    }
-
-    /// Mirrors `MarkdownParser`'s private fenced-code detection: `true`
-    /// when `node` is a fenced (``` or ~~~) code block, as opposed to an
-    /// indented one (which carries no delimiter markup to hide).
-    private static func isFenced(_ node: UnsafeMutablePointer<cmark_node>?) -> Bool {
-        var fenceLength: Int32 = 0
-        var fenceOffset: Int32 = 0
-        var fenceCharacter: CChar = 0
-        return cmark_node_get_fenced(node, &fenceLength, &fenceOffset, &fenceCharacter) != 0
-    }
-
-    /// One list item: the marker (bullet, ordinal, or task checkbox)
-    /// prefixes its own leading paragraph's rendered text; any further
-    /// block content in the item (a nested list, a loose item's extra
-    /// paragraph) is collected at the appropriate depth without a
-    /// marker of its own.
-    private static func collectListItem(
-        _ item: UnsafeMutablePointer<cmark_node>,
-        listType: cmark_list_type,
-        listStart: Int,
-        tokens: ThemeTokens,
-        zoomScale: CGFloat,
-        quoteDepth: Int,
-        listDepth: Int,
-        into elements: inout [PreviewElement]
-    ) {
-        let typeName = String(cString: cmark_node_get_type_string(item))
-        let isTask = typeName == "tasklist"
-        let checked = isTask && cmark_gfm_extensions_get_tasklist_item_checked(item)
-
-        let marker: String
-        if isTask {
-            marker = checked ? "\u{2611} " : "\u{2610} " // ☑ / ☐
-        } else if listType == CMARK_ORDERED_LIST {
-            let index = Int(cmark_node_get_item_index(item))
-            marker = "\(listStart + index). "
-        } else {
-            marker = "\u{2022} " // •
-        }
-
-        let font = PlatformFont.body(size: 16 * zoomScale)
-        var markerConsumed = false
-        var child = cmark_node_first_child(item)
-        while let n = child {
-            let childType = cmark_node_get_type(n)
-            if !markerConsumed, childType == CMARK_NODE_PARAGRAPH {
-                let startLine = Int(cmark_node_get_start_line(n))
-                let endLine = Int(cmark_node_get_end_line(n))
-                if startLine > 0, endLine >= startLine {
-                    let inline = renderInlineChildren(of: n, font: font, tokens: tokens, defaultColor: tokens.list)
-                    let prefixed = NSMutableAttributedString(
-                        string: marker,
-                        attributes: [.font: font, .foregroundColor: tokens.list]
-                    )
-                    prefixed.append(inline)
-                    elements.append(PreviewElement(
-                        lines: startLine..<(endLine + 1),
-                        rendered: applyIndent(prefixed, level: quoteDepth + listDepth)
-                    ))
-                }
-                markerConsumed = true
-            } else if childType == CMARK_NODE_LIST {
-                let nestedListType = cmark_node_get_list_type(n)
-                let nestedListStart = Int(cmark_node_get_list_start(n))
-                var nestedItem = cmark_node_first_child(n)
-                while let ni = nestedItem {
-                    collectListItem(
-                        ni,
-                        listType: nestedListType,
-                        listStart: nestedListStart,
-                        tokens: tokens,
-                        zoomScale: zoomScale,
-                        quoteDepth: quoteDepth,
-                        listDepth: listDepth + 1,
-                        into: &elements
-                    )
-                    nestedItem = cmark_node_next(ni)
-                }
-            } else {
-                collectBlock(n, tokens: tokens, zoomScale: zoomScale, quoteDepth: quoteDepth, listDepth: listDepth, into: &elements)
-            }
-            child = cmark_node_next(n)
         }
     }
 
@@ -315,118 +133,85 @@ enum PreviewElementCollector {
 
     // MARK: - Inline rendering
 
-    /// Concatenates the rendered inline content of `node`'s children:
-    /// emphasis/strong become font traits, inline code and
-    /// strikethrough get their own attributes, links carry `.link` and
-    /// lose their `[]()` syntax, and everything else falls back to
-    /// literal text — always via the AST, never a raw-source slice, so
-    /// markup punctuation is structurally absent rather than merely
-    /// colored over (R10).
-    private static func renderInlineChildren(
-        of node: UnsafeMutablePointer<cmark_node>?,
+    /// Concatenates the rendered inline content of `nodes`: emphasis/
+    /// strong become font traits, inline code and strikethrough get
+    /// their own attributes, links carry `.link` and lose their `[]()`
+    /// syntax, and everything else falls back to literal text — always
+    /// via the parsed structure, never a raw-source slice, so markup
+    /// punctuation is structurally absent rather than merely colored
+    /// over (R10).
+    private static func renderInline(
+        _ nodes: [PreviewInlineNode],
         font: PlatformFontType,
         tokens: ThemeTokens,
         defaultColor: PlatformColorType
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        var child = cmark_node_first_child(node)
-        while let n = child {
-            result.append(renderInlineNode(n, font: font, tokens: tokens, defaultColor: defaultColor))
-            child = cmark_node_next(n)
+        for node in nodes {
+            result.append(renderInlineNode(node, font: font, tokens: tokens, defaultColor: defaultColor))
         }
         return result
     }
 
     private static func renderInlineNode(
-        _ node: UnsafeMutablePointer<cmark_node>,
+        _ node: PreviewInlineNode,
         font: PlatformFontType,
         tokens: ThemeTokens,
         defaultColor: PlatformColorType
     ) -> NSAttributedString {
-        let type = cmark_node_get_type(node)
-
-        switch type {
-        case CMARK_NODE_TEXT:
-            return NSAttributedString(string: literalText(node), attributes: [
+        switch node {
+        case .text(let string):
+            return NSAttributedString(string: string, attributes: [
                 .font: font,
                 .foregroundColor: defaultColor,
             ])
-        case CMARK_NODE_SOFTBREAK, CMARK_NODE_LINEBREAK:
+        case .softBreak:
             return NSAttributedString(string: " ", attributes: [
                 .font: font,
                 .foregroundColor: defaultColor,
             ])
-        case CMARK_NODE_CODE:
-            return NSAttributedString(string: literalText(node), attributes: [
+        case .code(let string):
+            return NSAttributedString(string: string, attributes: [
                 .font: PlatformFont.monospaced(size: font.pointSize),
                 .foregroundColor: tokens.inlineCode,
             ])
-        case CMARK_NODE_EMPH:
-            return renderInlineChildren(of: node, font: PlatformFont.italic(font), tokens: tokens, defaultColor: defaultColor)
-        case CMARK_NODE_STRONG:
-            return renderInlineChildren(of: node, font: PlatformFont.bold(font), tokens: tokens, defaultColor: defaultColor)
-        case CMARK_NODE_LINK:
+        case .emph(let children):
+            return renderInline(children, font: PlatformFont.italic(font), tokens: tokens, defaultColor: defaultColor)
+        case .strong(let children):
+            return renderInline(children, font: PlatformFont.bold(font), tokens: tokens, defaultColor: defaultColor)
+        case .link(let url, let children):
             let inner = NSMutableAttributedString(
-                attributedString: renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.link)
+                attributedString: renderInline(children, font: font, tokens: tokens, defaultColor: tokens.link)
             )
             let fullRange = NSRange(location: 0, length: inner.length)
             inner.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
-            if let rawURL = cmark_node_get_url(node), let url = URL(string: String(cString: rawURL)) {
+            if let url {
                 inner.addAttribute(.link, value: url, range: fullRange)
             }
             return inner
-        case CMARK_NODE_IMAGE:
+        case .image(let alt):
             // R12: images are not rendered in v1.1 — degrade to
             // readable styled text (an icon plus the alt text, in a
             // distinct italic/muted style) rather than either a real
             // image or the raw `![]()` syntax.
-            let alt = literalInlineText(of: node)
             let label = alt.isEmpty ? "Image" : alt
             return NSAttributedString(string: "\u{1F5BC} \(label)", attributes: [
                 .font: PlatformFont.italic(font),
                 .foregroundColor: tokens.footnote,
             ])
-        default:
-            let typeName = String(cString: cmark_node_get_type_string(node))
-            if typeName == "strikethrough" {
-                let inner = NSMutableAttributedString(
-                    attributedString: renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: tokens.strikethrough)
-                )
-                let fullRange = NSRange(location: 0, length: inner.length)
-                inner.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
-                return inner
-            }
-            // Unhandled inline kinds (images handled in T06, footnote
-            // references, raw inline HTML, …) fall back to their own
-            // rendered children, or literal text for true leaves.
-            if cmark_node_first_child(node) != nil {
-                return renderInlineChildren(of: node, font: font, tokens: tokens, defaultColor: defaultColor)
-            }
-            return NSAttributedString(string: literalText(node), attributes: [
-                .font: font,
-                .foregroundColor: defaultColor,
-            ])
+        case .strikethrough(let children):
+            let inner = NSMutableAttributedString(
+                attributedString: renderInline(children, font: font, tokens: tokens, defaultColor: tokens.strikethrough)
+            )
+            let fullRange = NSRange(location: 0, length: inner.length)
+            inner.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
+            return inner
+        case .group(let children):
+            // Unhandled container kinds (footnote references, raw
+            // inline HTML, …) fall back to their own rendered children
+            // with no additional styling.
+            return renderInline(children, font: font, tokens: tokens, defaultColor: defaultColor)
         }
-    }
-
-    private static func literalText(_ node: UnsafeMutablePointer<cmark_node>?) -> String {
-        guard let literal = cmark_node_get_literal(node) else { return "" }
-        return String(cString: literal)
-    }
-
-    /// Flattens `node`'s descendant text nodes into a plain string,
-    /// ignoring formatting — used for an image's alt text, which is
-    /// itself inline content (so it can contain emphasis in the source)
-    /// but is only ever shown here as the degraded placeholder's label.
-    private static func literalInlineText(of node: UnsafeMutablePointer<cmark_node>?) -> String {
-        var text = ""
-        var child = cmark_node_first_child(node)
-        while let n = child {
-            text += literalText(n)
-            text += literalInlineText(of: n)
-            child = cmark_node_next(n)
-        }
-        return text
     }
 }
 
@@ -447,8 +232,25 @@ struct PreviewSubstitutionIndex {
     /// paragraphs/quotes, fenced code).
     private(set) var continuationUTF16Ranges: [NSRange] = []
 
+    /// Convenience for callers that don't need the parse/render split
+    /// (existing tests, one-shot callers): parses `markdown` once and
+    /// renders it immediately. `FoldingSession` does not use this
+    /// overload — it caches `[ParsedPreviewBlock]` across style-only
+    /// changes and calls `build(markdown:elements:)` directly, which is
+    /// what actually makes fold/theme/zoom/mode/resize parse-free (P3).
     static func build(markdown: String, tokens: ThemeTokens, zoomScale: CGFloat) -> PreviewSubstitutionIndex {
-        let elements = PreviewElementCollector.collect(markdown: markdown, tokens: tokens, zoomScale: zoomScale)
+        let elements = PreviewElementRenderer.render(
+            PreviewStructureCollector.collect(markdown: markdown),
+            tokens: tokens,
+            zoomScale: zoomScale
+        )
+        return build(markdown: markdown, elements: elements)
+    }
+
+    /// The parse-free path: `elements` were already rendered from a
+    /// cached `[ParsedPreviewBlock]` (or from any other source) —
+    /// nothing here touches cmark.
+    static func build(markdown: String, elements: [PreviewElement]) -> PreviewSubstitutionIndex {
         let lineOffsets = UTF16LineOffsets(markdown: markdown)
         var index = PreviewSubstitutionIndex()
         for element in elements {

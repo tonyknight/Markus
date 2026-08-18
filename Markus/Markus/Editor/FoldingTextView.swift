@@ -102,6 +102,14 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// on every draw.
     private var cachedSourceMap: SourceMap?
     private var cachedUTF16LineOffsets: UTF16LineOffsets?
+    /// The parsed (cmark-free) preview structure and raw-buffer spans,
+    /// rebuilt only where the source text actually changes — never on
+    /// a fold toggle, theme change, zoom step, mode switch, or resize
+    /// (P3). `parsesPerformed` is the N8 counter proving it: it only
+    /// increments inside `reparse(markdown:)`.
+    private var parsedPreviewBlocks: [ParsedPreviewBlock] = []
+    private var parsedSpans: [MarkdownSpan] = []
+    private(set) var parsesPerformed = 0
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
     private weak var textStorage: NSTextStorage?
@@ -122,19 +130,27 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
     func loadMarkdown(_ markdown: String, into textStorage: NSTextStorage) {
         self.textStorage = textStorage
-        blocks = BlockIndex.build(markdown: markdown)
-        rebuildLineCaches(markdown: markdown)
+        reparse(markdown: markdown)
         textStorage.setAttributedString(NSAttributedString(string: markdown))
         applyStyling(to: textStorage)
         invalidateLayout()
     }
 
-    /// Rebuilds the line-start caches used to bound viewport-only
-    /// computations (gutter, T02/P2) — called only where the source
-    /// text actually changes, mirroring `blocks`' own rebuild points.
-    private func rebuildLineCaches(markdown: String) {
+    /// The single place text-derived state is rebuilt: the fold block
+    /// index, the line-start caches (T02/P2), and the cmark-free
+    /// preview structure/raw-buffer spans `applyStyling` renders from.
+    /// Called only where the source text actually changes
+    /// (`loadMarkdown`, `syncBlocksFromStorage`) — never from
+    /// `setMode`/`setTheme`/`setZoomScale`/`applyFolds`/resize, which
+    /// only need to re-render the cached structure (P3).
+    /// `parsesPerformed` is the N8 counter proving that boundary holds.
+    private func reparse(markdown: String) {
+        blocks = BlockIndex.build(markdown: markdown)
         cachedSourceMap = SourceMap(markdown: markdown)
         cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
+        parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)
+        parsedSpans = MarkdownParser().previewSpans(markdown)
+        parsesPerformed += 1
     }
 
     func setMode(_ mode: EditorMode, textStorage: NSTextStorage) {
@@ -187,8 +203,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
     func syncBlocksFromStorage() {
         guard let textStorage else { return }
-        blocks = BlockIndex.build(markdown: textStorage.string)
-        rebuildLineCaches(markdown: textStorage.string)
+        reparse(markdown: textStorage.string)
         foldStore.repair(against: blocks)
         applyStyling(to: textStorage)
         invalidateLayout()
@@ -308,27 +323,25 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         return ranges
     }
 
-    /// Rebuilds the Preview substitution index from the current buffer,
-    /// theme, and zoom. Deliberately produces data that lives only on
-    /// `contentStorageDelegate` — never as attributes on `textStorage`
-    /// — so `applyStyling`'s blind `setAttributes(_:range:)` below
-    /// cannot clobber it (the integration risk flagged for this
-    /// ticket): there is nothing substitution-related on the buffer to
-    /// clobber. `applyStyling` still forces `NSTextContentStorage` to
-    /// invalidate its cached paragraphs and re-query this delegate,
-    /// which is the desired refresh on every mode/theme/zoom/fold
-    /// change.
+    /// Rebuilds the Preview substitution index from the cached
+    /// (already-parsed) preview structure plus the current theme and
+    /// zoom — never re-parses (P3). Deliberately produces data that
+    /// lives only on `contentStorageDelegate` — never as attributes on
+    /// `textStorage` — so `applyStyling`'s blind
+    /// `setAttributes(_:range:)` below cannot clobber it (the
+    /// integration risk flagged for this ticket): there is nothing
+    /// substitution-related on the buffer to clobber. `applyStyling`
+    /// still forces `NSTextContentStorage` to invalidate its cached
+    /// paragraphs and re-query this delegate, which is the desired
+    /// refresh on every mode/theme/zoom/fold change.
     private func rebuildSubstitutionIndex(textStorage: NSTextStorage) {
         contentStorageDelegate.isPreviewMode = (mode == .preview)
         guard mode == .preview else {
             contentStorageDelegate.index = nil
             return
         }
-        contentStorageDelegate.index = PreviewSubstitutionIndex.build(
-            markdown: textStorage.string,
-            tokens: tokens,
-            zoomScale: zoomScale
-        )
+        let elements = PreviewElementRenderer.render(parsedPreviewBlocks, tokens: tokens, zoomScale: zoomScale)
+        contentStorageDelegate.index = PreviewSubstitutionIndex.build(markdown: textStorage.string, elements: elements)
     }
 
     /// The UTF-16 location of the first hidden line inside each folded
@@ -365,8 +378,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
                 NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(body, range: full)
-            let spans = MarkdownParser().previewSpans(textStorage.string)
-            MarkdownPreviewRenderer.apply(spans: spans, to: textStorage, tokens: tokens, zoomScale: zoomScale)
+            MarkdownPreviewRenderer.apply(spans: parsedSpans, to: textStorage, tokens: tokens, zoomScale: zoomScale)
         }
         textStorage.endEditing()
     }
