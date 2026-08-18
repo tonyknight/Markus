@@ -93,6 +93,15 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// N8 counter proving P1: bounded by the visible rect, not the
     /// document, so it must not scale with document size.
     private(set) var fragmentsEnumeratedLastDraw = 0
+    /// Source lines examined by the most recent `packedSourceLineEntries`
+    /// call — the N8 counter proving P2 when called with a bound.
+    private(set) var sourceLinesScannedLastGutterCompute = 0
+    /// Rebuilt only when the source text actually changes
+    /// (`loadMarkdown`/`syncBlocksFromStorage`), not on every gutter
+    /// compute — avoids re-scanning the whole document for line starts
+    /// on every draw.
+    private var cachedSourceMap: SourceMap?
+    private var cachedUTF16LineOffsets: UTF16LineOffsets?
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
     private weak var textStorage: NSTextStorage?
@@ -114,9 +123,18 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     func loadMarkdown(_ markdown: String, into textStorage: NSTextStorage) {
         self.textStorage = textStorage
         blocks = BlockIndex.build(markdown: markdown)
+        rebuildLineCaches(markdown: markdown)
         textStorage.setAttributedString(NSAttributedString(string: markdown))
         applyStyling(to: textStorage)
         invalidateLayout()
+    }
+
+    /// Rebuilds the line-start caches used to bound viewport-only
+    /// computations (gutter, T02/P2) — called only where the source
+    /// text actually changes, mirroring `blocks`' own rebuild points.
+    private func rebuildLineCaches(markdown: String) {
+        cachedSourceMap = SourceMap(markdown: markdown)
+        cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
     }
 
     func setMode(_ mode: EditorMode, textStorage: NSTextStorage) {
@@ -170,6 +188,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     func syncBlocksFromStorage() {
         guard let textStorage else { return }
         blocks = BlockIndex.build(markdown: textStorage.string)
+        rebuildLineCaches(markdown: textStorage.string)
         foldStore.repair(against: blocks)
         applyStyling(to: textStorage)
         invalidateLayout()
@@ -188,8 +207,14 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         packedLayoutHeight()
     }
 
-    func sourceLineMap() -> SourceLineMap {
-        SourceLineMap(entries: packedSourceLineEntries())
+    /// `visibleRect`, when non-nil, bounds the underlying line scan to
+    /// only the source lines the currently-visible packed fragments
+    /// span (P2) — used by the gutter's per-frame paint path. Every
+    /// other caller (jump-to-line, minimap, which must be able to
+    /// resolve an off-screen line or Y) keeps calling this with no
+    /// argument, preserving the full-document computation unchanged.
+    func sourceLineMap(boundedBy visibleRect: CGRect? = nil) -> SourceLineMap {
+        SourceLineMap(entries: packedSourceLineEntries(boundedBy: visibleRect))
     }
 
     func y(forSourceLine line: Int) -> CGFloat? {
@@ -445,15 +470,41 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         return NSRange(location: start, length: max(0, end - start))
     }
 
-    private func packedSourceLineEntries() -> [SourceLineMap.Entry] {
+    /// `visibleRect`, when non-nil, bounds both the fragment walk
+    /// (reusing T01's `enumeratePackedVisibleFragments(boundedBy:)`)
+    /// and the source-line scan to just the lines the visible packed
+    /// fragments span — found via two binary searches into the cached
+    /// `UTF16LineOffsets` (O(log lines)), never a scan of every line in
+    /// the document (P2). When nil, behavior is unchanged from before
+    /// this ticket: every source line is examined against the
+    /// (unbounded) packed-fragment list.
+    private func packedSourceLineEntries(boundedBy visibleRect: CGRect? = nil) -> [SourceLineMap.Entry] {
         guard let string = documentString else { return [] }
 
-        let sourceMap = SourceMap(markdown: string)
+        let sourceMap = cachedSourceMap ?? SourceMap(markdown: string)
         let hidden = hiddenUTF16Ranges
-        let packed = packedVisibleFragments()
+        let packed = packedVisibleFragments(boundedBy: visibleRect)
         var entries: [SourceLineMap.Entry] = []
+        sourceLinesScannedLastGutterCompute = 0
 
-        for line in 1...sourceMap.lineStarts.count {
+        let lineRangeToScan: ClosedRange<Int>
+        if let visibleRect {
+            guard let lineOffsets = cachedUTF16LineOffsets,
+                  let first = packed.first,
+                  let last = packed.last
+            else { return [] }
+            let firstLine = max(1, lineOffsets.lineNumber(atUTF16Offset: first.utf16Range.location))
+            let lastOffset = max(last.utf16Range.location, last.utf16Range.upperBound - 1)
+            let lastLine = min(sourceMap.lineStarts.count, lineOffsets.lineNumber(atUTF16Offset: lastOffset))
+            guard firstLine <= lastLine else { return [] }
+            lineRangeToScan = firstLine...lastLine
+        } else {
+            guard sourceMap.lineStarts.count > 0 else { return [] }
+            lineRangeToScan = 1...sourceMap.lineStarts.count
+        }
+
+        for line in lineRangeToScan {
+            sourceLinesScannedLastGutterCompute += 1
             let bytes = sourceMap.offset(ofLine: line)..<sourceMap.endOffset(ofLine: line)
             let lineRange = UTF8NSRange.nsRange(utf8Bytes: bytes, in: string)
             guard lineRange.location != NSNotFound else { continue }
@@ -900,7 +951,7 @@ final class FoldingTextView: PlatformView {
         session.tokens.background.setFill()
         dirtyRect.fill()
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        drawGutter(in: context)
+        drawGutter(in: context, visibleRect: dirtyRect)
         context.saveGState()
         context.translateBy(x: gutterWidth, y: 0)
         session.drawFragments(in: context, visibleRect: dirtyRect)
@@ -925,7 +976,7 @@ final class FoldingTextView: PlatformView {
         backgroundColor?.setFill()
         UIRectFill(rect)
         guard let context = UIGraphicsGetCurrentContext() else { return }
-        drawGutter(in: context)
+        drawGutter(in: context, visibleRect: rect)
         context.saveGState()
         context.translateBy(x: gutterWidth, y: 0)
         session.drawFragments(in: context, visibleRect: rect)
@@ -1019,7 +1070,11 @@ final class FoldingTextView: PlatformView {
         return true
     }
 
-    private func drawGutter(in context: CGContext) {
+    /// `visibleRect` bounds both the source-line scan (T02) and the
+    /// foldable-line lookup to what is actually on screen — the gutter
+    /// never needs off-screen entries, since nothing off-screen can be
+    /// drawn or clicked.
+    private func drawGutter(in context: CGContext, visibleRect: CGRect) {
         let gutterRect = CGRect(x: 0, y: 0, width: gutterWidth, height: max(bounds.height, layoutHeight))
         context.saveGState()
         #if os(macOS)
@@ -1029,8 +1084,12 @@ final class FoldingTextView: PlatformView {
         #endif
         context.fill(gutterRect)
 
-        let map = session.sourceLineMap()
-        let foldable = Set(foldableSourceLines())
+        let map = session.sourceLineMap(boundedBy: visibleRect)
+        let visibleLines = Set(map.entries.map(\.sourceLine))
+        let foldable = Set(blocks.compactMap { block -> Int? in
+            guard block.foldExtent != nil, visibleLines.contains(block.id.startLine) else { return nil }
+            return block.id.startLine
+        })
         let numberFont = PlatformFont.monospaced(size: 11)
         let numberColor = PlatformColor.secondaryLabel
         let numberAttrs: [NSAttributedString.Key: Any] = [

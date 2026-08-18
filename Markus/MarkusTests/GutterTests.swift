@@ -59,6 +59,39 @@ struct GutterTests {
         #expect(GutterMetrics.width(showLineNumbers: false) == GutterMetrics.chevronWidth)
     }
 
+    // MARK: - Gutter computes visible-range entries only (T02, P2)
+
+    @Test func gutterSourceLineMapScansLinesBoundedByViewportNotDocumentSize() {
+        let visibleRect = CGRect(x: 0, y: 0, width: 480, height: 800)
+
+        let smallView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        smallView.loadMarkdown(headingsFixture(count: 5))
+        smallView.setMode(.source)
+        smallView.ensureLayout()
+        _ = smallView.session.sourceLineMap(boundedBy: visibleRect)
+        let smallCount = smallView.session.sourceLinesScannedLastGutterCompute
+
+        let largeView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        largeView.loadMarkdown(headingsFixture(count: 5000))
+        largeView.setMode(.source)
+        largeView.ensureLayout()
+        _ = largeView.session.sourceLineMap(boundedBy: visibleRect)
+        let largeCount = largeView.session.sourceLinesScannedLastGutterCompute
+
+        #expect(smallCount > 0)
+        #expect(largeCount > 0)
+        // A document 1,000x larger must not scan proportionally more
+        // source lines when only a small viewport is visible — never
+        // O(lines) over the whole document, let alone O(lines ×
+        // fragments) (P2).
+        #expect(largeCount < smallCount * 20)
+        #expect(largeCount < 200)
+    }
+
+    private func headingsFixture(count: Int) -> String {
+        (1...count).map { "## Heading \($0)" }.joined(separator: "\n\n")
+    }
+
     #if os(iOS)
     @Test func iosHidingLineNumbersLeavesSlimRailThatStillFolds() throws {
         let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())

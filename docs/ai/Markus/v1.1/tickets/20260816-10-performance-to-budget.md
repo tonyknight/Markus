@@ -91,7 +91,7 @@ deterministic instrumentation the budget table requires.
 ## Implementation plan
 
 Status: approved
-Current task: T02
+Current task: T03
 
 Design note (read before touching `FoldingTextView.swift`): `BlockIndex
 .build` already hoists a single shared `SourceMap` per build (T04/P5 —
@@ -172,7 +172,22 @@ Files: `Markus/Markus/Editor/FoldingTextView.swift`,
 `Markus/MarkusTests/GutterTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/GutterTests -only-testing:MarkusTests/FoldingTextViewTests`
-- [ ] done
+- [x] done
+
+Implementation note: `visibleSourceLines`/`gutterLineNumbers()`/
+`foldableSourceLines()` and the minimap's use of
+`session.sourceLineMap()` all continue calling the unbounded
+(`boundedBy: nil`) path unchanged — the minimap genuinely needs the
+whole document's line map to draw a representative minimap, and
+`jumpToSourceLine`/`scrollPackedYOnScreen` need to resolve an
+off-screen target line/Y. Only `drawGutter` (the real per-frame paint
+path, and the only thing the ticket names) was changed to pass the
+view's real visible rect through `sourceLineMap(boundedBy:)`, and its
+internal `foldable` set is now derived directly from the bounded map's
+entries instead of calling the unbounded `foldableSourceLines()`.
+`handleGutterClick` still uses the unbounded `foldableSourceLines()`,
+which is correct and low-risk since it only runs once per click, not
+per frame.
 
 ### T03: Zero parses on fold/theme/zoom/mode-switch/resize (P3)
 

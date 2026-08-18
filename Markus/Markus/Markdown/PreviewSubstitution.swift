@@ -519,4 +519,25 @@ struct UTF16LineOffsets {
         if line < starts.count { return starts[line] }
         return length
     }
+
+    /// Binary search for the 1-based line containing UTF-16 `offset` —
+    /// O(log lines), never a linear scan. Used to bound a viewport-only
+    /// computation (e.g. gutter entries) to the handful of lines a
+    /// visible fragment actually spans, without ever converting through
+    /// byte offsets or scanning every line (P2).
+    func lineNumber(atUTF16Offset offset: Int) -> Int {
+        var low = 0
+        var high = starts.count - 1
+        var result = 0
+        while low <= high {
+            let mid = (low + high) / 2
+            if starts[mid] <= offset {
+                result = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return result + 1
+    }
 }
