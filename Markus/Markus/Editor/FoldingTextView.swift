@@ -186,6 +186,24 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// start line (headings and fences, from `blocks`) so a fence is
     /// still numbered exactly once, at its real opening line.
     private(set) var previewBlockAnchorLines: Set<Int> = []
+    /// The same set as `previewBlockAnchorLines`, pre-sorted ascending
+    /// once here rather than via a `.sorted()` call inside the gutter's
+    /// real per-frame draw path — used by `resolveOntoVisibleMap` (T01
+    /// review fix), which requires its candidate list already ascending
+    /// to binary-search and forward-scan it.
+    private(set) var previewBlockAnchorLinesSorted: [Int] = []
+    /// Total forward-scan steps performed by `resolveOntoVisibleMap`
+    /// since the last `resetGutterResolutionSteps()` — the N8 counter
+    /// proving the fix a review found necessary on this ticket: Preview's
+    /// gutter draw originally called `nearestVisibleLine` once per
+    /// document-wide candidate (every foldable block, every rendered
+    /// block anchor), each call itself an O(viewport) scan — O((blocks +
+    /// anchors) × viewport) per draw, the same O(document × viewport)
+    /// shape ticket 10 fixed for `packedSourceLineEntries` (P2). Must
+    /// stay bounded by the viewport's own entry count plus a small
+    /// constant look-behind, never scale with total document anchor/
+    /// block count.
+    private(set) var gutterResolutionStepsLastDraw = 0
     /// Rebuilt only inside `applyStyling` (once per real state change:
     /// text/fold/mode/theme/zoom), not per fragment. `hiddenUTF16Ranges`
     /// and `placeholderUTF16Locations` used to be plain computed
@@ -263,6 +281,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         }
         let foldableStartLines = blocks.compactMap { $0.foldExtent != nil ? $0.id.startLine : nil }
         previewBlockAnchorLines = Set(nonFenceAnchors).union(foldableStartLines)
+        previewBlockAnchorLinesSorted = previewBlockAnchorLines.sorted()
         parsesPerformed += 1
     }
 
@@ -284,6 +303,86 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             return entry.sourceLine
         }
         return nil
+    }
+
+    func resetGutterResolutionSteps() {
+        gutterResolutionStepsLastDraw = 0
+    }
+
+    /// A short, constant bound on how many candidates before the
+    /// viewport's own first line `resolveOntoVisibleMap` still considers
+    /// — big enough to catch a short run of consecutive hidden anchors
+    /// immediately preceding the viewport (e.g. two adjacent empty
+    /// headings), never a document-proportional scan. Genuine gaps this
+    /// codebase produces between a hidden anchor and its resolved
+    /// position are always tiny (a fence delimiter resolves one line
+    /// forward to its own body; an empty heading resolves one line
+    /// forward to whatever follows), so this constant is generous
+    /// headroom, not a load-bearing precise bound.
+    private static let resolutionLookbehind = 64
+
+    /// Batch form of `nearestVisibleLine`: resolves every one of
+    /// `sortedCandidates` (ascending by `line`) against `map.entries`
+    /// (ascending, already viewport-bounded) in a single binary-search-
+    /// seeded forward pass — O(log candidates + resolutionLookbehind +
+    /// candidates actually near the viewport + viewport entries), never
+    /// O(candidates × viewport) the way calling `nearestVisibleLine` once
+    /// per candidate costs. This is the fix for the review's Important
+    /// finding on this ticket: `drawPreviewGutterNumbersAndChevrons`
+    /// originally looped every document-wide foldable block and every
+    /// document-wide preview-block anchor, calling `nearestVisibleLine`
+    /// (itself O(viewport)) once per item — O((blocks + anchors) ×
+    /// viewport) per draw, the same O(document × viewport) shape ticket
+    /// 10 fixed for `packedSourceLineEntries` (P2). Binary search finds
+    /// the first candidate at or after the viewport's first visible
+    /// line, then backs up by `resolutionLookbehind` to also catch any
+    /// candidate whose own line is hidden markup immediately preceding
+    /// the viewport (see that constant's own doc comment). Returns each
+    /// candidate paired with its payload and resolved `Entry` — multiple
+    /// candidates legitimately sharing one resolved entry (several
+    /// hidden anchors collapsing onto the same next-visible line) is
+    /// preserved, exactly matching what per-candidate `nearestVisibleLine`
+    /// calls would have produced. `gutterResolutionStepsLastDraw` counts
+    /// every forward-loop step (N8).
+    func resolveOntoVisibleMap<Payload>(
+        _ sortedCandidates: [(line: Int, payload: Payload)],
+        in map: SourceLineMap
+    ) -> [(line: Int, payload: Payload, entry: SourceLineMap.Entry)] {
+        guard let firstEntryLine = map.entries.first?.sourceLine else { return [] }
+        let lastEntryLine = map.entries[map.entries.count - 1].sourceLine
+
+        var low = 0
+        var high = sortedCandidates.count
+        while low < high {
+            let mid = (low + high) / 2
+            if sortedCandidates[mid].line < firstEntryLine {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        let startIndex = max(0, low - Self.resolutionLookbehind)
+
+        var result: [(Int, Payload, SourceLineMap.Entry)] = []
+        var entryIndex = 0
+        for index in startIndex..<sortedCandidates.count {
+            gutterResolutionStepsLastDraw += 1
+            let candidate = sortedCandidates[index]
+            if candidate.line > lastEntryLine { break }
+            while entryIndex < map.entries.count, map.entries[entryIndex].sourceLine < candidate.line {
+                entryIndex += 1
+            }
+            guard entryIndex < map.entries.count else { break }
+            result.append((candidate.line, candidate.payload, map.entries[entryIndex]))
+        }
+        return result
+    }
+
+    /// Convenience for candidates with no payload beyond their own line
+    /// (the Preview number pass, whose candidates are just anchor lines).
+    func resolveOntoVisibleMap(_ sortedLines: [Int], in map: SourceLineMap) -> [(line: Int, entry: SourceLineMap.Entry)] {
+        resolveOntoVisibleMap(sortedLines.map { (line: $0, payload: ()) }, in: map)
+            .map { (line: $0.line, entry: $0.entry) }
     }
 
     func setMode(_ mode: EditorMode, textStorage: NSTextStorage) {
@@ -1360,8 +1459,12 @@ final class FoldingTextView: PlatformView {
     /// never needs off-screen entries, since nothing off-screen can be
     /// drawn or clicked. Source mode numbers every visible entry
     /// (unchanged); Preview numbers only each rendered block's true
-    /// start (R13) — see `drawPreviewGutterNumbersAndChevrons`.
-    private func drawGutter(in context: CGContext, visibleRect: CGRect) {
+    /// start (R13) — see `drawPreviewGutterNumbersAndChevrons`. Internal
+    /// rather than `private` so tests can call the real per-frame draw
+    /// path directly against a bitmap `CGContext` (mirroring
+    /// `FoldingSession.drawFragments`, ticket 10's own precedent for
+    /// testing a per-frame draw method's bounded cost).
+    func drawGutter(in context: CGContext, visibleRect: CGRect) {
         let gutterRect = CGRect(x: 0, y: 0, width: gutterWidth, height: max(bounds.height, layoutHeight))
         context.saveGState()
         #if os(macOS)
@@ -1404,28 +1507,37 @@ final class FoldingTextView: PlatformView {
     }
 
     /// Preview mode (R13): a chevron for every foldable block and a
-    /// number for every rendered block's true start — each resolved,
-    /// independently, to the nearest visible line at or after its own
-    /// anchor (`FoldingSession.nearestVisibleLine`), since a block's own
-    /// start line is sometimes itself invisible markup. The *drawn*
-    /// number is always the block's real anchor line; only *where* it
-    /// draws can differ from that line's own (nonexistent) position.
+    /// number for every rendered block's true start — each resolved to
+    /// the nearest visible line at or after its own anchor, since a
+    /// block's own start line is sometimes itself invisible markup. The
+    /// *drawn* number is always the block's real anchor line; only
+    /// *where* it draws can differ from that line's own (nonexistent)
+    /// position.
+    ///
+    /// Resolution goes through `FoldingSession.resolveOntoVisibleMap`
+    /// (a batch, binary-search-seeded pass over the already viewport-
+    /// bounded `map`), not a `nearestVisibleLine` call per document-wide
+    /// candidate — the latter is what a review on this ticket found
+    /// reintroducing an O((blocks + anchors) × viewport) cost per draw,
+    /// the same O(document × viewport) shape ticket 10 fixed for
+    /// `packedSourceLineEntries` (P2). `blocks`/`previewBlockAnchorLinesSorted`
+    /// are both already ascending by line (document order / pre-sorted
+    /// at reparse), which `resolveOntoVisibleMap` requires.
     private func drawPreviewGutterNumbersAndChevrons(in context: CGContext, map: SourceLineMap, numberAttrs: [NSAttributedString.Key: Any]) {
         guard !map.entries.isEmpty else { return }
+        session.resetGutterResolutionSteps()
 
-        for block in blocks where block.foldExtent != nil {
-            guard let displayLine = session.nearestVisibleLine(atOrAfter: block.id.startLine, in: map),
-                  let entry = map.entries.first(where: { $0.sourceLine == displayLine })
-            else { continue }
-            drawChevron(in: context, at: chevronOrigin(for: entry), folded: foldStore.isFolded(block.id))
+        let foldableBlocks: [(line: Int, payload: Block)] = blocks.compactMap { block in
+            guard block.foldExtent != nil else { return nil }
+            return (line: block.id.startLine, payload: block)
+        }
+        for resolved in session.resolveOntoVisibleMap(foldableBlocks, in: map) {
+            drawChevron(in: context, at: chevronOrigin(for: resolved.entry), folded: foldStore.isFolded(resolved.payload.id))
         }
 
         guard showLineNumbers else { return }
-        for anchorLine in session.previewBlockAnchorLines.sorted() {
-            guard let displayLine = session.nearestVisibleLine(atOrAfter: anchorLine, in: map),
-                  let entry = map.entries.first(where: { $0.sourceLine == displayLine })
-            else { continue }
-            drawNumber(anchorLine, at: entry, attrs: numberAttrs, in: context)
+        for resolved in session.resolveOntoVisibleMap(session.previewBlockAnchorLinesSorted, in: map) {
+            drawNumber(resolved.line, at: resolved.entry, attrs: numberAttrs, in: context)
         }
     }
 

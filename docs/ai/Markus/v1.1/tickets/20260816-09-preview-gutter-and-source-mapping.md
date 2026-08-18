@@ -375,6 +375,81 @@ left `in-progress`, Acceptance Criteria/Subtask checkboxes left
 unchecked, `bora-review` not run — per this project's convention, that
 is the controlling session's job.
 
+### 2026-08-18 (review fix)
+
+`bora-review` found one **Important** finding (see `## Review` below):
+`drawPreviewGutterNumbersAndChevrons` (T01) called `nearestVisibleLine`
+once per document-wide candidate — every foldable block, every rendered-
+block anchor — each call itself an O(viewport) linear scan
+(`SourceLineMap.y(forSourceLine:)`/`entries.first(where:)` are both
+`entries.first { ... }`, not indexed), for a total cost of O((blocks +
+anchors) × viewport) per draw. `previewBlockAnchorLines` scales with
+total paragraph count (every rendered block, not just headings/fences),
+so this regressed on any ordinary large prose document in Preview mode,
+every scroll frame — the same O(document × viewport) shape ticket 10
+fixed for `packedSourceLineEntries` (P2), reintroduced by this ticket's
+own T01 with no test positioned to catch it (ticket 10's own
+viewport-boundedness stress fixture only exercises `.source` mode's
+`drawFragments`, never `drawGutter` in `.preview`).
+
+Fixed with a batch resolver, `FoldingSession.resolveOntoVisibleMap`, in
+place of the per-candidate `nearestVisibleLine` loop: binary-searches
+the (pre-sorted-at-reparse) candidate list for the first one at or after
+the viewport-bounded map's own first line, backs up by a small constant
+look-behind (`resolutionLookbehind = 64`, generous headroom for a short
+run of consecutive hidden anchors immediately preceding the viewport —
+e.g. two adjacent empty headings — never a document-proportional scan),
+then walks forward in a single two-pointer merge against `map.entries`
+(itself ascending by construction), breaking as soon as a candidate
+exceeds the viewport's last line. Cost is bounded by the viewport's own
+entry count plus the constant look-behind, not by total document
+anchor/block count, whether the "extra" candidates sit before or after
+the viewport in the document (the forward-merge naturally never touches
+candidates past the visible range once the break condition triggers,
+mirroring ticket 10's own binary-search-then-bounded-scan technique for
+`packedSourceLineEntries`, applied here to a *candidate* list instead of
+a *line* range). `nearestVisibleLine` itself is untouched (still used by
+`y(forSourceLine:)`'s T03 fallback, `gutterLineNumbers()`,
+`foldableSourceLines()`, and `handleGutterClick` — none of which run
+per-frame, so none carried the flagged cost); only the real per-frame
+draw path (`drawPreviewGutterNumbersAndChevrons`) was rewired onto the
+batch resolver. `drawGutter` itself changed from `private` to internal
+so the fix could be exercised directly against a bitmap `CGContext` in
+a test, the same testability precedent ticket 10 set for
+`FoldingSession.drawFragments`.
+
+Added `previewGutterDrawResolutionStepsAreBoundedByViewportNotDocumentSize`
+(`GutterTests.swift`): a 5-paragraph vs. 5,000-paragraph fixture (not a
+heading-stress fixture — paragraphs are exactly the dimension the
+review found `previewBlockAnchorLines` scaling with), same small
+unscrolled viewport, comparing the new `FoldingSession
+.gutterResolutionStepsLastDraw` N8 counter between them (same
+`largeCount < smallCount * 20` / `largeCount < 200` shape as ticket 10's
+own `fragmentsEnumeratedLastDraw`/`sourceLinesScannedLastGutterCompute`
+tests), plus a check that the large document's *visible* paragraphs
+still produce real `gutterLineNumbers()` output — proving the bound
+isn't achieved by silently resolving nothing. Sanity-checked the test's
+own sensitivity before trusting it: temporarily swapped
+`drawPreviewGutterNumbersAndChevrons` back to the original per-candidate
+`nearestVisibleLine` loop (with a local, unwired step counter, since
+`gutterResolutionStepsLastDraw` is `private(set)` and not writable
+across types) and reran — the test failed for the expected reason
+(`gutterResolutionStepsLastDraw` staying `0`, since the reverted code
+path never touches it), confirming the test is wired to something real
+before reverting back to the fix.
+
+Verify (fresh, this session, worktree/branch confirmed via `pwd`/`git
+branch --show-current` before every command): targeted
+`-only-testing:MarkusTests/GutterTests -only-testing:MarkusTests/OutlineJumpTests
+-only-testing:MarkusTests/MacMinimapTests` on macOS → TEST SUCCEEDED;
+full macOS suite → TEST SUCCEEDED (135.8s); iOS Simulator iPhone 17 →
+TEST SUCCEEDED (118.3s); iOS Simulator iPad Pro 13-inch (M5) → TEST
+SUCCEEDED (113.7s). `bora dev lint` clean except the same pre-existing
+ticket-08 `current_task` mismatch noted throughout this ticket's other
+entries. Working tree clean after this fix's commit. Ticket `status:`
+still left `in-progress` — this is a fix within the same ticket, not a
+reason to change that.
+
 ## Review
 
 ### 2026-08-18

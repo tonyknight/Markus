@@ -303,6 +303,62 @@ struct GutterTests {
         (1...count).map { "## Heading \($0)" }.joined(separator: "\n\n")
     }
 
+    // MARK: - T01 review fix: Preview's gutter draw is bounded by the viewport, not total anchor/block count
+
+    @Test func previewGutterDrawResolutionStepsAreBoundedByViewportNotDocumentSize() {
+        let visibleRect = CGRect(x: 0, y: 0, width: 480, height: 800)
+        let context = makeBitmapContext()
+
+        let smallView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        smallView.loadMarkdown(paragraphsFixture(count: 5))
+        smallView.setMode(.preview)
+        smallView.ensureLayout()
+        smallView.drawGutter(in: context, visibleRect: visibleRect)
+        let smallCount = smallView.session.gutterResolutionStepsLastDraw
+
+        let largeView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        largeView.loadMarkdown(paragraphsFixture(count: 5000))
+        largeView.setMode(.preview)
+        largeView.ensureLayout()
+        largeView.drawGutter(in: context, visibleRect: visibleRect)
+        let largeCount = largeView.session.gutterResolutionStepsLastDraw
+
+        #expect(smallCount > 0)
+        #expect(largeCount > 0)
+        // A document 1,000x larger in *paragraph* (anchor) count — the
+        // exact dimension the review found `previewBlockAnchorLines`
+        // scaling with, not just heading/fence count — must not cost
+        // proportionally more gutter-resolution work in Preview mode
+        // when only a small viewport is visible. Before the fix this
+        // regressed on every ordinary large-prose document, not just an
+        // exotic heading-stress fixture (P2, the same invariant ticket
+        // 10 established for `packedSourceLineEntries`).
+        #expect(largeCount < smallCount * 20)
+        #expect(largeCount < 200)
+
+        // The bound isn't achieved by silently resolving nothing: the
+        // large document's *visible* paragraphs still get real chevron/
+        // number output, proving `resolveOntoVisibleMap` still does its
+        // job within the viewport, not just cheaply doing less overall.
+        #expect(!largeView.gutterLineNumbers().isEmpty)
+    }
+
+    private func paragraphsFixture(count: Int) -> String {
+        (1...count).map { "Paragraph \($0) has some ordinary prose body text." }.joined(separator: "\n\n")
+    }
+
+    private func makeBitmapContext() -> CGContext {
+        CGContext(
+            data: nil,
+            width: 10,
+            height: 10,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+    }
+
     #if os(iOS)
     @Test func iosHidingLineNumbersLeavesSlimRailThatStillFolds() throws {
         let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
