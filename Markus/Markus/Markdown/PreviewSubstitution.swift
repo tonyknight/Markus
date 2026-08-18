@@ -16,17 +16,36 @@ import UIKit
 /// the buffer itself is never touched (N4).
 struct PreviewElement {
     var lines: Range<Int>
-    var rendered: NSAttributedString
+    private(set) var rendered: NSAttributedString
     /// True for an anchor line whose rendered content is markup-only
-    /// (e.g. a fence delimiter) and must collapse to zero height like a
-    /// continuation line, rather than laying out as a visible blank
-    /// line. Kept as an explicit flag rather than inferring it from
-    /// `rendered.length == 0`: `NSTextParagraph` requires non-empty
-    /// content to correctly represent a non-empty source range (an
-    /// empty paragraph over a non-empty range breaks TextKit 2's
-    /// layout bookkeeping), so `rendered` here is a single space, not
-    /// truly empty.
-    var isMarkupOnly = false
+    /// (e.g. a fence delimiter, or a heading/paragraph/list item with no
+    /// inline content at all — CommonMark permits an empty ATX heading
+    /// like `# `) and must collapse to zero height like a continuation
+    /// line, rather than laying out as a visible blank line.
+    ///
+    /// Enforced centrally in `init`, not left to each call site to get
+    /// right: `NSTextParagraph` requires non-empty content to correctly
+    /// represent a non-empty source range — an empty paragraph over a
+    /// non-empty range breaks TextKit 2's layout bookkeeping outright
+    /// (`ensureLayout()` never returns; this is exactly what T06's fence
+    /// delimiters hit before this guard existed). So construction
+    /// silently substitutes a single space and forces `isMarkupOnly`
+    /// true whenever the caller-provided `rendered` is zero-length,
+    /// regardless of which block/inline kind produced it — no caller
+    /// can create a zero-length substitution for a non-empty source
+    /// line, by construction.
+    private(set) var isMarkupOnly: Bool
+
+    init(lines: Range<Int>, rendered: NSAttributedString, isMarkupOnly: Bool = false) {
+        self.lines = lines
+        if rendered.length == 0 {
+            self.rendered = NSAttributedString(string: " ")
+            self.isMarkupOnly = true
+        } else {
+            self.rendered = rendered
+            self.isMarkupOnly = isMarkupOnly
+        }
+    }
 }
 
 /// Heading point sizes by level (H1 largest), scaled by zoom — not a

@@ -462,4 +462,26 @@ struct PreviewSubstitutionTests {
         #expect(view.textStorage?.string == markdown)
         #expect(DocumentSave.writeUTF8(from: try #require(view.textStorage)) == Data(markdown.utf8))
     }
+
+    // MARK: - Regression: an empty ATX heading must not reach TextKit 2
+    // as a zero-length substitution (the same hazard class T06's fence
+    // delimiters hit — see `PreviewElement.init`).
+
+    @Test func previewModeHandlesAnEmptyHeadingWithoutHangingOrLeavingItVisible() throws {
+        let markdown = "# \n\nBody text.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        // The empty heading's own line never shows literal "#" markup,
+        // and the following body text still renders normally — proves
+        // ensureLayout() actually completed (this test would hang
+        // instead of failing if PreviewElement's zero-length guard
+        // regressed, exactly as T06's fence-delimiter bug did).
+        #expect(!paragraphs.contains { $0.string.contains("#") })
+        #expect(paragraphs.contains { $0.string.contains("Body text.") })
+        #expect(view.textStorage?.string == markdown)
+    }
 }
