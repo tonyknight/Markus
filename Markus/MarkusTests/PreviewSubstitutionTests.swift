@@ -373,4 +373,93 @@ struct PreviewSubstitutionTests {
         let font = try #require(paragraph.attribute(.font, at: range.location, effectiveRange: nil) as? PlatformFontType)
         #expect(PlatformFont.isItalic(font))
     }
+
+    // MARK: - T07: fixture composition — every covered element together
+
+    @Test func previewModeRendersEveryCoveredGFMElementAsAReaderWouldSeeIt() throws {
+        let markdown = GFMPreviewFixture.markdown
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let joined = paragraphs.map(\.string).joined(separator: "\n")
+
+        // Headings: text survives, marker punctuation does not.
+        #expect(joined.contains("Title"))
+        #expect(joined.contains("Subtitle"))
+        #expect(!joined.contains("# Title"))
+        #expect(!joined.contains("## Subtitle"))
+
+        // Bold/italic: words survive, asterisks do not.
+        #expect(joined.contains("bold"))
+        #expect(joined.contains("italic"))
+        #expect(!joined.contains("**bold**"))
+        #expect(!joined.contains("*italic*"))
+
+        // Image: alt text survives as a styled placeholder, raw syntax does not.
+        #expect(joined.contains("red fox"))
+        #expect(!joined.contains("!["))
+        #expect(!joined.contains("](fox.png)"))
+
+        // Block quote: body survives, leading `>` does not.
+        #expect(joined.contains("A block quote with a note inside it."))
+        #expect(!joined.contains("> A block quote"))
+
+        // Thematic break: drawn as a rule attachment, never literal dashes.
+        // (Checked via the attachment, not "no paragraph contains a dash" —
+        // the table's collapsed header-separator row is a hidden but still
+        // enumerable paragraph whose raw text legitimately contains "---".)
+        let ruleParagraph = try #require(paragraphs.first { paragraph in
+            var found = false
+            paragraph.enumerateAttribute(.attachment, in: NSRange(location: 0, length: paragraph.length)) { value, _, _ in
+                if value is ThematicBreakAttachment { found = true }
+            }
+            return found
+        })
+        #expect(ruleParagraph.length > 0)
+
+        // Nested list: both levels' text survive, marker dashes do not.
+        #expect(joined.contains("Outer item"))
+        #expect(joined.contains("Nested item"))
+        #expect(!joined.contains("- Outer item"))
+        #expect(!joined.contains("  - Nested item"))
+
+        // Strikethrough / inline code / link: text survives, markup does not.
+        #expect(joined.contains("gone"))
+        #expect(joined.contains("inline"))
+        #expect(joined.contains("link"))
+        #expect(!joined.contains("~~gone~~"))
+        #expect(!joined.contains("`inline`"))
+        #expect(!joined.contains("[link]("))
+
+        // Task list: checkbox text survives, raw `[ ]`/`[x]` syntax does not.
+        #expect(joined.contains("unchecked"))
+        #expect(joined.contains("checked"))
+        #expect(!joined.contains("- [ ]"))
+        #expect(!joined.contains("- [x]"))
+
+        // Fenced code: delimiters absent, code content still visible.
+        #expect(!joined.contains("```"))
+        #expect(joined.contains("let answer = 42"))
+        #expect(joined.contains("graph TD"))
+
+        // Table: renders via the real TableAttachment, not literal pipes.
+        var foundTableAttachment: TableAttachment?
+        for paragraph in paragraphs {
+            paragraph.enumerateAttribute(.attachment, in: NSRange(location: 0, length: paragraph.length)) { value, _, _ in
+                if let table = value as? TableAttachment { foundTableAttachment = table }
+            }
+        }
+        #expect(foundTableAttachment != nil)
+        #expect(!joined.contains("| Col | Val |"))
+
+        // Source mode round-trips the raw bytes unchanged (N4) regardless
+        // of how much Preview mode substituted.
+        view.setMode(.source)
+        view.ensureLayout()
+        #expect(view.textStorage?.string == markdown)
+        #expect(DocumentSave.writeUTF8(from: try #require(view.textStorage)) == Data(markdown.utf8))
+    }
 }

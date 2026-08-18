@@ -28,7 +28,7 @@ subtasks:
   title: Fixtures/assertions that exercise what a reader actually sees
   status: todo
 plan_status: approved
-current_task: T07
+current_task: T08
 ---
 ## Description
 
@@ -93,7 +93,7 @@ mode substitutes nothing and the buffer stays raw Markdown throughout.
 ## Implementation plan
 
 Status: approved
-Current task: T07
+Current task: T08
 
 Design note (read before touching FoldingSession): substitution is
 implemented so that no rendered content or attachment is ever stored as
@@ -194,3 +194,9 @@ Fix: `PreviewElement` gained an explicit `isMarkupOnly: Bool` flag instead of in
 One pre-existing test broke as a direct, correct consequence of T06 landing: `SourceLineMapTests.sourceLineMapUsesPackedYOmitsFoldedLinesAndDoesNotInventWrapNumbers` used a fixture containing a fenced code block and asserted "every line visible when nothing is folded" — true before T06, no longer true now that fence delimiters are legitimately hidden as markup independent of fold state (R15/N3, same rule ticket 04 established for headings/fences). Updated the test's expectations to exclude the fixture's two delimiter lines (5 and 7) rather than weakening or removing the assertion.
 
 Verify (fresh, this session, correct worktree confirmed via `pwd`/`git branch` on every invocation after an earlier cwd-drift incident): `-only-testing:MarkusTests/PreviewSubstitutionTests` → TEST SUCCEEDED, 32/32; full macOS suite → TEST SUCCEEDED, 114/114, zero failures.
+
+T07 done: extended `GFMPreviewFixture.markdown` to also cover bold, italic, an inline image, a block quote, a thematic break, and a nested list (table, task list, strikethrough, inline code, link, footnote, fenced code x2, math were already present) — every element T07 asks for now composes in one document. Added `previewModeRendersEveryCoveredGFMElementAsAReaderWouldSeeIt` (`PreviewSubstitutionTests.swift`): asserts the *substituted/rendered* string for each element (no literal `#`/`##`, `**`/`*`, `![](...)`, `>`, `---`, list markers, `~~`/backticks/`[](`, `- [ ]`/`- [x]`, fence backticks, table pipes), confirms the thematic break and table render via their real attachments (not a "no dash/pipe substring anywhere" check — a table's collapsed header-separator row is a hidden-but-still-enumerable paragraph whose raw text legitimately contains `---`-like runs, which the naive check would false-positive against), and confirms Source mode round-trips the full fixture's raw bytes unchanged after Preview mode substituted most of it (N4).
+
+RED confirmed for two different real reasons in turn, not compile errors: (1) the thematic-break assertion as first written failed against the table's hidden separator row, fixed by checking for the actual `ThematicBreakAttachment` instead of string absence; (2) `PreviewRenderingTests.previewPaintsGFMAttributesOnTheSourceBuffer` (pre-existing, unrelated to this ticket's own tests) broke because the new fixture paragraph's wording happened to end in the word "inline", and that test's `range(of: "inline")` now matched the new plain-text word instead of the pre-existing `` `inline` `` code span it was written for — fixed by rewording the new sentence, not the older test.
+
+Verify (fresh, correct worktree confirmed): `-only-testing:MarkusTests/PreviewSubstitutionTests` → TEST SUCCEEDED, 34/34; full macOS suite → TEST SUCCEEDED, 115/115, zero failures.
