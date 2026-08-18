@@ -6,9 +6,10 @@
 
 macOS-first: real menus, rendered Preview, Source-mode editing, working chrome, 5 MB performance
 
-## In progress (0)
+## In progress (1)
 
-_No tickets in progress._
+- **20260816-10-performance-to-budget** Performance to budget [high]
+  - subtasks: 0/5 · checkboxes: 0/16
 
 ## Blocked (2)
 
@@ -17,9 +18,8 @@ _No tickets in progress._
 - **20260816-14-test-integrity-pass** Test integrity pass [low]
   - depends on: 20260816-13-text-input-in-source (not yet marked blocked)
 
-## Up next (2)
+## Up next (1)
 
-- **20260816-10-performance-to-budget** Performance to budget [high]
 - **20260816-09-preview-gutter-and-source-mapping** Preview gutter and source mapping [medium]
 
 ## Recently completed (last 10 of 10)
@@ -37,5 +37,5 @@ _No tickets in progress._
 
 ## Stats
 
-- Total: 14 tickets · 10 done · 4 todo · 0 in-progress · 0 blocked
+- Total: 14 tickets · 10 done · 3 todo · 1 in-progress · 0 blocked
 - By type: 10 feature · 2 chore · 1 spike · 1 bug

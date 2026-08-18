@@ -1,35 +1,34 @@
 ---
 id: 20260816-10-performance-to-budget
-title: "Performance to budget"
+title: Performance to budget
 type: chore
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-04-fold-all-unfold-all-and-fence-placeholder
-  - 20260816-08-preview-rendering-via-paragraph-substitution
+- 20260816-04-fold-all-unfold-all-and-fence-placeholder
+- 20260816-08-preview-rendering-via-paragraph-substitution
 subtasks:
-  - id: T1
-    title: Viewport-only drawing (dirty-rect culling), no full-fragment enumeration
-    status: todo
-  - id: T2
-    title: Gutter computes visible-range entries only
-    status: todo
-  - id: T3
-    title: Zero parses on fold/theme/zoom/mode-switch/resize
-    status: todo
-  - id: T4
-    title: Single SourceMap per BlockIndex.build
-    status: todo
-  - id: T5
-    title: Instrumentation counters + 5 MB fixture + counter and wall-clock tests
-    status: todo
+- id: T1
+  title: Viewport-only drawing (dirty-rect culling), no full-fragment enumeration
+  status: todo
+- id: T2
+  title: Gutter computes visible-range entries only
+  status: todo
+- id: T3
+  title: Zero parses on fold/theme/zoom/mode-switch/resize
+  status: todo
+- id: T4
+  title: Single SourceMap per BlockIndex.build
+  status: todo
+- id: T5
+  title: Instrumentation counters + 5 MB fixture + counter and wall-clock tests
+  status: todo
 ---
-
 ## Description
 
 Every `draw()` enumerates *all* layout fragments with `.ensuresLayout`
