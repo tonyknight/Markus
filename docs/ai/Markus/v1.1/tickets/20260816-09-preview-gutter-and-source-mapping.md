@@ -576,3 +576,166 @@ removing the redundant third scan regardless of the outer-loop fix.
 trusted as-is; the Important finding above is a latent complexity issue
 no existing test is positioned to catch, so re-running the same suites
 would not have changed the result.
+
+### 2026-08-18 (review 2)
+
+**Verdict: Minor**
+
+Re-reviewed fix commit `497c38f` against the prior round's one
+**Important** finding (Preview gutter draw reintroducing O((blocks +
+anchors) × viewport) cost). **That finding is resolved.** Read the full
+diff, walked the algorithm by hand against both the originally-flagged
+scenario and the specific correctness question this round was asked to
+check, re-ran the targeted suite myself. Findings below are Minor/
+informational only; nothing blocks accepting this fix.
+
+**1. Complexity — genuinely fixed for the flagged scenario.**
+`FoldingSession.resolveOntoVisibleMap` binary-searches
+`sortedCandidates` (ascending by `line`) for the first one at or after
+`map.entries.first.sourceLine`, backs up by the constant
+`resolutionLookbehind = 64`, then walks forward doing a two-pointer
+merge against `map.entries` (itself already viewport-bounded by ticket
+10 T02's `sourceLineMap(boundedBy:)`), breaking as soon as a
+candidate's line exceeds the last entry's line. Verified the
+preconditions the binary search silently depends on actually hold:
+`blocks` comes from `BlockIndex.build`, itself built from
+`MarkdownParser().parse(markdown)` filtered without reordering, so it
+is ascending by document position; `previewBlockAnchorLinesSorted` is
+explicitly `.sorted()` at `reparse` time. Walked the 100,000-paragraph/
+50-line-viewport case by hand: for an ordinary unfolded document,
+`firstEntryLine`/`lastEntryLine` (the two bounds the forward walk stays
+inside) span only the source lines the visible viewport actually
+occupies — proportional to the viewport, not the document — so the
+forward walk only ever touches candidates near the viewport plus the
+constant 64-candidate look-behind. Confirmed with the new regression
+test, `previewGutterDrawResolutionStepsAreBoundedByViewportNotDocumentSize`
+(GutterTests.swift): re-ran it myself (see Verify below) alongside the
+rest of the targeted suite. This is a genuine binary-search-plus-
+bounded-merge, not a constant-factor speedup that still scales with
+document size, for the case the original finding actually named
+("any ordinary large prose document in Preview mode").
+
+Residual edge case worth recording (Minor, not blocking): the forward
+walk's stopping condition is based on the candidates' *line numbers*
+staying within `[firstEntryLine, lastEntryLine]`, not on how many
+*entries* exist in that range. A large **folded** heading section whose
+collapsed row is straddled by the viewport (real visible content
+immediately before the fold, the folded row itself, then real visible
+content immediately after — e.g. scrolled so a folded section's
+collapse point sits mid-screen) can make `lastEntryLine - firstEntryLine`
+span nearly the whole hidden section even though `map.entries` itself
+stays small, because `previewBlockAnchorLines` is computed once at
+`reparse` from the static parse tree and is not filtered by current
+fold state — every anchor inside the folded section is still a
+candidate. Each such candidate still only costs O(1) in the forward
+walk (the `entryIndex` two-pointer barely advances, since there's
+nothing between the fold's start and end for it to catch up to), but
+`gutterResolutionStepsLastDraw` still increments once per candidate
+visited, so the *step count* can scale with the folded section's
+content size in this specific scroll position. This is not a new defect
+introduced by this commit — `packedSourceLineEntries(boundedBy:)`
+(ticket 10's own P2 fix, untouched by this diff) has the identical
+characteristic: it loops `lineRangeToScan = firstLine...lastLine` over
+raw source lines with the same span-based (not entry-count-based)
+bound, so a fold straddled by the viewport already costs proportionally
+to the fold's size there too. `resolveOntoVisibleMap`'s doc comment
+explicitly says it "mirrors ticket 10's own binary-search-then-bounded-
+scan technique" — it inherits this characteristic by design, it doesn't
+introduce a new one. Distinct from the scenario the original Important
+finding named (scrolling an ordinary unfolded document, which this fix
+demonstrably resolves), so it doesn't reopen that finding, but it is a
+real residual scaling edge case against a large collapsed section
+worth a future test if it's ever observed in practice.
+
+**2. Look-behind = 64 — checked the named scenario directly, no
+correctness gap found.** Traced the specific case this round asked
+about: a single large fenced code block with hundreds of body lines,
+viewport scrolled to start partway through or just after it. This does
+**not** trip the 64 bound, because the look-behind is counted in
+*candidates*, not *lines*: a fence's body content is raw pass-through
+text, never re-parsed into further blocks/anchors, so it contributes
+**zero** candidates to either `foldableBlocks` or
+`previewBlockAnchorLinesSorted` — the fence contributes exactly one
+candidate total (its opening line, via the `foldableStartLines` union;
+`previewBlockAnchorLines` explicitly excludes both fence-delimiter
+anchors per T01's Notes). However many hundreds of lines the body
+spans, that one candidate remains the single immediately-preceding
+entry in the sorted candidate list relative to any viewport position
+inside or after the body — always well within a look-behind of 64, not
+64 lines away.
+
+More generally: per this ticket's own Notes, only two kinds of
+candidate can be individually hidden (own line has no
+`SourceLineMap.Entry` anywhere) — a fence's opening delimiter, and "an
+empty heading, sometimes." Both are single, isolated candidates in the
+sorted list, not part of a dense run. Producing a run of 64+
+*consecutive* hidden candidates immediately before the viewport's first
+visible entry would require 64+ back-to-back empty headings or fence
+delimiters with literally nothing else (no ordinary paragraph, no
+non-empty heading) between them and the viewport — a pathological
+fixture, not a plausible real document. No test exercises a run this
+long, which is a genuine coverage gap (Minor), but reasoning through
+the mechanism finds no realistic way to trigger it, so this is recorded
+as a coverage gap rather than a suspected functional regression.
+
+**3. Regression test — reads the actual assertions, not just the
+name.** `previewGutterDrawResolutionStepsAreBoundedByViewportNotDocumentSize`
+(GutterTests.swift) asserts `largeCount < smallCount * 20` **and**
+`largeCount < 200` (5-paragraph vs. 5,000-paragraph fixture, same
+small unscrolled viewport), plus `!largeView.gutterLineNumbers().isEmpty`
+to rule out the bound being satisfied by silently resolving nothing.
+Both numeric bounds are real and would fail under the pre-fix
+per-candidate `nearestVisibleLine` loop, which had no bounded-step
+counter at all (`gutterResolutionStepsLastDraw` is new in this commit)
+and would have visited on the order of 5,000 document-wide candidates
+for the large fixture — the implementer's own sanity check (reverting
+to the old loop with a local unwired counter, confirming the test fails
+because the counter stays `0` rather than passing vacuously) is a
+correct confirmation that the test is wired to the real code path, even
+though it doesn't reproduce the pre-fix step count numerically. This
+is a genuine bound on the dimension the original finding named
+(paragraph/anchor count), not a "5,000 < some huge number" tautology.
+
+**4. No regression in T01–T03 areas — confirmed by reading the diff,
+not re-litigated.** `git show 497c38f` touches only
+`Markus/Markus/Editor/FoldingTextView.swift` and
+`Markus/MarkusTests/GutterTests.swift` (plus `Status.md` and this
+ticket file). Production changes are additive:
+`previewBlockAnchorLinesSorted`, `gutterResolutionStepsLastDraw`,
+`resetGutterResolutionSteps()`, `resolutionLookbehind`, the two
+`resolveOntoVisibleMap` overloads, `drawGutter`'s `private` → internal
+visibility change, and rewiring `drawPreviewGutterNumbersAndChevrons`'s
+two loops onto the batch resolver. `previewBlockAnchorLines`'s
+computation inside `reparse(markdown:)`, the fence-chevron fix
+(`nearestVisibleLine`, `handleGutterClick`'s reverse lookup), and
+`FoldingSession.y(forSourceLine:)`'s Preview fallback are all
+byte-for-byte untouched — confirmed by reading the diff line-by-line
+above, not by assuming from the commit message. The `GutterTests.swift`
+diff is purely additive (one new test plus two new private helpers
+appended at the end of the file); no existing test's assertions were
+touched.
+
+**5. `drawGutter` `private` → internal precedent — verified, not taken
+on the commit message's word.** `FoldingSession.drawFragments` (line
+~750) is declared with no `private` modifier and is called directly as
+`session.drawFragments(...)` from
+`FoldingTextViewTests.swift`'s `drawFragmentsEnumerationIsBoundedByViewportNotDocumentSize`
+and from `PerformanceBudgetTests.swift` — a real, pre-existing
+precedent for making a per-frame draw method internal specifically so
+its bounded cost can be tested directly, matching the commit's claim.
+
+**Verify (re-run myself this session, worktree/branch confirmed via
+`pwd`/`git branch --show-current` before the command):**
+`xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination
+'platform=macOS' test -only-testing:MarkusTests/GutterTests
+-only-testing:MarkusTests/OutlineJumpTests
+-only-testing:MarkusTests/MacMinimapTests` → **TEST SUCCEEDED** (35.0s),
+including `previewGutterDrawResolutionStepsAreBoundedByViewportNotDocumentSize`
+passing. Matches the human's independently-reported TEST SUCCEEDED on
+the same command in the same worktree/branch.
+
+**Not fixed by this review** (Minor findings, ticket convention): the
+folded-section straddling edge case (§1) and the missing >64-hidden-run
+test fixture (§2) are recorded for awareness/future coverage, not
+blocking — per this project's convention, Minor findings go in ticket
+Notes, not back through bora-tdd/bora-debug.
