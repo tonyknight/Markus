@@ -64,7 +64,7 @@ of v1's R6**.
 ## Implementation plan
 
 Status: approved
-Current task: T02
+Current task: T03
 
 Design note (read before touching `FoldingTextView.swift`): Ticket 08
 already gives every `PreviewElement`/`ParsedPreviewBlock` a `lines:
@@ -185,6 +185,20 @@ numbers.
 Files: `Markus/MarkusTests/GutterTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/GutterTests`
+
+Implementation note: confirmed, not reimplemented, exactly as the
+Context section predicted — this test passed on its first run against
+T01's already-landed production code with zero further changes to
+`FoldingSession`/`FoldingTextView` (the same "verify, don't reimplement"
+shape as ticket 10's T04). `previewBlockAnchorLines` already excludes
+lines 4 and 5, `y(forSourceLine:)` already returns `nil` for both (no
+separate entry exists to return), and `sourceLineHeight(forSourceLine:
+3)` already matches a genuinely single-physical-line rendering of the
+same text to within floating-point tolerance — T01's
+`nearestVisibleLine`/`previewBlockAnchorLines` machinery, built for the
+fence case, generalizes to an ordinary multi-line paragraph without any
+special-casing.
+- [x] done
 
 ### T03: Reconcile go-to-line, outline jump, and minimap against block anchors
 

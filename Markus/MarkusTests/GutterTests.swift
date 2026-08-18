@@ -92,6 +92,65 @@ struct GutterTests {
         #expect(view.foldStore.isFolded(fenceBlock.id))
     }
 
+    // MARK: - T02: confirm PreviewElement.lines' anchor actually drives the gutter
+
+    @Test func previewMultiPhysicalLineParagraphAnchorsToItsFirstLineAtTheBlocksActualRenderedPosition() throws {
+        let multiLine = """
+            ## Heading two
+
+            Alpha bravo.
+            Charlie delta.
+            Echo foxtrot.
+            """
+        let singleLine = """
+            ## Heading two
+
+            Alpha bravo. Charlie delta. Echo foxtrot.
+            """
+
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(multiLine)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        // Ticket 08's PreviewElement.lines already carries the source
+        // anchor for a substituted paragraph — this proves the gutter
+        // (T01) actually consumes it, not new anchor-carrying plumbing.
+        // The 3-physical-line paragraph (source lines 3-5) is one
+        // ParsedPreviewBlock anchored at its first physical line only.
+        #expect(view.session.previewBlockAnchorLines.contains(3))
+        #expect(!view.session.previewBlockAnchorLines.contains(4))
+        #expect(!view.session.previewBlockAnchorLines.contains(5))
+
+        // Exactly one number for the whole block, not one per physical
+        // source line (R13's actual premise).
+        let numbers = view.gutterLineNumbers()
+        #expect(numbers.filter { (3...5).contains($0) } == [3])
+
+        // Lines 4 and 5 have no visual position of their own at all —
+        // the whole block rendered on line 3's single fragment ("multi-
+        // line elements render their whole content on the anchor line",
+        // `PreviewElement`'s own doc comment).
+        #expect(view.y(forSourceLine: 4) == nil)
+        #expect(view.y(forSourceLine: 5) == nil)
+
+        // Geometric proof, not just absence: the anchor's entry occupies
+        // the same height a genuinely single-physical-line rendering of
+        // the identical text does — the number is drawn at the position
+        // the block's one real rendered fragment occupies, not a
+        // three-line-tall span or three separate slots collapsed into
+        // one report.
+        let multiHeight = try #require(view.sourceLineHeight(forSourceLine: 3))
+
+        let referenceView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        referenceView.loadMarkdown(singleLine)
+        referenceView.setMode(.preview)
+        referenceView.ensureLayout()
+        let singleHeight = try #require(referenceView.sourceLineHeight(forSourceLine: 3))
+
+        #expect(abs(multiHeight - singleHeight) < 0.5)
+    }
+
     @Test func slimFoldRailIsNarrowerThanNumberedGutter() {
         #expect(GutterMetrics.width(showLineNumbers: false) < GutterMetrics.width(showLineNumbers: true))
         #expect(GutterMetrics.width(showLineNumbers: false) == GutterMetrics.chevronWidth)
