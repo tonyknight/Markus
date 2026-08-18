@@ -91,7 +91,7 @@ deterministic instrumentation the budget table requires.
 ## Implementation plan
 
 Status: approved
-Current task: T04
+Current task: T05
 
 Design note (read before touching `FoldingTextView.swift`): `BlockIndex
 .build` already hoists a single shared `SourceMap` per build (T04/P5 —
@@ -262,7 +262,25 @@ Files: `Markus/Markus/Markdown/BlockIndex.swift`,
 `Markus/MarkusTests/BlockIndexTests.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/BlockIndexTests`
-- [ ] done
+- [x] done
+
+Implementation note: the first version of this test used a bare
+`nonisolated(unsafe) static var constructionCount` reset-then-measure
+pattern. It failed non-deterministically in a full-suite run (passed
+in isolation, failed alongside the rest of `BlockIndexTests` and again
+alongside unrelated suites like `MarkdownParserTests`/
+`TableParsingTests`) — Swift Testing runs `@Test` functions in
+parallel by default, so other tests' own `BlockIndex.build`/
+`SourceMap(markdown:)` calls, running concurrently on other threads,
+inflated the shared counter between this test's reset and its
+assertion. Fixed by replacing the bare global with a `@TaskLocal
+SourceMap.constructionCounter: ConstructionCounter?` bound via
+`withValue(_:operation:)` around each `BlockIndex.build` call — task-
+local values are scoped to the dynamic extent of that call tree, so
+concurrently-running unrelated tests (which never bind the task-local)
+see `nil` and cannot inflate the count. Confirmed fixed by rerunning
+`BlockIndexTests` alone, alongside each other, and inside the full
+macOS suite.
 
 ### T05: Instrumentation counters + 5 MB fixture + counter and wall-clock tests (N8, Testing requirements)
 

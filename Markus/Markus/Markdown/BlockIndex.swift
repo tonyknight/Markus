@@ -96,10 +96,30 @@ nonisolated enum BlockIndex: Sendable {
 }
 
 struct SourceMap: Sendable {
+    /// Test-only instrumentation (T04/P5): a reference-type counter of
+    /// `SourceMap` constructions, bound per-call-tree via the
+    /// `@TaskLocal` below rather than shared as a bare global. A bare
+    /// global counter is contaminated by Swift Testing's parallel test
+    /// execution — unrelated tests construct `SourceMap`s on their own
+    /// concurrently-running tasks throughout a full suite run, and a
+    /// process-wide `static var` cannot tell those apart from the
+    /// construction this specific test is trying to count. Binding a
+    /// counter via `withValue(_:operation:)` scopes visibility to the
+    /// dynamic extent of that call (this test's own synchronous call
+    /// into `BlockIndex.build`), so concurrently-running unrelated
+    /// tests — which never bind `constructionCounter` — simply no-op
+    /// against a `nil` task-local and cannot inflate the count.
+    final class ConstructionCounter: @unchecked Sendable {
+        private(set) var value = 0
+        func increment() { value += 1 }
+    }
+    @TaskLocal static var constructionCounter: ConstructionCounter?
+
     let lineStarts: [Int]
     let byteCount: Int
 
     init(markdown: String) {
+        SourceMap.constructionCounter?.increment()
         let bytes = Array(markdown.utf8)
         byteCount = bytes.count
         var starts = [0]

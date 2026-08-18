@@ -72,6 +72,35 @@ struct BlockIndexTests {
         #expect(fence.foldExtent?.lowerBound == utf8Range(ofLine: 8).lowerBound)
     }
 
+    // MARK: - Single SourceMap per build (T04, P5)
+
+    @Test func buildConstructsSourceMapCountIndependentOfFenceCount() {
+        func fencedFixture(count: Int) -> String {
+            (1...count).map { "```swift\nfence \($0)\n```" }.joined(separator: "\n\n")
+        }
+
+        // Bound task-locally (see `SourceMap.constructionCounter`) so
+        // this count reflects only this test's own call into
+        // `BlockIndex.build`, immune to other tests concurrently
+        // constructing their own `SourceMap`s elsewhere in the suite.
+        let oneFenceCounter = SourceMap.ConstructionCounter()
+        SourceMap.$constructionCounter.withValue(oneFenceCounter) {
+            _ = BlockIndex.build(markdown: fencedFixture(count: 1))
+        }
+
+        let tenFenceCounter = SourceMap.ConstructionCounter()
+        SourceMap.$constructionCounter.withValue(tenFenceCounter) {
+            _ = BlockIndex.build(markdown: fencedFixture(count: 10))
+        }
+
+        // A document with 10x the fenced code blocks must construct the
+        // same number of SourceMaps as one with a single fence — one
+        // shared instance per build, not one allocated inside the loop
+        // per fenced block (P5).
+        #expect(oneFenceCounter.value > 0)
+        #expect(tenFenceCounter.value == oneFenceCounter.value)
+    }
+
     @Test func anchorDigestIsStableForIdenticalOpeningLinesAndDiffersForDifferentOnes() {
         let a = FoldAnchor.digest("## Same heading")
         let b = FoldAnchor.digest("## Same heading")
