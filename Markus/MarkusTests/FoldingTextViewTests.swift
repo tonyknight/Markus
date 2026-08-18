@@ -41,12 +41,29 @@ struct FoldingTextViewTests {
         let heading = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
         let fence = try #require(view.blocks.first { $0.id.kind == .fence })
 
+        // Fold the ancestor heading alone first: its foldExtent spans
+        // to the next same-or-shallower heading, so it already covers
+        // the nested H3 and the fence beneath it.
         view.foldStore.toggle(heading.id)
+        view.applyFolds()
+        view.ensureLayout()
+        let heightWithOnlyHeadingFolded = view.layoutHeight
+        #expect(heightWithOnlyHeadingFolded > 0)
+        #expect(heightWithOnlyHeadingFolded < unfoldedSourceHeight)
+
+        // Also folding the nested fence must not change what's visible
+        // — the heading already hides it — an exact equality check,
+        // not just "something collapsed": a regression here previously
+        // let content between the fence's end and the heading's end
+        // leak back into view when both were folded together (fold
+        // extents nest, so the hidden-range cache held overlapping
+        // ranges; see the ticket's Notes).
         view.foldStore.toggle(fence.id)
         view.applyFolds()
         view.ensureLayout()
         #expect(view.collapsedFragmentCount > 0)
         #expect(view.layoutHeight < unfoldedSourceHeight)
+        #expect(view.layoutHeight == heightWithOnlyHeadingFolded)
         #expect(view.string == fixture)
         let storage = try #require(view.textStorage)
         #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
@@ -94,12 +111,32 @@ struct FoldingTextViewTests {
             #expect(!view.foldStore.isFolded(block.id))
         }
 
+        // Baseline: folding just the top-level heading alone already
+        // hides everything nested inside it (the H3 and the fence) —
+        // the exact height Fold All's nested/overlapping fold extents
+        // must match.
+        let topHeading = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+        view.foldStore.toggle(topHeading.id)
+        view.applyFolds()
+        view.ensureLayout()
+        let heightWithOnlyTopHeadingFolded = view.layoutHeight
+        view.foldStore.toggle(topHeading.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(abs(view.layoutHeight - unfoldedHeight) < 1)
+
         view.foldAll()
         for block in foldableBlocks {
             #expect(view.foldStore.isFolded(block.id))
         }
         #expect(view.collapsedFragmentCount > 0)
         #expect(view.layoutHeight < unfoldedHeight)
+        // Fold All simultaneously folds the top heading, the nested H3,
+        // and the doubly-nested fence — exactly the overlapping-fold-
+        // extent shape that previously let content leak back into view
+        // (see the ticket's Notes). The result must be identical to
+        // folding the top heading alone.
+        #expect(view.layoutHeight == heightWithOnlyTopHeadingFolded)
         #expect(view.string == fixture)
         let storage = try #require(view.textStorage)
         #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
@@ -109,6 +146,86 @@ struct FoldingTextViewTests {
             #expect(!view.foldStore.isFolded(block.id))
         }
         #expect(abs(view.layoutHeight - unfoldedHeight) < 1)
+    }
+
+    // MARK: - Overlapping/nested fold extents (T05 review finding, P4)
+
+    /// A heading's `foldExtent` spans to the next same-or-shallower
+    /// heading, so it necessarily contains any nested sub-heading's or
+    /// fenced code block's own `foldExtent`. Folding an outer block and
+    /// something nested inside it at the same time — this fixture folds
+    /// the fence, then its ancestor heading — produces overlapping
+    /// hidden ranges. `FoldingSession`'s binary-search hidden-range
+    /// lookup (added for P1/P4 performance on this ticket) originally
+    /// assumed hidden ranges never overlap; when they do, it can pick
+    /// the *inner* (nested) range as the search candidate and wrongly
+    /// classify a fragment past the inner range's end — but still
+    /// inside the outer range — as `.visible`. This test's trailing
+    /// paragraph sits exactly there.
+    @Test func foldingANestedFenceAndItsAncestorHeadingTogetherHidesEverythingInBetween() throws {
+        let nestedFixture = """
+        ## Heading two
+
+        ### Nested three
+
+        ```swift
+        let answer = 42
+        ```
+
+        Trailing paragraph under heading two, after the fence closes.
+
+        ## Following two
+        """
+        let view = FoldingTextView()
+        view.loadMarkdown(nestedFixture)
+        view.setMode(.source)
+        view.ensureLayout()
+
+        let ancestorHeading = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.startLine == 1 })
+        let fence = try #require(view.blocks.first { $0.id.kind == .fence })
+
+        // Baseline: folding only the ancestor heading already hides the
+        // nested heading, the fence, and the trailing paragraph — all
+        // of it lies inside the ancestor's foldExtent.
+        view.foldStore.toggle(ancestorHeading.id)
+        view.applyFolds()
+        view.ensureLayout()
+        let unfoldedHeight = { () -> CGFloat in
+            let probe = FoldingTextView()
+            probe.loadMarkdown(nestedFixture)
+            probe.setMode(.source)
+            probe.ensureLayout()
+            return probe.layoutHeight
+        }()
+        let heightWithOnlyAncestorFolded = view.layoutHeight
+        #expect(heightWithOnlyAncestorFolded > 0)
+        #expect(heightWithOnlyAncestorFolded < unfoldedHeight)
+
+        // Also folding the nested fence must not reveal anything the
+        // ancestor was already hiding — exact equality, not a weaker
+        // "something collapsed" check.
+        view.foldStore.toggle(fence.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(view.layoutHeight == heightWithOnlyAncestorFolded)
+        #expect(view.string == nestedFixture)
+
+        // Folding in the opposite order (fence first, then its
+        // ancestor) must land at the same height — this is the exact
+        // sequence a user produces with two ordinary chevron clicks.
+        view.foldStore.toggle(ancestorHeading.id)
+        view.foldStore.toggle(fence.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(!view.foldStore.isFolded(ancestorHeading.id))
+        #expect(!view.foldStore.isFolded(fence.id))
+        view.foldStore.toggle(fence.id)
+        view.applyFolds()
+        view.ensureLayout()
+        view.foldStore.toggle(ancestorHeading.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(view.layoutHeight == heightWithOnlyAncestorFolded)
     }
 
     @Test func foldedFenceShowsOpeningLinePlusPlaceholderInsteadOfAnEmptyGap() throws {

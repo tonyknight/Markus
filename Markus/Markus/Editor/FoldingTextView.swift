@@ -389,13 +389,22 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     }
 
     /// Binary search over `cachedHiddenUTF16Ranges` (sorted ascending by
-    /// `location` in `rebuildHiddenRangesCache`) for a range that fully
-    /// contains `fragmentRange` — O(log n) per fragment instead of a
-    /// linear scan. Hidden ranges (fold extents, Preview-substitution
-    /// continuation ranges) never overlap by construction, so the one
-    /// candidate with the largest `location` at or before
-    /// `fragmentRange.location` is the only one that could possibly
-    /// contain it.
+    /// `location` **and merged into a minimal disjoint set** by
+    /// `rebuildHiddenRangesCache`) for a range that fully contains
+    /// `fragmentRange` — O(log n) per fragment instead of a linear scan.
+    /// The merge step is load-bearing, not cosmetic: a heading's
+    /// `foldExtent` spans to the next same-or-shallower heading, so it
+    /// necessarily *contains* any nested sub-heading's or fenced code
+    /// block's own `foldExtent` — folding an outer block and something
+    /// nested inside it at once (two chevron clicks, or Fold All on any
+    /// document with nesting) produces overlapping ranges. Without
+    /// merging, the "largest start ≤ fragment" candidate can be the
+    /// *inner* (nested) range, and a fragment past the inner range's end
+    /// but still inside the outer range would wrongly read `.visible` —
+    /// a real bug caught in review after this binary search first
+    /// landed (see the ticket's Notes). Merging first guarantees no
+    /// candidate range is itself nested inside another, so "largest
+    /// start ≤ fragment" is correct by construction.
     private func isFullyHidden(_ fragmentRange: NSRange) -> Bool {
         let ranges = cachedHiddenUTF16Ranges
         guard !ranges.isEmpty else { return false }
@@ -453,19 +462,66 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         if mode == .preview, let index = contentStorageDelegate.index {
             ranges.append(contentsOf: index.continuationUTF16Ranges)
         }
-        // Sorted so `isFullyHidden` can binary-search instead of
-        // linearly scanning every hidden range per fragment.
-        cachedHiddenUTF16Ranges = ranges.sorted { $0.location < $1.location }
+        // Sorted, then merged into a minimal disjoint set, so
+        // `isFullyHidden` can binary-search instead of linearly
+        // scanning every hidden range per fragment. Merging is required
+        // for correctness, not just speed — see `isFullyHidden`'s doc.
+        cachedHiddenUTF16Ranges = Self.mergedDisjointRanges(ranges.sorted { $0.location < $1.location })
 
+        // A folded fence's opening line gets a placeholder (R15) only
+        // when that opening line is not *also* hidden by some other,
+        // ancestor fold — a fence's own `foldExtent` never covers its
+        // own opening line (it starts right after it), so if
+        // `block.bytes.lowerBound` is covered by any hidden range at
+        // all, that range can only belong to an ancestor heading. When
+        // an ancestor is folded too, the fence's opening line is itself
+        // invisible, so nothing about the fence — not even its
+        // placeholder — should show (found via review alongside the
+        // interval-merge fix above: a document with a folded heading
+        // and a folded fence nested inside it previously showed the
+        // fence's placeholder line even though its own opening line was
+        // already hidden by the heading's fold).
         let placeholderFenceBlocks = blocks.filter { block in
             block.id.kind == .fence && foldStore.isFolded(block.id) && block.foldExtent != nil
         }
-        let placeholderByteRanges = placeholderFenceBlocks.map { block -> Range<Int> in
+        let eligiblePlaceholderBlocks = placeholderFenceBlocks.filter { block in
+            !hiddenByteRanges.contains { $0.contains(block.bytes.lowerBound) }
+        }
+        let placeholderByteRanges = eligiblePlaceholderBlocks.map { block -> Range<Int> in
             let start = block.foldExtent!.lowerBound
             return start..<start
         }
         let placeholderNSRanges = UTF8NSRange.nsRanges(utf8Bytes: placeholderByteRanges, in: string)
         cachedPlaceholderUTF16Locations = Set(placeholderNSRanges.compactMap { $0.location != NSNotFound ? $0.location : nil })
+    }
+
+    /// Merges `sorted` (already ascending by `location`) into its
+    /// minimal disjoint union via a standard single-pass interval
+    /// merge: walk once, extending the last merged range's end whenever
+    /// the next range starts at or before it (this also correctly
+    /// absorbs a range fully nested inside the last one, since its end
+    /// is then also ≤ the last range's end and `max` leaves the end
+    /// unchanged). Required so `isFullyHidden`'s binary search — which
+    /// assumes no candidate range is itself nested inside another — is
+    /// correct for overlapping/nested fold extents (an outer heading's
+    /// `foldExtent` containing a nested heading's or fence's own).
+    private static func mergedDisjointRanges(_ sorted: [NSRange]) -> [NSRange] {
+        guard var current = sorted.first else { return [] }
+        var merged: [NSRange] = []
+        for range in sorted.dropFirst() {
+            let currentEnd = current.location + current.length
+            if range.location <= currentEnd {
+                let rangeEnd = range.location + range.length
+                if rangeEnd > currentEnd {
+                    current.length = rangeEnd - current.location
+                }
+            } else {
+                merged.append(current)
+                current = range
+            }
+        }
+        merged.append(current)
+        return merged
     }
 
     /// Rebuilds the Preview substitution index from the cached

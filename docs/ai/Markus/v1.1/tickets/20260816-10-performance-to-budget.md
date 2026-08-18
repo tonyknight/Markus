@@ -465,3 +465,79 @@ clean after six commits (T01-T05 plus the macOS-only wall-clock scoping
 fix). Ticket `status:` left `in-progress`, Acceptance Criteria/Subtask
 checkboxes left unchecked, `bora-review` not run — per this project's
 convention, that is the controlling session's job.
+
+### 2026-08-18 (review fix)
+
+`bora-review` found a real **Critical** correctness bug in T05's
+`isFullyHidden` binary search — not a further performance issue, a
+genuine visible-content regression. The doc comment added alongside the
+binary search claimed hidden ranges "never overlap by construction,"
+and that claim is false for fold extents specifically: a heading's
+`foldExtent` spans to the next same-or-shallower heading, so it
+necessarily *contains* any nested sub-heading's or fenced code block's
+own `foldExtent`. Folding an outer block and something nested inside it
+at the same time — two ordinary chevron clicks, or unconditionally via
+Fold All on any document with a fence under a heading — produces
+overlapping hidden ranges. Sorted by `location`, the binary search's
+"largest-start-≤-fragment" candidate logic picked the *inner* (nested)
+range, and any fragment past that inner range's end but still inside
+the outer range read back `.visible` — real content leaking into view
+inside a folded section. The reviewer confirmed it empirically (a
+heading > sub-heading > fence > trailing-paragraph fixture, folding the
+fence then the ancestor heading, left the trailing paragraph visible)
+and traced it to exactly the shape already present in
+`FoldingTextViewTests.fixture`, uncaught by the existing
+`hidesFoldedRangesViaLayoutFragmentsWithoutShrinkingBufferOrBreakingUndo`/
+`foldAllCollapsesEveryFoldableBlockAndUnfoldAllRestoresLayoutHeight`
+tests only because their assertions were weak (`collapsedFragmentCount
+> 0`, `layoutHeight < unfoldedHeight` — true even with a partial leak,
+not an exact check).
+
+Fixed with a standard interval merge, not a narrower patch to the
+search itself: `rebuildHiddenRangesCache` now merges the sorted hidden
+ranges into their minimal disjoint union (`mergedDisjointRanges` — one
+pass, extending the last merged range's end whenever the next range
+starts at or before it, which also correctly absorbs a range fully
+nested inside the last one) before `isFullyHidden` ever runs. Binary
+search over a merged, genuinely disjoint set is correct by
+construction — same O(log n) per-fragment cost, no asymptotic
+regression versus what T05 already built.
+
+Writing an exact-height regression test surfaced a second, distinct,
+**pre-existing** bug (present in the original computed-property
+implementation too, not introduced by T05 — confirmed by inspection:
+the ported logic was identical) that the new test's stricter check also
+caught: `cachedPlaceholderUTF16Locations` only checked whether a fence
+was *individually* folded, not whether its opening line was *also*
+already hidden by an ancestor's fold. Folding a heading and a nested
+fence together showed the fence's R15 placeholder line even though the
+fence's own opening line was itself inside the folded heading's hidden
+range — nothing about the fence should be visible in that case,
+placeholder included. Fixed in the same pass: a fence's placeholder
+position is now excluded whenever its opening line
+(`block.bytes.lowerBound`) is covered by any other hidden range: a
+fence's own `foldExtent` never covers its own opening line (it starts
+right after it), so any hit there can only be an ancestor's range.
+
+Added `FoldingTextViewTests.foldingANestedFenceAndItsAncestorHeadingTogetherHidesEverythingInBetween`
+(the reviewer's exact repro shape — heading > sub-heading > fence >
+trailing paragraph, folded in both orders) asserting **exact**
+`layoutHeight` equality between "ancestor folded alone" and "ancestor
+and nested fence folded together," and strengthened both existing
+`FoldingTextViewTests` (`hidesFoldedRangesViaLayoutFragmentsWithout...`,
+`foldAllCollapsesEveryFoldableBlockAndUnfoldAllRestoresLayoutHeight`)
+with the same exact-equality pattern against a "fold only the top-level
+ancestor" baseline, rather than the pre-existing weaker `>`/`<` checks,
+so all three would now catch this regression themselves. RED confirmed
+directly (not just via the reviewer's diagnostic): temporarily disabled
+the merge call and reran — all three new/strengthened assertions failed
+for the documented reason; re-enabled and reran — all green. The
+placeholder fix's own RED/GREEN was confirmed the same way, in the same
+cycle (both fixes were needed together to reach GREEN).
+
+Verify (fresh, this session, worktree/branch confirmed via `pwd`/`git
+branch --show-current` before every command): macOS `xcodebuild ...
+test` → TEST SUCCEEDED; iOS Simulator iPhone 17 → TEST SUCCEEDED; iOS
+Simulator iPad Pro 13-inch (M5) → TEST SUCCEEDED. Working tree clean
+after this fix's commit. Ticket `status:` still left `in-progress` —
+this is a fix within the same ticket, not a reason to change that.
