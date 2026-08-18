@@ -6,19 +6,19 @@
 
 macOS-first: real menus, rendered Preview, Source-mode editing, working chrome, 5 MB performance
 
-## In progress (0)
+## In progress (1)
 
-_No tickets in progress._
+- **20260816-09-preview-gutter-and-source-mapping** Preview gutter and source mapping [medium]
+  - subtasks: 0/3 · checkboxes: 0/6
 
 ## Blocked (1)
 
 - **20260816-14-test-integrity-pass** Test integrity pass [low]
   - depends on: 20260816-13-text-input-in-source (not yet marked blocked)
 
-## Up next (2)
+## Up next (1)
 
 - **20260816-13-text-input-in-source** Text input in Source [high]
-- **20260816-09-preview-gutter-and-source-mapping** Preview gutter and source mapping [medium]
 
 ## Recently completed (last 10 of 11)
 
@@ -35,5 +35,5 @@ _No tickets in progress._
 
 ## Stats
 
-- Total: 14 tickets · 11 done · 3 todo · 0 in-progress · 0 blocked
+- Total: 14 tickets · 11 done · 2 todo · 1 in-progress · 0 blocked
 - By type: 10 feature · 2 chore · 1 spike · 1 bug

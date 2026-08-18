@@ -1,28 +1,27 @@
 ---
 id: 20260816-09-preview-gutter-and-source-mapping
-title: "Preview gutter and source mapping"
+title: Preview gutter and source mapping
 type: feature
 priority: medium
-status: todo
+status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-18
 closed:
-notes: ""
+notes: ''
 parent:
 depends_on:
-  - 20260816-08-preview-rendering-via-paragraph-substitution
+- 20260816-08-preview-rendering-via-paragraph-substitution
 subtasks:
-  - id: T1
-    title: Block-anchored gutter renderer for Preview (chevrons + block-start numbers)
-    status: todo
-  - id: T2
-    title: Source-line anchor carried per substituted paragraph
-    status: todo
-  - id: T3
-    title: Reconcile go-to-line, outline jump, and minimap against block anchors
-    status: todo
+- id: T1
+  title: Block-anchored gutter renderer for Preview (chevrons + block-start numbers)
+  status: todo
+- id: T2
+  title: Source-line anchor carried per substituted paragraph
+  status: todo
+- id: T3
+  title: Reconcile go-to-line, outline jump, and minimap against block anchors
+  status: todo
 ---
-
 ## Description
 
 Once a rendered paragraph no longer occupies the same number of visual
