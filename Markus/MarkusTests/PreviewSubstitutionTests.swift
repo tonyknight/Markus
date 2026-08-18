@@ -322,4 +322,55 @@ struct PreviewSubstitutionTests {
         #expect(view.collapsedFragmentCount > 0)
         #expect(view.textStorage?.string == markdown)
     }
+
+    // MARK: - T06: fenced code delimiter hiding and image degradation
+
+    @Test func previewModeHidesFenceDelimitersButKeepsCodeContentVisible() throws {
+        let markdown = """
+        Before.
+
+        ```swift
+        let answer = 42
+        ```
+
+        After.
+        """
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        // No paragraph's laid-out content is a literal fence delimiter —
+        // the opening/closing ``` lines are substituted to nothing.
+        #expect(!paragraphs.contains { $0.string.contains("```") })
+        // The code itself is untouched raw text, still visible (only the
+        // delimiters are markup; the content is not).
+        #expect(paragraphs.contains { $0.string.contains("let answer = 42") })
+        // The blanked delimiter lines collapse to zero height (N3), the
+        // buffer itself unchanged (N4).
+        #expect(view.collapsedFragmentCount > 0)
+        #expect(view.textStorage?.string == markdown)
+    }
+
+    @Test func previewModeDegradesImagesToReadableStyledTextNotRawSyntax() throws {
+        let markdown = "See ![a red fox](fox.png) here.\n"
+        let view = FoldingTextView()
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        let paragraphs = attributedParagraphs(view)
+        let paragraph = try #require(paragraphs.first { $0.string.contains("red fox") })
+        #expect(!paragraph.string.contains("!["))
+        #expect(!paragraph.string.contains("]("))
+        #expect(!paragraph.string.contains(".png"))
+
+        // Styled, not blended in as plain body text: readers should be
+        // able to tell this was an image (R12: degrade to readable
+        // styled text, not raw syntax, and not a rendered image).
+        let range = (paragraph.string as NSString).range(of: "red fox")
+        let font = try #require(paragraph.attribute(.font, at: range.location, effectiveRange: nil) as? PlatformFontType)
+        #expect(PlatformFont.isItalic(font))
+    }
 }

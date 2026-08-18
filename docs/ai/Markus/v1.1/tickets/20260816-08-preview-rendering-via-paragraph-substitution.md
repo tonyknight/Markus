@@ -5,7 +5,7 @@ type: feature
 priority: high
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 closed:
 notes: ''
 parent:
@@ -28,7 +28,7 @@ subtasks:
   title: Fixtures/assertions that exercise what a reader actually sees
   status: todo
 plan_status: approved
-current_task: T05
+current_task: T07
 ---
 ## Description
 
@@ -93,7 +93,7 @@ mode substitutes nothing and the buffer stays raw Markdown throughout.
 ## Implementation plan
 
 Status: approved
-Current task: T05
+Current task: T07
 
 Design note (read before touching FoldingSession): substitution is
 implemented so that no rendered content or attachment is ever stored as
@@ -183,3 +183,14 @@ construction.
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-17
+T06 done: fence delimiter lines (opening/closing ```/~~~) now substitute to a markup-only element and collapse to zero height via the existing continuation-range mechanism (content line between them stays raw/visible, monospace via the fold-styling fallback); inline images degrade to a styled placeholder (icon + alt text, italic/muted) via a new `CMARK_NODE_IMAGE` case, never raw `![]()` syntax and never a real image (R12).
+
+Found and fixed a real bug during T06, not an environment issue (this took a long debugging detour — recorded here so it isn't rediscovered): the first implementation used a **literally empty** `NSAttributedString(string: "")` as the substituted content for a fence delimiter's anchor line, handed to `NSTextParagraph(attributedString:)` in `PreviewContentStorageDelegate`. A zero-length `NSTextParagraph` representing a non-empty source range breaks TextKit 2's incremental layout — `ensureLayout()` never returns, and every symptom (xcodebuild/test-host processes idling in a clean `-[NSApplication run]` loop, near-zero CPU accumulated over many real minutes, reproducing identically across shells, subagents, and a full machine reboot) looked exactly like a stuck build-service/test-injection handshake rather than a call inside our own code hanging. Root-caused by bisection: isolated to the single `ensureLayout()` call via a reduced repro (empty test body → safe; body up through `setMode(.preview)` → safe; adding `ensureLayout()` → hangs), then confirmed the trigger was the zero-length substitution specifically (not the separate "also mark this line hidden" logic, which was ruled out first and left in place).
+
+Fix: `PreviewElement` gained an explicit `isMarkupOnly: Bool` flag instead of inferring "this should collapse" from `rendered.length == 0`. The fence delimiter lines now substitute to a **single space** (`NSAttributedString(string: " ")`, length 1 — never truly empty) and are flagged `isMarkupOnly: true`; `PreviewSubstitutionIndex.build` checks the flag (not length) to add them to `continuationUTF16Ranges`, which is what actually drives the zero-height collapse via `FoldingTextLayoutFragment.isCollapsed` (N3) — visual hiding was always meant to come from that mechanism, not from the substituted content being empty.
+
+One pre-existing test broke as a direct, correct consequence of T06 landing: `SourceLineMapTests.sourceLineMapUsesPackedYOmitsFoldedLinesAndDoesNotInventWrapNumbers` used a fixture containing a fenced code block and asserted "every line visible when nothing is folded" — true before T06, no longer true now that fence delimiters are legitimately hidden as markup independent of fold state (R15/N3, same rule ticket 04 established for headings/fences). Updated the test's expectations to exclude the fixture's two delimiter lines (5 and 7) rather than weakening or removing the assertion.
+
+Verify (fresh, this session, correct worktree confirmed via `pwd`/`git branch` on every invocation after an earlier cwd-drift incident): `-only-testing:MarkusTests/PreviewSubstitutionTests` → TEST SUCCEEDED, 32/32; full macOS suite → TEST SUCCEEDED, 114/114, zero failures.

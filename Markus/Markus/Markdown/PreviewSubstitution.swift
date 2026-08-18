@@ -17,6 +17,16 @@ import UIKit
 struct PreviewElement {
     var lines: Range<Int>
     var rendered: NSAttributedString
+    /// True for an anchor line whose rendered content is markup-only
+    /// (e.g. a fence delimiter) and must collapse to zero height like a
+    /// continuation line, rather than laying out as a visible blank
+    /// line. Kept as an explicit flag rather than inferring it from
+    /// `rendered.length == 0`: `NSTextParagraph` requires non-empty
+    /// content to correctly represent a non-empty source range (an
+    /// empty paragraph over a non-empty range breaks TextKit 2's
+    /// layout bookkeeping), so `rendered` here is a single space, not
+    /// truly empty.
+    var isMarkupOnly = false
 }
 
 /// Heading point sizes by level (H1 largest), scaled by zoom — not a
@@ -166,11 +176,34 @@ enum PreviewElementCollector {
             let attachment = ThematicBreakAttachment(color: tokens.foldMarker)
             let attributed = NSAttributedString(attachment: attachment)
             elements.append(PreviewElement(lines: lines, rendered: applyIndent(attributed, level: indentLevel)))
+        } else if type == CMARK_NODE_CODE_BLOCK, isFenced(node) {
+            // Only the fence delimiter lines (```/~~~) are markup; the
+            // code between them is content, not syntax, so it is left
+            // for the default pass-through path (still monospaced/
+            // colored by FoldingSession.applyStyling's fallback
+            // attributes) rather than substituted here. Each delimiter
+            // line gets a markup-only substitution (a single space —
+            // never truly empty, see `PreviewElement.isMarkupOnly`),
+            // which `PreviewSubstitutionIndex.build` also collapses to
+            // zero height (a markup-only line is never meant to occupy
+            // space).
+            elements.append(PreviewElement(lines: startLine..<(startLine + 1), rendered: NSAttributedString(string: " "), isMarkupOnly: true))
+            if endLine > startLine {
+                elements.append(PreviewElement(lines: endLine..<(endLine + 1), rendered: NSAttributedString(string: " "), isMarkupOnly: true))
+            }
         }
-        // Tables, fenced code, and images are added by later tasks
-        // (T05–T06). Until then this block kind is simply not
-        // substituted — the default raw text lays out unchanged, same
-        // as Source mode.
+        // Images are handled inline within paragraph/heading/list-item
+        // text by `renderInlineNode`'s `CMARK_NODE_IMAGE` case.
+    }
+
+    /// Mirrors `MarkdownParser`'s private fenced-code detection: `true`
+    /// when `node` is a fenced (``` or ~~~) code block, as opposed to an
+    /// indented one (which carries no delimiter markup to hide).
+    private static func isFenced(_ node: UnsafeMutablePointer<cmark_node>?) -> Bool {
+        var fenceLength: Int32 = 0
+        var fenceOffset: Int32 = 0
+        var fenceCharacter: CChar = 0
+        return cmark_node_get_fenced(node, &fenceLength, &fenceOffset, &fenceCharacter) != 0
     }
 
     /// One list item: the marker (bullet, ordinal, or task checkbox)
@@ -323,6 +356,17 @@ enum PreviewElementCollector {
                 inner.addAttribute(.link, value: url, range: fullRange)
             }
             return inner
+        case CMARK_NODE_IMAGE:
+            // R12: images are not rendered in v1.1 — degrade to
+            // readable styled text (an icon plus the alt text, in a
+            // distinct italic/muted style) rather than either a real
+            // image or the raw `![]()` syntax.
+            let alt = literalInlineText(of: node)
+            let label = alt.isEmpty ? "Image" : alt
+            return NSAttributedString(string: "\u{1F5BC} \(label)", attributes: [
+                .font: PlatformFont.italic(font),
+                .foregroundColor: tokens.footnote,
+            ])
         default:
             let typeName = String(cString: cmark_node_get_type_string(node))
             if typeName == "strikethrough" {
@@ -350,6 +394,21 @@ enum PreviewElementCollector {
         guard let literal = cmark_node_get_literal(node) else { return "" }
         return String(cString: literal)
     }
+
+    /// Flattens `node`'s descendant text nodes into a plain string,
+    /// ignoring formatting — used for an image's alt text, which is
+    /// itself inline content (so it can contain emphasis in the source)
+    /// but is only ever shown here as the degraded placeholder's label.
+    private static func literalInlineText(of node: UnsafeMutablePointer<cmark_node>?) -> String {
+        var text = ""
+        var child = cmark_node_first_child(node)
+        while let n = child {
+            text += literalText(n)
+            text += literalInlineText(of: n)
+            child = cmark_node_next(n)
+        }
+        return text
+    }
 }
 
 /// Maps Preview substitution data to the UTF-16 offsets the layout
@@ -376,6 +435,20 @@ struct PreviewSubstitutionIndex {
         for element in elements {
             guard let anchorOffset = lineOffsets.utf16Offset(ofLine: element.lines.lowerBound) else { continue }
             index.anchorSubstitutions[anchorOffset] = element.rendered
+
+            if element.isMarkupOnly {
+                // A markup-only substitution (e.g. a fence delimiter
+                // line) is never meant to occupy space of its own —
+                // collapse its own anchor line to zero height too, the
+                // same mechanism used for a multi-line element's
+                // continuation lines below (N3), not a near-zero font
+                // size (N4).
+                let end = lineOffsets.utf16EndOffset(ofLine: element.lines.lowerBound)
+                if end > anchorOffset {
+                    index.continuationUTF16Ranges.append(NSRange(location: anchorOffset, length: end - anchorOffset))
+                }
+            }
+
             guard element.lines.count > 1 else { continue }
             let lastLine = element.lines.upperBound - 1
             let continuationStartLine = element.lines.lowerBound + 1
