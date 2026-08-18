@@ -31,8 +31,13 @@ struct SourceLineMapTests {
 
         let sourceLineCount = SourceMap(markdown: fixture).lineStarts.count
         let visible = view.visibleSourceLines
-        #expect(visible.count == sourceLineCount)
-        #expect(visible == Array(1...sourceLineCount))
+        // Preview mode hides a fence's own delimiter lines (5 and 7 in
+        // this fixture: the opening ```swift and closing ```) as
+        // markup, independent of any fold (R15/N3) — so with nothing
+        // folded, every line is visible *except* those two.
+        let fenceDelimiterLines: Set<Int> = [5, 7]
+        #expect(visible.count == sourceLineCount - fenceDelimiterLines.count)
+        #expect(visible == Array(1...sourceLineCount).filter { !fenceDelimiterLines.contains($0) })
 
         let line1Y = try #require(view.y(forSourceLine: 1))
         let laterLine = visible.last { $0 > 1 } ?? sourceLineCount
