@@ -225,5 +225,172 @@ struct TextInputTests {
         view.selectedUTF16Range = NSRange(location: 2, length: 3)
         #expect(view.selectedRange() == NSRange(location: 2, length: 3))
     }
+
+    // MARK: - T02: selection drawing, mouse click/drag, keyboard navigation, copy
+
+    /// Builds an `NSEvent` at the packed caret position for `offset` —
+    /// routing through the same geometry T01 already validated
+    /// (`packedCaretRect`) rather than guessing pixel coordinates blind,
+    /// so a "click at offset N" test genuinely exercises mouseDown's own
+    /// click-count/anchor logic, not a second, independent guess at
+    /// character geometry.
+    private func mouseEvent(_ type: NSEvent.EventType, view: FoldingTextView, atUTF16Offset offset: Int, clickCount: Int = 1) throws -> NSEvent {
+        let packedRect = try #require(view.session.packedCaretRect(forUTF16Offset: offset))
+        let viewPoint = NSPoint(x: packedRect.midX + view.gutterWidth, y: packedRect.midY)
+        let windowPoint = view.convert(viewPoint, to: nil)
+        return try #require(NSEvent.mouseEvent(
+            with: type, location: windowPoint, modifierFlags: [], timestamp: 0,
+            windowNumber: view.window?.windowNumber ?? 0, context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1
+        ))
+    }
+
+    @Test func singleClickPlacesTheCaretNearTheClickedOffsetWithNoSelection() throws {
+        let view = makeSourceView("Hello World")
+        view.prepareForEditing()
+        view.ensureLayout()
+
+        let targetOffset = 6 // "World"
+        let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: targetOffset)
+        view.mouseDown(with: down)
+
+        #expect(view.selectedUTF16Range.length == 0)
+        #expect(abs(view.selectedUTF16Range.location - targetOffset) <= 1)
+    }
+
+    @Test func dragAfterMouseDownExtendsACharacterSelectionFromTheAnchor() throws {
+        let view = makeSourceView("Hello World")
+        view.prepareForEditing()
+        view.ensureLayout()
+
+        let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: 0)
+        view.mouseDown(with: down)
+        let drag = try mouseEvent(.leftMouseDragged, view: view, atUTF16Offset: 5)
+        view.mouseDragged(with: drag)
+
+        #expect(view.selectedUTF16Range.location == 0)
+        #expect(view.selectedUTF16Range.length > 0)
+
+        let up = try mouseEvent(.leftMouseUp, view: view, atUTF16Offset: 5)
+        view.mouseUp(with: up)
+        // Further drag events after mouseUp must not keep extending —
+        // the drag anchor is cleared.
+        let strayDrag = try mouseEvent(.leftMouseDragged, view: view, atUTF16Offset: 10)
+        let before = view.selectedUTF16Range
+        view.mouseDragged(with: strayDrag)
+        #expect(view.selectedUTF16Range == before)
+    }
+
+    @Test func doubleClickSelectsTheWholeWordUnderThePoint() throws {
+        let view = makeSourceView("Hello World")
+        view.prepareForEditing()
+        view.ensureLayout()
+
+        let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: 8, clickCount: 2)
+        view.mouseDown(with: down)
+
+        let selected = (view.string as NSString).substring(with: view.selectedUTF16Range)
+        #expect(selected == "World")
+    }
+
+    @Test func tripleClickSelectsTheWholeLineIncludingItsNewline() throws {
+        let view = makeSourceView("First line.\nSecond line.\nThird line.")
+        view.prepareForEditing()
+        view.ensureLayout()
+
+        let secondLineOffset = (view.string as NSString).range(of: "Second").location
+        let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: secondLineOffset, clickCount: 3)
+        view.mouseDown(with: down)
+
+        let selected = (view.string as NSString).substring(with: view.selectedUTF16Range)
+        #expect(selected == "Second line.\n")
+    }
+
+    @Test func arrowKeysMoveTheCaretAndCollapseAnExistingSelectionToTheCorrectEdge() {
+        let view = makeSourceView("Hello World")
+        view.selectedUTF16Range = NSRange(location: 2, length: 4)
+
+        view.doCommand(by: Selector(("moveRight:")))
+        #expect(view.selectedUTF16Range == NSRange(location: 6, length: 0))
+
+        view.selectedUTF16Range = NSRange(location: 2, length: 4)
+        view.doCommand(by: Selector(("moveLeft:")))
+        #expect(view.selectedUTF16Range == NSRange(location: 2, length: 0))
+
+        // From a collapsed caret, a plain move steps by one.
+        view.doCommand(by: Selector(("moveRight:")))
+        #expect(view.selectedUTF16Range == NSRange(location: 3, length: 0))
+        view.doCommand(by: Selector(("moveLeft:")))
+        view.doCommand(by: Selector(("moveLeft:")))
+        #expect(view.selectedUTF16Range == NSRange(location: 1, length: 0))
+    }
+
+    @Test func shiftArrowExtendsSelectionFromAStableAnchor() {
+        let view = makeSourceView("Hello World")
+        view.selectedUTF16Range = NSRange(location: 3, length: 0)
+
+        view.doCommand(by: Selector(("moveRightAndModifySelection:")))
+        view.doCommand(by: Selector(("moveRightAndModifySelection:")))
+        #expect(view.selectedUTF16Range == NSRange(location: 3, length: 2))
+
+        // Reversing direction shrinks back toward the anchor rather than
+        // starting a new one from the moving edge.
+        view.doCommand(by: Selector(("moveLeftAndModifySelection:")))
+        #expect(view.selectedUTF16Range == NSRange(location: 3, length: 1))
+    }
+
+    @Test func wordAndLineBoundaryNavigationCoverAReasonableMinimum() {
+        let view = makeSourceView("Hello World Again")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+
+        view.doCommand(by: Selector(("moveWordRight:")))
+        #expect(view.selectedUTF16Range.location == 5) // end of "Hello", before the space
+
+        view.doCommand(by: Selector(("moveWordRight:")))
+        #expect(view.selectedUTF16Range.location == 11) // end of "World", before the space
+
+        view.doCommand(by: Selector(("moveToEndOfLine:")))
+        #expect(view.selectedUTF16Range.location == (view.string as NSString).length)
+
+        view.doCommand(by: Selector(("moveToBeginningOfLine:")))
+        #expect(view.selectedUTF16Range.location == 0)
+    }
+
+    @Test func copyPutsTheSourceModeSelectionOnThePasteboardVerbatim() {
+        let view = makeSourceView("Hello World")
+        view.selectedUTF16Range = (view.string as NSString).range(of: "World")
+        NSPasteboard.general.clearContents()
+        view.copy(nil)
+        #expect(NSPasteboard.general.string(forType: .string) == "World")
+    }
+
+    @Test func copyIsANoOpWithNoSelectionOrInPreviewMode() {
+        let view = makeSourceView("Hello World")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("unchanged", forType: .string)
+
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        view.copy(nil)
+        #expect(NSPasteboard.general.string(forType: .string) == "unchanged")
+
+        view.selectedUTF16Range = (view.string as NSString).range(of: "World")
+        view.setMode(.preview)
+        view.copy(nil)
+        #expect(NSPasteboard.general.string(forType: .string) == "unchanged")
+    }
+
+    @Test func selectionHighlightGeometryIsRealAndEmptyOnlyWhenSelectionIsCollapsed() {
+        let view = makeSourceView("Hello World")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        #expect(view.session.packedSelectionRects(forUTF16Range: view.selectedUTF16Range).isEmpty)
+
+        let range = (view.string as NSString).range(of: "World")
+        let rects = view.session.packedSelectionRects(forUTF16Range: range)
+        #expect(!rects.isEmpty)
+        #expect(rects.allSatisfy { $0.width > 0 && $0.height > 0 })
+
+        let context = makeBitmapContext()
+        view.selectedUTF16Range = range
+        view.drawSelectionHighlight(in: context, visibleRect: view.currentVisiblePackedRect())
+    }
 }
 #endif

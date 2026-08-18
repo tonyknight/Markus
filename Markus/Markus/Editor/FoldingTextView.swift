@@ -848,6 +848,48 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         return CGRect(x: 0, y: packedY + bounds.minY, width: 2, height: max(bounds.height, 1))
     }
 
+    /// T02: one packed-coordinate-space rect per line the selection
+    /// touches (a real range typically spans several `NSTextLineFragment`s
+    /// once it crosses a wrapped line or a fragment boundary) — the
+    /// selection-highlight counterpart of `packedCaretRect`. Empty for a
+    /// zero-length range (nothing to highlight; that's the caret's job).
+    /// `visibleRect`, when non-nil, bounds the walk the same way
+    /// `drawFragments`/the caret helpers do (P1) — drag-selection is a
+    /// continuous, per-frame interaction.
+    func packedSelectionRects(forUTF16Range range: NSRange, boundedBy visibleRect: CGRect? = nil) -> [CGRect] {
+        guard range.length > 0 else { return [] }
+        var rects: [CGRect] = []
+        enumeratePackedVisibleFragments(boundedBy: visibleRect) { fragment, packedY, utf16Range in
+            let intersection = NSIntersectionRange(utf16Range, range)
+            guard intersection.length > 0 else { return }
+            rects.append(contentsOf: Self.selectionRects(inPackedFragment: fragment, intersecting: intersection, elementStartUTF16: utf16Range.location, packedY: packedY))
+        }
+        return rects
+    }
+
+    private static func selectionRects(inPackedFragment fragment: NSTextLayoutFragment, intersecting range: NSRange, elementStartUTF16: Int, packedY: CGFloat) -> [CGRect] {
+        let lineFragments = fragment.textLineFragments
+        guard !lineFragments.isEmpty else { return [] }
+        var rects: [CGRect] = []
+        var cumulative = elementStartUTF16
+        for lineFragment in lineFragments {
+            let lineRange = NSRange(location: cumulative, length: lineFragment.characterRange.length)
+            let intersection = NSIntersectionRange(lineRange, range)
+            if intersection.length > 0 {
+                let startLocal = max(0, min(lineFragment.characterRange.length, intersection.location - cumulative))
+                let endLocal = max(0, min(lineFragment.characterRange.length, intersection.location + intersection.length - cumulative))
+                let startPoint = lineFragment.locationForCharacter(at: startLocal)
+                let endPoint = lineFragment.locationForCharacter(at: endLocal)
+                let bounds = lineFragment.typographicBounds
+                let minX = min(startPoint.x, endPoint.x)
+                let maxX = max(startPoint.x, endPoint.x)
+                rects.append(CGRect(x: minX, y: packedY + bounds.minY, width: max(maxX - minX, 1), height: max(bounds.height, 1)))
+            }
+            cumulative += lineFragment.characterRange.length
+        }
+        return rects
+    }
+
     private func packedLayoutHeight() -> CGFloat {
         var height: CGFloat = 0
         enumeratePackedVisibleFragments { fragment, _, _ in
@@ -1085,6 +1127,18 @@ enum PlatformColor {
         UIColor.secondaryLabel
         #endif
     }
+
+    /// T02: the selection highlight fill — the standard system
+    /// selected-text color on macOS (matches every other AppKit text
+    /// view rather than inventing a theme-specific one; `ThemeTokens`
+    /// has no selection field of its own).
+    static var selectionHighlight: PlatformColorType {
+        #if os(macOS)
+        NSColor.selectedTextBackgroundColor
+        #else
+        UIColor.systemBlue.withAlphaComponent(0.3)
+        #endif
+    }
 }
 
 enum GutterMetrics {
@@ -1107,6 +1161,16 @@ typealias PlatformView = NSView
 typealias PlatformFontType = UIFont
 typealias PlatformColorType = UIColor
 typealias PlatformView = UIView
+#endif
+
+#if os(macOS)
+/// T02: what unit a mouse drag extends the selection by, set once at
+/// `mouseDown` from the click count (single/double/triple-click).
+enum DragSelectionMode {
+    case character
+    case word
+    case line
+}
 #endif
 
 @MainActor
@@ -1132,6 +1196,15 @@ final class FoldingTextView: PlatformView {
     /// session began (captured once, on the first `setMarkedText` call
     /// of a session) — see `mutateSourceText`'s `undoPreviousOverride`.
     private var composingOriginalText: String?
+    /// T02: the fixed end of an in-progress keyboard (Shift+arrow)
+    /// selection extension — `nil` whenever no extension is active (a
+    /// plain arrow key, a fresh click, or a mutation collapses it).
+    private var selectionAnchorOffset: Int?
+    /// T02: the fixed end of an in-progress mouse drag selection, and
+    /// what kind of unit (character/word/line) the drag extends by —
+    /// set on `mouseDown`, read by `mouseDragged`, cleared on `mouseUp`.
+    private var dragAnchorOffset: Int?
+    private var dragAnchorMode: DragSelectionMode = .character
     #endif
 
     var foldStore: FoldStore { session.foldStore }
@@ -1432,6 +1505,7 @@ final class FoldingTextView: PlatformView {
         drawGutter(in: context, visibleRect: dirtyRect)
         context.saveGState()
         context.translateBy(x: gutterWidth, y: 0)
+        drawSelectionHighlight(in: context, visibleRect: dirtyRect)
         session.drawFragments(in: context, visibleRect: dirtyRect)
         context.restoreGState()
         drawCaret(in: context)
@@ -1445,12 +1519,67 @@ final class FoldingTextView: PlatformView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if handleGutterClick(at: point) { return }
-        super.mouseDown(with: event)
+        guard session.mode == .source else {
+            super.mouseDown(with: event)
+            return
+        }
+        window?.makeFirstResponder(self)
+        guard let offset = utf16Offset(forViewPoint: point) else {
+            super.mouseDown(with: event)
+            return
+        }
+        selectionAnchorOffset = nil
+        switch event.clickCount {
+        case 2:
+            let range = wordRange(at: offset)
+            selectedUTF16Range = range
+            dragAnchorOffset = range.location
+            dragAnchorMode = .word
+        case 3...:
+            let range = lineRange(at: offset)
+            selectedUTF16Range = range
+            dragAnchorOffset = range.location
+            dragAnchorMode = .line
+        default:
+            selectedUTF16Range = NSRange(location: offset, length: 0)
+            dragAnchorOffset = offset
+            dragAnchorMode = .character
+        }
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard session.mode == .source, let anchor = dragAnchorOffset else {
+            super.mouseDragged(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        guard let offset = utf16Offset(forViewPoint: point) else { return }
+        switch dragAnchorMode {
+        case .character:
+            selectedUTF16Range = normalizedRange(anchor, offset)
+        case .word:
+            let word = wordRange(at: offset)
+            selectedUTF16Range = normalizedRange(min(anchor, word.location), max(anchor, word.location + word.length))
+        case .line:
+            let line = lineRange(at: offset)
+            selectedUTF16Range = normalizedRange(min(anchor, line.location), max(anchor, line.location + line.length))
+        }
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragAnchorOffset = nil
+        super.mouseUp(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
         guard session.mode == .source else {
             super.keyDown(with: event)
+            return
+        }
+        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "c" {
+            copy(nil)
             return
         }
         interpretKeyEvents([event])
@@ -1853,6 +1982,7 @@ extension FoldingTextView {
             }
         }
         selectedUTF16Range = NSRange(location: range.location + insertedLength, length: 0)
+        selectionAnchorOffset = nil
         session.syncBlocksFromStorage()
         onTextDidChange?()
         needsDisplay = true
@@ -1877,6 +2007,205 @@ extension FoldingTextView {
         guard selectedUTF16Range.location < documentTextStorage.length else { return }
         let range = NSRange(location: selectedUTF16Range.location, length: 1)
         mutateSourceText(in: range, with: "")
+    }
+
+    // MARK: - T02: selection drawing, mouse click/drag, keyboard navigation, copy
+
+    /// Draws the selection highlight (skip hidden ranges the same way
+    /// `drawFragments`/`drawCaret` already do — via `session
+    /// .packedSelectionRects`, which only ever walks non-collapsed
+    /// fragments). Internal so tests can exercise the real per-frame
+    /// draw path directly against a bitmap `CGContext`, mirroring
+    /// `drawGutter`/`drawCaret`'s own testability precedent.
+    func drawSelectionHighlight(in context: CGContext, visibleRect: CGRect) {
+        guard session.mode == .source, selectedUTF16Range.length > 0 else { return }
+        let rects = session.packedSelectionRects(forUTF16Range: selectedUTF16Range, boundedBy: visibleRect)
+        guard !rects.isEmpty else { return }
+        context.saveGState()
+        PlatformColor.selectionHighlight.setFill()
+        for rect in rects {
+            context.fill(rect)
+        }
+        context.restoreGState()
+    }
+
+    /// `viewPoint` is in this view's own (window-converted) coordinate
+    /// system, gutter included — subtracts `gutterWidth` before handing
+    /// off to `session.utf16Offset(atPackedPoint:boundedBy:)` (T01),
+    /// bounded to the current viewport (P1) since click/drag is a
+    /// continuous, per-frame interaction.
+    private func utf16Offset(forViewPoint viewPoint: CGPoint) -> Int? {
+        let packedPoint = CGPoint(x: viewPoint.x - gutterWidth, y: viewPoint.y)
+        return session.utf16Offset(atPackedPoint: packedPoint, boundedBy: currentVisiblePackedRect())
+    }
+
+    private func clampedOffset(_ offset: Int) -> Int {
+        max(0, min(offset, documentTextStorage.length))
+    }
+
+    private func normalizedRange(_ a: Int, _ b: Int) -> NSRange {
+        let lower = clampedOffset(min(a, b))
+        let upper = clampedOffset(max(a, b))
+        return NSRange(location: lower, length: upper - lower)
+    }
+
+    /// The word (contiguous alphanumeric/underscore run) containing
+    /// `offset`, or — when `offset` lands on whitespace/punctuation —
+    /// the contiguous run of that same character, matching standard
+    /// double-click word-selection behavior for non-word characters.
+    private func wordRange(at offset: Int) -> NSRange {
+        let ns = documentTextStorage.string as NSString
+        let length = ns.length
+        guard length > 0 else { return NSRange(location: 0, length: 0) }
+        func isWordChar(_ i: Int) -> Bool {
+            guard i >= 0, i < length else { return false }
+            guard let scalar = Unicode.Scalar(ns.character(at: i)) else { return false }
+            return CharacterSet.alphanumerics.contains(scalar) || scalar == "_"
+        }
+        var start = min(offset, length - 1)
+        var end = min(offset, length - 1)
+        if !isWordChar(start) {
+            let boundaryChar = ns.character(at: start)
+            while end + 1 < length, !isWordChar(end + 1), ns.character(at: end + 1) == boundaryChar { end += 1 }
+            while start - 1 >= 0, !isWordChar(start - 1), ns.character(at: start - 1) == boundaryChar { start -= 1 }
+            return NSRange(location: start, length: end - start + 1)
+        }
+        while start > 0, isWordChar(start - 1) { start -= 1 }
+        while end + 1 < length, isWordChar(end + 1) { end += 1 }
+        return NSRange(location: start, length: end - start + 1)
+    }
+
+    /// The source line boundaries around `offset`, excluding the
+    /// terminating newline — shared by triple-click line selection
+    /// (which re-adds the newline separately) and Cmd+Left/Right line-
+    /// boundary keyboard navigation (which must not skip past it).
+    private func lineRangeExcludingNewline(at offset: Int) -> NSRange {
+        let ns = documentTextStorage.string as NSString
+        let length = ns.length
+        var start = min(max(0, offset), length)
+        while start > 0, ns.character(at: start - 1) != 0x0A { start -= 1 }
+        var end = min(max(0, offset), length)
+        while end < length, ns.character(at: end) != 0x0A { end += 1 }
+        return NSRange(location: start, length: end - start)
+    }
+
+    /// Triple-click's unit: the line including its trailing newline (if
+    /// any), matching standard "select whole line" behavior.
+    private func lineRange(at offset: Int) -> NSRange {
+        let bare = lineRangeExcludingNewline(at: offset)
+        let length = documentTextStorage.length
+        let end = bare.upperBound < length ? bare.upperBound + 1 : bare.upperBound
+        return NSRange(location: bare.location, length: end - bare.location)
+    }
+
+    /// A word-boundary offset from `offset`, scanning `forward` or
+    /// backward — Option+Left/Right's "reasonable minimum" per the
+    /// plan (not a full Unicode word-break algorithm).
+    private func wordBoundaryOffset(from offset: Int, forward: Bool) -> Int {
+        let ns = documentTextStorage.string as NSString
+        let length = ns.length
+        func isWordChar(_ i: Int) -> Bool {
+            guard i >= 0, i < length else { return false }
+            guard let scalar = Unicode.Scalar(ns.character(at: i)) else { return false }
+            return CharacterSet.alphanumerics.contains(scalar) || scalar == "_"
+        }
+        var index = clampedOffset(offset)
+        if forward {
+            while index < length, !isWordChar(index) { index += 1 }
+            while index < length, isWordChar(index) { index += 1 }
+        } else {
+            while index > 0, !isWordChar(index - 1) { index -= 1 }
+            while index > 0, isWordChar(index - 1) { index -= 1 }
+        }
+        return index
+    }
+
+    /// The offset a caret-movement command should start from: the
+    /// existing extension's moving end when one is already in progress;
+    /// otherwise, for a plain (non-extending) move with an active
+    /// selection, the boundary in the direction of travel (standard
+    /// "arrow key collapses selection to that edge" behavior); otherwise
+    /// the current collapsed caret.
+    private func currentMovingOffset(forward: Bool, extend: Bool) -> Int {
+        if extend, let anchor = selectionAnchorOffset {
+            return selectedUTF16Range.location == anchor ? selectedUTF16Range.upperBound : selectedUTF16Range.location
+        }
+        if !extend, selectedUTF16Range.length > 0 {
+            return forward ? selectedUTF16Range.upperBound : selectedUTF16Range.location
+        }
+        return forward ? selectedUTF16Range.upperBound : selectedUTF16Range.location
+    }
+
+    /// Commits a caret-movement command's result: collapses to
+    /// `newOffset` when not extending (clearing any tracked anchor),
+    /// otherwise grows/shrinks the selection between the tracked (or
+    /// newly-established) anchor and `newOffset`.
+    private func applyCaretMove(to newOffset: Int, extend: Bool, directionForward: Bool) {
+        let clamped = clampedOffset(newOffset)
+        if extend {
+            let anchor = selectionAnchorOffset ?? (directionForward ? selectedUTF16Range.location : selectedUTF16Range.upperBound)
+            selectionAnchorOffset = anchor
+            selectedUTF16Range = normalizedRange(anchor, clamped)
+        } else {
+            selectionAnchorOffset = nil
+            selectedUTF16Range = NSRange(location: clamped, length: 0)
+        }
+        needsDisplay = true
+    }
+
+    private func moveHorizontally(by delta: Int, extend: Bool) {
+        let forward = delta > 0
+        if !extend, selectedUTF16Range.length > 0 {
+            // First press of a plain arrow key with an active selection:
+            // collapse to the edge in the direction of travel — no
+            // additional step on top of that, matching standard "arrow
+            // key collapses the selection" behavior (a second press,
+            // now from a collapsed caret, steps by one as usual).
+            applyCaretMove(to: forward ? selectedUTF16Range.upperBound : selectedUTF16Range.location, extend: false, directionForward: forward)
+            return
+        }
+        let movingFrom = currentMovingOffset(forward: forward, extend: extend)
+        applyCaretMove(to: movingFrom + delta, extend: extend, directionForward: forward)
+    }
+
+    /// Moves the caret/selection-extending-end up or down one line by
+    /// resolving the current caret's own x-position at a y one line
+    /// height above/below it — the standard "keep column, change line"
+    /// approach — via the same point↔offset helpers mouse click/drag
+    /// use. Bounded by the current viewport (P1): holding an arrow key
+    /// repeats at a continuous, per-frame rate.
+    private func moveVertically(by lineDelta: Int, extend: Bool) {
+        let movingFrom = currentMovingOffset(forward: lineDelta > 0, extend: extend)
+        guard let rect = session.packedCaretRect(forUTF16Offset: movingFrom, boundedBy: currentVisiblePackedRect()) else { return }
+        let targetY = rect.midY + CGFloat(lineDelta) * max(rect.height, 1)
+        let point = CGPoint(x: rect.minX, y: targetY)
+        guard let newOffset = session.utf16Offset(atPackedPoint: point, boundedBy: currentVisiblePackedRect()) else { return }
+        applyCaretMove(to: newOffset, extend: extend, directionForward: lineDelta > 0)
+    }
+
+    private func moveToWordBoundary(forward: Bool, extend: Bool) {
+        let movingFrom = currentMovingOffset(forward: forward, extend: extend)
+        let newOffset = wordBoundaryOffset(from: movingFrom, forward: forward)
+        applyCaretMove(to: newOffset, extend: extend, directionForward: forward)
+    }
+
+    private func moveToLineBoundary(forward: Bool, extend: Bool) {
+        let movingFrom = currentMovingOffset(forward: forward, extend: extend)
+        let range = lineRangeExcludingNewline(at: movingFrom)
+        let newOffset = forward ? range.upperBound : range.location
+        applyCaretMove(to: newOffset, extend: extend, directionForward: forward)
+    }
+
+    /// Source-mode copy (R20/R22): the buffer *is* the display in
+    /// Source mode, so this is a trivial slice onto the pasteboard —
+    /// Preview-mode copy (source-Markdown-from-rendered-selection) is
+    /// T06's separate, harder problem.
+    @objc func copy(_ sender: Any?) {
+        guard session.mode == .source, selectedUTF16Range.length > 0 else { return }
+        let text = (documentTextStorage.string as NSString).substring(with: selectedUTF16Range)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 }
 
@@ -1937,6 +2266,43 @@ extension FoldingTextView: NSTextInputClient {
             deleteBackward()
         case Selector(("deleteForward:")):
             deleteForward()
+        // T02: keyboard navigation — arrow keys move the caret (skip
+        // hidden ranges, via the same point↔offset helpers mouse
+        // click/drag use), Shift+arrow extends the selection,
+        // Option+arrow/Cmd+arrow give word- and line-boundary movement
+        // as the plan's explicit "reasonable minimum."
+        case Selector(("moveLeft:")):
+            moveHorizontally(by: -1, extend: false)
+        case Selector(("moveRight:")):
+            moveHorizontally(by: 1, extend: false)
+        case Selector(("moveLeftAndModifySelection:")):
+            moveHorizontally(by: -1, extend: true)
+        case Selector(("moveRightAndModifySelection:")):
+            moveHorizontally(by: 1, extend: true)
+        case Selector(("moveUp:")):
+            moveVertically(by: -1, extend: false)
+        case Selector(("moveDown:")):
+            moveVertically(by: 1, extend: false)
+        case Selector(("moveUpAndModifySelection:")):
+            moveVertically(by: -1, extend: true)
+        case Selector(("moveDownAndModifySelection:")):
+            moveVertically(by: 1, extend: true)
+        case Selector(("moveWordLeft:")):
+            moveToWordBoundary(forward: false, extend: false)
+        case Selector(("moveWordRight:")):
+            moveToWordBoundary(forward: true, extend: false)
+        case Selector(("moveWordLeftAndModifySelection:")):
+            moveToWordBoundary(forward: false, extend: true)
+        case Selector(("moveWordRightAndModifySelection:")):
+            moveToWordBoundary(forward: true, extend: true)
+        case Selector(("moveToBeginningOfLine:")):
+            moveToLineBoundary(forward: false, extend: false)
+        case Selector(("moveToEndOfLine:")):
+            moveToLineBoundary(forward: true, extend: false)
+        case Selector(("moveToBeginningOfLineAndModifySelection:")):
+            moveToLineBoundary(forward: false, extend: true)
+        case Selector(("moveToEndOfLineAndModifySelection:")):
+            moveToLineBoundary(forward: true, extend: true)
         default:
             break
         }
