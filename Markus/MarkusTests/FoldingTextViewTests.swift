@@ -246,6 +246,51 @@ struct FoldingTextViewTests {
         #expect(changeCount == 2)
     }
 
+    // MARK: - Viewport-only drawing (T01, P1)
+
+    @Test func drawFragmentsEnumerationIsBoundedByViewportNotDocumentSize() {
+        let visibleRect = CGRect(x: 0, y: 0, width: 480, height: 800)
+        let context = makeBitmapContext()
+
+        let smallView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        smallView.loadMarkdown(headingsFixture(count: 5))
+        smallView.setMode(.source)
+        smallView.ensureLayout()
+        smallView.session.drawFragments(in: context, visibleRect: visibleRect)
+        let smallCount = smallView.session.fragmentsEnumeratedLastDraw
+
+        let largeView = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        largeView.loadMarkdown(headingsFixture(count: 5000))
+        largeView.setMode(.source)
+        largeView.ensureLayout()
+        largeView.session.drawFragments(in: context, visibleRect: visibleRect)
+        let largeCount = largeView.session.fragmentsEnumeratedLastDraw
+
+        #expect(smallCount > 0)
+        #expect(largeCount > 0)
+        // A document 1,000x larger must not enumerate proportionally more
+        // fragments when only a small viewport is visible — bounded by
+        // the viewport, not the document (P1).
+        #expect(largeCount < smallCount * 20)
+        #expect(largeCount < 200)
+    }
+
+    private func headingsFixture(count: Int) -> String {
+        (1...count).map { "## Heading \($0)" }.joined(separator: "\n\n")
+    }
+
+    private func makeBitmapContext() -> CGContext {
+        CGContext(
+            data: nil,
+            width: 10,
+            height: 10,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+    }
+
     private func usesCollapsedParagraphStyles(_ storage: NSTextStorage) -> Bool {
         var found = false
         storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, _, stop in

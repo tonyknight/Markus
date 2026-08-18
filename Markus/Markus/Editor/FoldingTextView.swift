@@ -89,6 +89,10 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     private(set) var tokens: ThemeTokens
     private(set) var zoomScale: CGFloat = 1
     private(set) var collapsedFragmentCount = 0
+    /// Fragments visited by the most recent `drawFragments` call — the
+    /// N8 counter proving P1: bounded by the visible rect, not the
+    /// document, so it must not scale with document size.
+    private(set) var fragmentsEnumeratedLastDraw = 0
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
     private weak var textStorage: NSTextStorage?
@@ -361,8 +365,21 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         }
     }
 
-    func drawFragments(in context: CGContext) {
-        enumeratePackedVisibleFragments { fragment, packedY, _ in
+    /// Draws only fragments whose packed position intersects
+    /// `visibleRect` (P1): the underlying enumeration still walks from
+    /// document start, but stops as soon as `packedY` passes
+    /// `visibleRect.maxY` instead of continuing to the end of the
+    /// document, and skips the actual `draw` call for anything above
+    /// `visibleRect.minY`. `fragmentsEnumeratedLastDraw` counts every
+    /// fragment visited (including skipped/collapsed ones) so tests can
+    /// assert the walk stays proportional to the viewport, never the
+    /// full document.
+    func drawFragments(in context: CGContext, visibleRect: CGRect) {
+        fragmentsEnumeratedLastDraw = 0
+        enumeratePackedVisibleFragments(boundedBy: visibleRect, onVisitFragment: {
+            self.fragmentsEnumeratedLastDraw += 1
+        }) { fragment, packedY, _ in
+            guard packedY + fragment.layoutFragmentFrame.height >= visibleRect.minY else { return }
             fragment.draw(at: CGPoint(x: fragment.layoutFragmentFrame.minX, y: packedY), in: context)
         }
     }
@@ -381,7 +398,16 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         var packedY: CGFloat
     }
 
+    /// `visibleRect`, when non-nil, bounds the walk: enumeration stops
+    /// once accumulated `packedY` passes `visibleRect.maxY` rather than
+    /// continuing to the document's end (P1). `onVisitFragment`, when
+    /// provided, is called once per fragment the underlying
+    /// `enumerateTextLayoutFragments` visits — including fragments
+    /// skipped for being collapsed — so callers can count the true
+    /// walk size independent of what `body` chooses to act on.
     private func enumeratePackedVisibleFragments(
+        boundedBy visibleRect: CGRect? = nil,
+        onVisitFragment: (() -> Void)? = nil,
         _ body: (NSTextLayoutFragment, CGFloat, NSRange) -> Void
     ) {
         guard let layoutManager, let content = layoutManager.textContentManager else { return }
@@ -390,19 +416,23 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             from: layoutManager.documentRange.location,
             options: [.ensuresLayout]
         ) { fragment in
+            onVisitFragment?()
             let collapsed = (fragment as? FoldingTextLayoutFragment)?.isCollapsed ?? false
             if !collapsed {
                 let utf16 = utf16Range(for: fragment, content: content)
                 body(fragment, packedY, utf16)
                 packedY += fragment.layoutFragmentFrame.height
             }
+            if let visibleRect, packedY > visibleRect.maxY {
+                return false
+            }
             return true
         }
     }
 
-    private func packedVisibleFragments() -> [PackedFragment] {
+    private func packedVisibleFragments(boundedBy visibleRect: CGRect? = nil) -> [PackedFragment] {
         var packed: [PackedFragment] = []
-        enumeratePackedVisibleFragments { fragment, packedY, utf16 in
+        enumeratePackedVisibleFragments(boundedBy: visibleRect) { fragment, packedY, utf16 in
             packed.append(PackedFragment(fragment: fragment, utf16Range: utf16, packedY: packedY))
         }
         return packed
@@ -873,7 +903,7 @@ final class FoldingTextView: PlatformView {
         drawGutter(in: context)
         context.saveGState()
         context.translateBy(x: gutterWidth, y: 0)
-        session.drawFragments(in: context)
+        session.drawFragments(in: context, visibleRect: dirtyRect)
         context.restoreGState()
     }
 
@@ -898,7 +928,7 @@ final class FoldingTextView: PlatformView {
         drawGutter(in: context)
         context.saveGState()
         context.translateBy(x: gutterWidth, y: 0)
-        session.drawFragments(in: context)
+        session.drawFragments(in: context, visibleRect: rect)
         context.restoreGState()
     }
 
