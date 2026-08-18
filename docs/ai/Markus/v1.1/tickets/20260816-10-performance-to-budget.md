@@ -330,8 +330,138 @@ xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platfor
 xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' test
 xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test
 ```
-- [ ] done
+- [x] done
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-18
+
+All five plan tasks complete. T01: `FoldingSession.drawFragments` now
+takes the view's real visible rect and stops enumerating fragments once
+packed Y passes `visibleRect.maxY` instead of walking the whole
+document on every draw; `fragmentsEnumeratedLastDraw` proves it stays
+bounded regardless of document size (P1, N8). T02: `packedSourceLineEntries`
+gained a `boundedBy:` path used only by `drawGutter` (the real per-frame
+hot path) that derives the visible line range from two `O(log lines)`
+binary searches into a new cached `UTF16LineOffsets.lineNumber(atUTF16Offset:)`
+instead of scanning every source line; `jumpToSourceLine`, `scrollPackedYOnScreen`,
+and the minimap keep the unbounded path since they genuinely need
+off-screen resolution (P2, N8). T03: split "parse structure" from
+"render style" — new `PreviewStructureCollector`/`ParsedPreviewBlock`/
+`PreviewInlineNode` (cmark-free intermediate) parse once per real text
+change; `PreviewElementRenderer` renders that structure with the current
+theme/zoom, pure Swift, no cmark; `FoldingSession.parsesPerformed` proves
+fold/theme/zoom/mode/resize all reuse the cache while a real edit still
+reparses (P3, N8). T04: confirmed ticket 12 already hoisted a single
+shared `SourceMap` per `BlockIndex.build` call (P5) — added a live test
+using a `@TaskLocal` `SourceMap.ConstructionCounter` (a bare global
+counter proved contaminated by Swift Testing's parallel execution of
+unrelated tests also constructing `SourceMap`s; task-local scoping fixed
+it) rather than re-deriving the fix.
+
+T05 (5 MB fixture, counters, wall-clock) surfaced three further real,
+severe bugs beyond P1-P4's literal scope — all found by directly
+sampling (`sample <pid> -f /tmp/x.txt`) a test process that was running
+far slower than it should have, not by guesswork, after wall-clock
+tests against the new `LargeMarkdownFixture` proved unusably slow
+(one early version of the load test ran ~39 s against a 1 MB document
+before any fix landed). Recording the detective work here the way
+ticket 08's Notes recorded its TextKit 2 hang, since none of these three
+were obvious from reading the surrounding code in isolation:
+
+1. **`MarkdownPreviewRenderer.apply` was effectively O(spans × document
+   length).** It called `UTF8NSRange.nsRange(utf8Bytes:in:)` once per
+   Markdown span (thousands, on a large document) to convert a byte
+   range to an `NSRange`; that helper walks
+   `string.utf8.index(startIndex, offsetBy:)` **from the string's
+   start** on every call — fine for a one-off conversion, pathological
+   in a loop. Confirmed by a controlled comparison: the identical
+   per-span conversion-plus-attribute loop took 0.8 ms against a plain
+   `NSMutableAttributedString` but tens of seconds against the live
+   `NSTextStorage` for the same 1 MB document and span count — the
+   difference wasn't `addAttributes` itself (a first fix along those
+   lines helped only marginally), it was that `textStorage.string` is
+   an `NSString`-bridged `String` whose UTF-8 index-offsetting is far
+   more expensive than a native Swift string's. Fixed with a new
+   `UTF8NSRange.nsRanges(utf8Bytes:in:)` that resolves every needed
+   offset in **one forward pass** over the string's Unicode scalars —
+   each scalar's own `.utf8.count`/`.utf16.count` gives the byte/UTF-16
+   length directly, so the pass never touches `String.Index` distance
+   computation at all — plus building the styled attributes on a
+   scratch `NSMutableAttributedString` and assigning it into the live
+   storage once via `setAttributedString`, rather than many
+   `addAttributes` calls on the live storage.
+2. **`FoldingSession.hiddenUTF16Ranges`/`placeholderUTF16Locations`
+   were plain computed properties**, rebuilt from scratch — including
+   the same per-item `UTF8NSRange.nsRange` cost — every time
+   `collapseState(for:layoutManager:)` read them. TextKit 2 calls that
+   delegate method once **per text element** during every
+   `ensureLayout()`/draw pass, so a document with many fragments
+   recomputed the whole cache once per fragment: a second, independent
+   quadratic-shaped cost, invisible from T01's fix alone since it lives
+   one level below drawing, in the `NSTextLayoutManagerDelegate`
+   callback itself. Fixed by caching both as stored properties
+   (`cachedHiddenUTF16Ranges`/`cachedPlaceholderUTF16Locations`),
+   rebuilt once per real state change inside `applyStyling`
+   (`rebuildHiddenRangesCache`, counted by the new
+   `hiddenRangesCacheRebuildCount`).
+3. **Even cached, the hidden-range lookup was still a linear scan.**
+   `collapseState` called `cachedHiddenUTF16Ranges.contains { ... }`
+   once per fragment — O(fragments × hidden_ranges), and this fixture's
+   fenced code blocks alone contribute thousands of markup-only
+   continuation ranges, so the product is large even for a moderately
+   large document. Fixed by sorting the cache once (in
+   `rebuildHiddenRangesCache`) and binary-searching it per fragment
+   (`isFullyHidden`) — hidden ranges never overlap by construction
+   (fold extents and substitution-continuation ranges are each built
+   from disjoint block/line spans), so the one candidate with the
+   largest `location` at or before the fragment's start is the only one
+   that could contain it. Counted by the new
+   `hiddenRangeLookupComparisons`, asserted to stay in the low millions
+   on the 5 MB fixture rather than the hundreds of millions a linear
+   scan would reach.
+
+A fourth, environmental (not a code bug) finding: this Mac's scheme runs
+`MarkusTests` with `parallelizable = "YES"`, which genuinely runs more
+than one worker **process** against the same selected tests — confirmed
+by direct sampling showing healthy, distributed cmark/rendering work
+mid-run, not a hang or a fourth quadratic call chain. Two 5 MB-fixture
+tests legitimately running at once, one per process (this suite's own
+`@Suite(.serialized)` only keeps tests from overlapping *within* one
+process), measured 10-30x slower wall-clock times than the same test
+run alone. `PerformanceBudgetTests` was consolidated from what would
+have been six separate 5 MB/1 MB fixture loads down to three, and its
+wall-clock margins are documented in the file as deliberately looser
+than a bare 2x for that reason — the counters, not the wall-clock
+numbers, are what actually enforces P1-P4. The wall-clock tests are
+further scoped `#if os(macOS)`: the Requirements' Performance budgets
+table is explicitly "measured on macOS," and the already-generous load
+budget missed by ~25% on an iPhone 17 Simulator run for no reason other
+than the Simulator being genuinely slower than native macOS at CPU-bound
+work — the counter-based test is cross-platform and passed on both
+simulators unmodified.
+
+One test-design bug worth recording on its own: an early version of the
+"theme change substitutes only visible paragraphs" check called
+`ensureLayout()` (which force-lays-out the *entire* document) before
+resetting and re-measuring `substitutionQueryCount`, so the count came
+back far larger than the total block count — not because substitution
+wasn't lazy, but because `ensureLayout()` had already resolved every
+paragraph earlier in the test and TextKit 2 does not re-query a
+delegate for an already-resolved, unchanged range. Fixed by moving the
+substitution check to right after the *first* bounded `drawFragments`
+call on a freshly loaded view, before anything else could force a full
+layout pass.
+
+Verify (fresh): macOS `xcodebuild ... test` → TEST SUCCEEDED; iOS
+Simulator iPhone 17 → TEST SUCCEEDED; iOS Simulator iPad Pro 13-inch
+(M5) → TEST SUCCEEDED. `bora dev lint` reports one pre-existing error on
+ticket 08 (`current_task`/`### Tnn:` heading-format mismatch, confirmed
+predating this ticket's work) — out of scope here, flagged for the
+controlling session as ticket 08's own Notes already do. Working tree
+clean after six commits (T01-T05 plus the macOS-only wall-clock scoping
+fix). Ticket `status:` left `in-progress`, Acceptance Criteria/Subtask
+checkboxes left unchecked, `bora-review` not run — per this project's
+convention, that is the controlling session's job.
