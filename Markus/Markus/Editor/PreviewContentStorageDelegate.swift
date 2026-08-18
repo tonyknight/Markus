@@ -20,12 +20,25 @@ final class PreviewContentStorageDelegate: NSObject, NSTextContentStorageDelegat
     var isPreviewMode = false
     var index: PreviewSubstitutionIndex?
 
+    /// N8 counter ("paragraphs substituted"): counts every successful
+    /// (non-nil) substitution query. `NSTextContentStorage` only calls
+    /// this delegate for paragraphs it is actually about to lay out, so
+    /// bounding draw-time fragment enumeration to the viewport (T01)
+    /// bounds this too — proving P4's "substitution is lazy and
+    /// per-element" empirically rather than by inspection.
+    private(set) var substitutionQueryCount = 0
+
+    func resetSubstitutionQueryCount() {
+        substitutionQueryCount = 0
+    }
+
     func textContentStorage(
         _ textContentStorage: NSTextContentStorage,
         textParagraphWith range: NSRange
     ) -> NSTextParagraph? {
         guard isPreviewMode, let index else { return nil }
         guard let rendered = index.substitution(atUTF16Offset: range.location) else { return nil }
+        substitutionQueryCount += 1
         return NSTextParagraph(attributedString: rendered)
     }
 }

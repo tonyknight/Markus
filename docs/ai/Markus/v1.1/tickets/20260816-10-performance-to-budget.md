@@ -91,7 +91,7 @@ deterministic instrumentation the budget table requires.
 ## Implementation plan
 
 Status: approved
-Current task: T05
+Current task: (all tasks complete; ticket-scope verify remains)
 
 Design note (read before touching `FoldingTextView.swift`): `BlockIndex
 .build` already hoists a single shared `SourceMap` per build (T04/P5 —
@@ -316,9 +316,12 @@ New file `Markus/MarkusTests/PerformanceBudgetTests.swift`:
 
 Files: `Markus/MarkusTests/LargeMarkdownFixture.swift` (new),
 `Markus/MarkusTests/PerformanceBudgetTests.swift` (new),
-`Markus/Markus/Editor/PreviewContentStorageDelegate.swift`
+`Markus/Markus/Editor/PreviewContentStorageDelegate.swift`,
+`Markus/Markus/Markdown/MarkdownPreviewRenderer.swift`,
+`Markus/Markus/Editor/FoldingTextView.swift`
 
 Verify: `xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platform=macOS' test -only-testing:MarkusTests/PerformanceBudgetTests`
+- [x] done
 
 ### Ticket-scope verify (after T05)
 

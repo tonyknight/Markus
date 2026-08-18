@@ -8,6 +8,13 @@ import SwiftUI
 #endif
 
 enum UTF8NSRange {
+    /// A single conversion: `string.utf8.index(startIndex, offsetBy:)`
+    /// walks from the very start of `string` every time it's called —
+    /// fine for one-off use, pathological if called once per item in a
+    /// loop over many items across a large document (see `nsRanges`
+    /// below, added on this ticket after exactly that pattern was found
+    /// to make `MarkdownPreviewRenderer.apply` effectively quadratic in
+    /// document size, P4).
     static func nsRange(utf8Bytes: Range<Int>, in string: String) -> NSRange {
         let utf8 = string.utf8
         guard utf8Bytes.lowerBound >= 0,
@@ -24,6 +31,64 @@ enum UTF8NSRange {
             return NSRange(location: NSNotFound, length: 0)
         }
         return NSRange(stringLower..<stringUpper, in: string)
+    }
+
+    /// Converts many UTF-8 byte ranges to `NSRange`s (UTF-16 offsets)
+    /// in a single forward pass over `string` — O(document length +
+    /// ranges·log(ranges)) total, instead of O(document length) spent
+    /// *per range* by repeated calls to `nsRange(utf8Bytes:in:)` above.
+    /// Byte-length and UTF-16-length per Unicode scalar are read
+    /// directly off the scalar (`Unicode.Scalar.utf8.count`/
+    /// `.utf16.count`), so this never touches `String.Index` distance
+    /// computation — the thing that made the naive per-call approach
+    /// slow, especially for the NSString-bridged string
+    /// `NSTextStorage.string` returns (measured: applying ~3,954
+    /// per-span attribute ranges to a 1 MB document this way took
+    /// several tens of seconds via the naive path; this fixes it).
+    /// `byteRanges` need not be sorted; the result preserves input
+    /// order. A range whose bounds don't land on the needed-offset set
+    /// (out of bounds, or lowerBound > upperBound) maps to
+    /// `NSNotFound`.
+    static func nsRanges(utf8Bytes byteRanges: [Range<Int>], in string: String) -> [NSRange] {
+        guard !byteRanges.isEmpty else { return [] }
+
+        var neededOffsets = Set<Int>()
+        for range in byteRanges {
+            neededOffsets.insert(range.lowerBound)
+            neededOffsets.insert(range.upperBound)
+        }
+        let sortedOffsets = neededOffsets.sorted()
+
+        var byteToUTF16: [Int: Int] = [:]
+        byteToUTF16.reserveCapacity(sortedOffsets.count)
+        var byteCursor = 0
+        var utf16Cursor = 0
+        var offsetIndex = 0
+
+        func drain() {
+            while offsetIndex < sortedOffsets.count, sortedOffsets[offsetIndex] <= byteCursor {
+                byteToUTF16[sortedOffsets[offsetIndex]] = utf16Cursor
+                offsetIndex += 1
+            }
+        }
+        drain()
+
+        for scalar in string.unicodeScalars {
+            guard offsetIndex < sortedOffsets.count else { break }
+            byteCursor += scalar.utf8.count
+            utf16Cursor += scalar.utf16.count
+            drain()
+        }
+
+        return byteRanges.map { range in
+            guard let lower = byteToUTF16[range.lowerBound],
+                  let upper = byteToUTF16[range.upperBound],
+                  lower <= upper
+            else {
+                return NSRange(location: NSNotFound, length: 0)
+            }
+            return NSRange(location: lower, length: upper - lower)
+        }
     }
 }
 
@@ -110,6 +175,37 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     private var parsedPreviewBlocks: [ParsedPreviewBlock] = []
     private var parsedSpans: [MarkdownSpan] = []
     private(set) var parsesPerformed = 0
+    /// Rebuilt only inside `applyStyling` (once per real state change:
+    /// text/fold/mode/theme/zoom), not per fragment. `hiddenUTF16Ranges`
+    /// and `placeholderUTF16Locations` used to be plain computed
+    /// properties recomputed from scratch — including an O(document)
+    /// byte→UTF-16 conversion per hidden block — every time
+    /// `collapseState(for:layoutManager:)` read them; TextKit 2 calls
+    /// that once per text element during every `ensureLayout()`/draw
+    /// pass, so a document with many fragments recomputed the whole
+    /// thing once per fragment (found on this ticket, T05, via direct
+    /// process sampling of a hanging 5 MB test — a second, distinct
+    /// quadratic bug from the `MarkdownPreviewRenderer` one).
+    /// Sorted ascending by `location` (by `rebuildHiddenRangesCache`) so
+    /// `collapseState` can binary-search it — O(log n) per fragment —
+    /// instead of linearly scanning every hidden range per fragment,
+    /// which stayed O(fragments × hidden_ranges) even after the cache
+    /// itself stopped being *recomputed* per fragment (a third, distinct
+    /// quadratic-shaped cost found on this ticket via direct process
+    /// sampling of a hanging 5 MB test: a document with many folded/
+    /// continuation ranges — e.g. one fence delimiter pair per fenced
+    /// block — and many fragments still multiplied the two together).
+    private var cachedHiddenUTF16Ranges: [NSRange] = []
+    private var cachedPlaceholderUTF16Locations: Set<Int> = []
+    /// N8 counter proving the fix: must stay flat across many fragment
+    /// queries within one `ensureLayout()` call on a large document,
+    /// incrementing only when `applyStyling` actually runs.
+    private(set) var hiddenRangesCacheRebuildCount = 0
+    /// N8 counter: total binary-search comparisons performed by
+    /// `collapseState`'s hidden-range lookup. Must scale with
+    /// fragments·log(hidden_ranges), never fragments·hidden_ranges —
+    /// proves the binary search actually replaced the linear scan.
+    private(set) var hiddenRangeLookupComparisons = 0
     private weak var layoutManager: NSTextLayoutManager?
     private weak var contentStorage: NSTextContentStorage?
     private weak var textStorage: NSTextStorage?
@@ -288,14 +384,40 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         let end = content.offset(from: content.documentRange.location, to: elementRange.endLocation)
         let fragmentRange = NSRange(location: start, length: max(0, end - start))
         guard fragmentRange.length > 0 else { return .visible }
-        let isHidden = hiddenUTF16Ranges.contains { hidden in
-            NSIntersectionRange(hidden, fragmentRange).length == fragmentRange.length
-        }
-        guard isHidden else { return .visible }
-        return placeholderUTF16Locations.contains(start) ? .placeholder : .collapsed
+        guard isFullyHidden(fragmentRange) else { return .visible }
+        return cachedPlaceholderUTF16Locations.contains(start) ? .placeholder : .collapsed
     }
 
-    var hiddenUTF16RangeCount: Int { hiddenUTF16Ranges.count }
+    /// Binary search over `cachedHiddenUTF16Ranges` (sorted ascending by
+    /// `location` in `rebuildHiddenRangesCache`) for a range that fully
+    /// contains `fragmentRange` — O(log n) per fragment instead of a
+    /// linear scan. Hidden ranges (fold extents, Preview-substitution
+    /// continuation ranges) never overlap by construction, so the one
+    /// candidate with the largest `location` at or before
+    /// `fragmentRange.location` is the only one that could possibly
+    /// contain it.
+    private func isFullyHidden(_ fragmentRange: NSRange) -> Bool {
+        let ranges = cachedHiddenUTF16Ranges
+        guard !ranges.isEmpty else { return false }
+        var low = 0
+        var high = ranges.count - 1
+        var candidate = -1
+        while low <= high {
+            hiddenRangeLookupComparisons += 1
+            let mid = (low + high) / 2
+            if ranges[mid].location <= fragmentRange.location {
+                candidate = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        guard candidate >= 0 else { return false }
+        let hidden = ranges[candidate]
+        return NSIntersectionRange(hidden, fragmentRange).length == fragmentRange.length
+    }
+
+    var hiddenUTF16RangeCount: Int { cachedHiddenUTF16Ranges.count }
 
     private var documentString: String? {
         let string = textStorage?.string
@@ -305,13 +427,24 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         return string
     }
 
-    private var hiddenUTF16Ranges: [NSRange] {
-        guard let string = documentString else { return [] }
-        var ranges = foldStore.hiddenByteRanges(in: blocks).compactMap { bytes -> NSRange? in
-            let range = UTF8NSRange.nsRange(utf8Bytes: bytes, in: string)
-            guard range.location != NSNotFound, range.length > 0 else { return nil }
-            return range
+    /// Recomputes `cachedHiddenUTF16Ranges`/`cachedPlaceholderUTF16Locations`
+    /// from their real inputs (`blocks`, `foldStore`'s folded set,
+    /// `mode`, `contentStorageDelegate.index`) in one batched pass —
+    /// called once from `applyStyling`, not once per fragment. Both
+    /// byte→UTF-16 conversions use `UTF8NSRange.nsRanges` (single
+    /// forward pass over the document for all needed offsets at once)
+    /// rather than looping `UTF8NSRange.nsRange` per block.
+    private func rebuildHiddenRangesCache() {
+        hiddenRangesCacheRebuildCount += 1
+        guard let string = documentString else {
+            cachedHiddenUTF16Ranges = []
+            cachedPlaceholderUTF16Locations = []
+            return
         }
+
+        let hiddenByteRanges = foldStore.hiddenByteRanges(in: blocks)
+        var ranges = UTF8NSRange.nsRanges(utf8Bytes: hiddenByteRanges, in: string)
+            .filter { $0.location != NSNotFound && $0.length > 0 }
         // Continuation lines of a multi-line Preview substitution (e.g.
         // a table's delimiter/data rows beyond its first line) collapse
         // the same way a folded block does: a zero-height owned
@@ -320,7 +453,19 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         if mode == .preview, let index = contentStorageDelegate.index {
             ranges.append(contentsOf: index.continuationUTF16Ranges)
         }
-        return ranges
+        // Sorted so `isFullyHidden` can binary-search instead of
+        // linearly scanning every hidden range per fragment.
+        cachedHiddenUTF16Ranges = ranges.sorted { $0.location < $1.location }
+
+        let placeholderFenceBlocks = blocks.filter { block in
+            block.id.kind == .fence && foldStore.isFolded(block.id) && block.foldExtent != nil
+        }
+        let placeholderByteRanges = placeholderFenceBlocks.map { block -> Range<Int> in
+            let start = block.foldExtent!.lowerBound
+            return start..<start
+        }
+        let placeholderNSRanges = UTF8NSRange.nsRanges(utf8Bytes: placeholderByteRanges, in: string)
+        cachedPlaceholderUTF16Locations = Set(placeholderNSRanges.compactMap { $0.location != NSNotFound ? $0.location : nil })
     }
 
     /// Rebuilds the Preview substitution index from the cached
@@ -344,25 +489,9 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         contentStorageDelegate.index = PreviewSubstitutionIndex.build(markdown: textStorage.string, elements: elements)
     }
 
-    /// The UTF-16 location of the first hidden line inside each folded
-    /// fence's `foldExtent` — i.e. `foldExtent.lowerBound`, which
-    /// `BlockIndex.build` always sets to the byte offset right after the
-    /// opening fence line. That element becomes the placeholder instead of
-    /// collapsing.
-    private var placeholderUTF16Locations: Set<Int> {
-        guard let string = documentString else { return [] }
-        var locations: Set<Int> = []
-        for block in blocks where block.id.kind == .fence {
-            guard foldStore.isFolded(block.id), let extent = block.foldExtent else { continue }
-            let range = UTF8NSRange.nsRange(utf8Bytes: extent.lowerBound..<extent.lowerBound, in: string)
-            guard range.location != NSNotFound else { continue }
-            locations.insert(range.location)
-        }
-        return locations
-    }
-
     private func applyStyling(to textStorage: NSTextStorage) {
         rebuildSubstitutionIndex(textStorage: textStorage)
+        rebuildHiddenRangesCache()
         let full = NSRange(location: 0, length: textStorage.length)
         textStorage.beginEditing()
         switch mode {
@@ -494,7 +623,7 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         guard let string = documentString else { return [] }
 
         let sourceMap = cachedSourceMap ?? SourceMap(markdown: string)
-        let hidden = hiddenUTF16Ranges
+        let hidden = cachedHiddenUTF16Ranges
         let packed = packedVisibleFragments(boundedBy: visibleRect)
         var entries: [SourceLineMap.Entry] = []
         sourceLinesScannedLastGutterCompute = 0

@@ -18,8 +18,21 @@ enum MarkdownPreviewRenderer {
     ) {
         let markdown = textStorage.string
         let scale = max(0.5, min(zoomScale, 3))
-        for span in spans {
-            let nsRange = UTF8NSRange.nsRange(utf8Bytes: span.bytes, in: markdown)
+        // Build on a scratch NSMutableAttributedString and swap it in
+        // once, rather than calling textStorage.addAttributes(_:range:)
+        // once per span on the live NSTextStorage — the latter measured
+        // as pathologically slow at scale, separately from the byte-
+        // offset conversion fix below.
+        let mutable = NSMutableAttributedString(attributedString: textStorage)
+        // Convert every span's byte range to an NSRange in one batched,
+        // single-pass walk over `markdown` (P4) — calling
+        // `UTF8NSRange.nsRange(utf8Bytes:in:)` once per span each
+        // re-walks the string from its start, which made styling a
+        // document with thousands of spans effectively quadratic in
+        // document size. See `UTF8NSRange.nsRanges` and the ticket's
+        // Notes for the measurement that found this.
+        let nsRanges = UTF8NSRange.nsRanges(utf8Bytes: spans.map(\.bytes), in: markdown)
+        for (span, nsRange) in zip(spans, nsRanges) {
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             var attributes: [NSAttributedString.Key: Any] = [
                 .markdownSpanKind: span.kind,
@@ -47,7 +60,8 @@ enum MarkdownPreviewRenderer {
                 attributes[.font] = PlatformFont.monospaced(size: 13 * scale)
                 attributes[.foregroundColor] = tokens.inlineCode
             }
-            textStorage.addAttributes(attributes, range: nsRange)
+            mutable.addAttributes(attributes, range: nsRange)
         }
+        textStorage.setAttributedString(mutable)
     }
 }
