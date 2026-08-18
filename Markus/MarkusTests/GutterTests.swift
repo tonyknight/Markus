@@ -29,9 +29,21 @@ struct GutterTests {
 
         #expect(view.gutterWidth > 0)
         #expect(view.textContainer.size.width <= view.bounds.width - view.gutterWidth + 0.5)
-        #expect(!view.gutterLineNumbers().isEmpty)
-        #expect(view.gutterLineNumbers() == view.visibleSourceLines)
+        // Preview is block-anchored (R13): one number at each rendered
+        // block's true start — heading@1, paragraph@3, and the fence as
+        // a single block at its opening delimiter (5), not a second
+        // number at its closing delimiter (7). Blank lines (2, 4) and
+        // the fence's own body line (6, raw pass-through text, not a
+        // substituted block) get no number either. Chevrons still mark
+        // both foldable block starts (1 and 5) — even though the
+        // fence's own opening line is itself invisible markup (R10, so
+        // never its own `SourceLineMap.Entry`) and must resolve its
+        // drawn/clickable position to the fence's first visible line
+        // instead.
+        #expect(view.gutterLineNumbers() == [1, 3, 5])
+        #expect(view.gutterLineNumbers() != view.visibleSourceLines)
         #expect(view.foldableSourceLines().contains(1))
+        #expect(view.foldableSourceLines().contains(5))
 
         view.setMode(.source)
         view.ensureLayout()
@@ -52,6 +64,32 @@ struct GutterTests {
         let storage = try #require(view.textStorage)
         #expect(DocumentSave.writeUTF8(from: storage) == Data(fixture.utf8))
         #expect(view.string == fixture)
+    }
+
+    @Test func previewFenceChevronResolvesToItsFirstVisibleLineAndStaysClickable() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(fixture)
+        view.setMode(.preview)
+        view.ensureLayout()
+
+        // The fence's own opening delimiter (line 5) is markup-only and
+        // hidden by design (R10, "Markdown punctuation not displayed as
+        // literal text") — it never gets its own `SourceLineMap.Entry`.
+        #expect(view.y(forSourceLine: 5) == nil)
+        let fenceBlock = try #require(view.blocks.first { $0.id.kind == .fence })
+        #expect(fenceBlock.id.startLine == 5)
+
+        // The chevron must still resolve to *some* visible position (the
+        // fence's first genuinely visible line, its body at 6) and stay
+        // clickable there — a chevron the user can see but can never
+        // click would be worse than drawing none at all.
+        let bodyY = try #require(view.y(forSourceLine: 6))
+        let bodyHeight = try #require(view.sourceLineHeight(forSourceLine: 6))
+
+        #expect(!view.foldStore.isFolded(fenceBlock.id))
+        let toggled = view.handleGutterClick(at: CGPoint(x: 4, y: bodyY + bodyHeight / 2))
+        #expect(toggled)
+        #expect(view.foldStore.isFolded(fenceBlock.id))
     }
 
     @Test func slimFoldRailIsNarrowerThanNumberedGutter() {

@@ -175,6 +175,17 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     private var parsedPreviewBlocks: [ParsedPreviewBlock] = []
     private var parsedSpans: [MarkdownSpan] = []
     private(set) var parsesPerformed = 0
+    /// One source line per rendered Preview block's true start (R13),
+    /// rebuilt only in `reparse` — never scanned per frame/viewport (P2).
+    /// Built from every `parsedPreviewBlock` anchor **except**
+    /// `.fenceDelimiter` (a fenced code block emits two of those — one
+    /// per delimiter — purely so ticket 08's substitution machinery can
+    /// hide each independently; a reader sees one fence, not two, so
+    /// only the fence's own foldable-block start line below stands in
+    /// for the whole thing), unioned with every foldable block's own
+    /// start line (headings and fences, from `blocks`) so a fence is
+    /// still numbered exactly once, at its real opening line.
+    private(set) var previewBlockAnchorLines: Set<Int> = []
     /// Rebuilt only inside `applyStyling` (once per real state change:
     /// text/fold/mode/theme/zoom), not per fragment. `hiddenUTF16Ranges`
     /// and `placeholderUTF16Locations` used to be plain computed
@@ -246,7 +257,33 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
         parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)
         parsedSpans = MarkdownParser().previewSpans(markdown)
+        let nonFenceAnchors = parsedPreviewBlocks.compactMap { block -> Int? in
+            if case .fenceDelimiter = block.kind { return nil }
+            return block.lines.lowerBound
+        }
+        let foldableStartLines = blocks.compactMap { $0.foldExtent != nil ? $0.id.startLine : nil }
+        previewBlockAnchorLines = Set(nonFenceAnchors).union(foldableStartLines)
         parsesPerformed += 1
+    }
+
+    /// Resolves `line` to the nearest source line at or after it that
+    /// actually has a `SourceLineMap.Entry` in `map` — i.e. is genuinely
+    /// rendered somewhere on screen. A block's own start line is
+    /// sometimes itself invisible (a fence's opening delimiter is always
+    /// markup-only and collapses to zero height, R10; an empty heading
+    /// does too, per ticket 08's zero-length-substitution guard), so the
+    /// gutter's chevron/number and jump-to-line's scroll target need the
+    /// first line that is actually drawn, not necessarily the block's
+    /// own first physical line. `map.entries` is ascending by
+    /// `sourceLine` by construction (`packedSourceLineEntries` appends
+    /// in increasing line order), so this returns as soon as it finds a
+    /// candidate rather than scanning the whole array.
+    func nearestVisibleLine(atOrAfter line: Int, in map: SourceLineMap) -> Int? {
+        if map.y(forSourceLine: line) != nil { return line }
+        for entry in map.entries where entry.sourceLine >= line {
+            return entry.sourceLine
+        }
+        return nil
     }
 
     func setMode(_ mode: EditorMode, textStorage: NSTextStorage) {
@@ -911,14 +948,37 @@ final class FoldingTextView: PlatformView {
         GutterMetrics.width(showLineNumbers: showLineNumbers)
     }
 
+    /// The live, testable proxy for what the gutter actually draws (N9).
+    /// Source mode: unchanged, one number per visible source line. Preview
+    /// mode: one number per rendered block's true start (R13) — the
+    /// number itself is always the block's real anchor line, but a block
+    /// only appears here if that anchor (or, when the anchor is itself
+    /// invisible markup, the nearest visible line after it — see
+    /// `FoldingSession.nearestVisibleLine`) actually resolves to
+    /// something on screen.
     func gutterLineNumbers() -> [Int] {
-        showLineNumbers ? visibleSourceLines : []
+        guard showLineNumbers else { return [] }
+        guard mode == .preview else { return visibleSourceLines }
+        let map = session.sourceLineMap()
+        return session.previewBlockAnchorLines
+            .filter { session.nearestVisibleLine(atOrAfter: $0, in: map) != nil }
+            .sorted()
     }
 
+    /// Every foldable block's true anchor line (`FoldID.startLine`),
+    /// filtered to those that resolve to a visible on-screen position —
+    /// directly, or (Preview only) via `FoldingSession.nearestVisibleLine`
+    /// when the block's own start line is itself invisible markup (a
+    /// fence's opening delimiter, always; an empty heading, sometimes).
+    /// Reported values are always the block's real start line, never the
+    /// resolved display line, so callers (fold toggling, tests) keep
+    /// keying folds by their true anchor.
     func foldableSourceLines() -> [Int] {
-        let visible = Set(visibleSourceLines)
+        let map = session.sourceLineMap()
         return blocks.compactMap { block in
-            guard block.foldExtent != nil, visible.contains(block.id.startLine) else { return nil }
+            guard block.foldExtent != nil,
+                  session.nearestVisibleLine(atOrAfter: block.id.startLine, in: map) != nil
+            else { return nil }
             return block.id.startLine
         }
     }
@@ -1262,15 +1322,30 @@ final class FoldingTextView: PlatformView {
     func handleGutterClick(at point: CGPoint) -> Bool {
         guard point.x >= 0, point.x <= gutterWidth else { return false }
         guard point.x <= GutterMetrics.chevronWidth else { return true }
-        guard let line = sourceLine(atY: point.y), foldableSourceLines().contains(line) else { return true }
-        toggleFold(atSourceLine: line)
+        guard let clickedLine = sourceLine(atY: point.y) else { return true }
+        // The clicked line is whatever the click's y genuinely resolves
+        // to (always a real, visible line). A foldable block's own
+        // anchor can itself be invisible (a fence's opening delimiter is
+        // always markup-only, R10), so match against each foldable
+        // block's *resolved display line*, not its raw start line — the
+        // same resolution `drawGutter` uses to place the chevron there
+        // in the first place, so whatever is drawn is exactly what's
+        // clickable.
+        let map = session.sourceLineMap()
+        guard let block = blocks.first(where: { block in
+            guard block.foldExtent != nil else { return false }
+            return session.nearestVisibleLine(atOrAfter: block.id.startLine, in: map) == clickedLine
+        }) else { return true }
+        toggleFold(atSourceLine: block.id.startLine)
         return true
     }
 
     /// `visibleRect` bounds both the source-line scan (T02) and the
     /// foldable-line lookup to what is actually on screen — the gutter
     /// never needs off-screen entries, since nothing off-screen can be
-    /// drawn or clicked.
+    /// drawn or clicked. Source mode numbers every visible entry
+    /// (unchanged); Preview numbers only each rendered block's true
+    /// start (R13) — see `drawPreviewGutterNumbersAndChevrons`.
     private func drawGutter(in context: CGContext, visibleRect: CGRect) {
         let gutterRect = CGRect(x: 0, y: 0, width: gutterWidth, height: max(bounds.height, layoutHeight))
         context.saveGState()
@@ -1282,35 +1357,77 @@ final class FoldingTextView: PlatformView {
         context.fill(gutterRect)
 
         let map = session.sourceLineMap(boundedBy: visibleRect)
+        let numberAttrs: [NSAttributedString.Key: Any] = [
+            .font: PlatformFont.monospaced(size: 11),
+            .foregroundColor: PlatformColor.secondaryLabel,
+        ]
+
+        if mode == .preview {
+            drawPreviewGutterNumbersAndChevrons(in: context, map: map, numberAttrs: numberAttrs)
+        } else {
+            drawSourceGutterNumbersAndChevrons(in: context, map: map, numberAttrs: numberAttrs)
+        }
+        context.restoreGState()
+    }
+
+    /// Source mode: unchanged from before this ticket — a chevron and a
+    /// number for every visible entry, one-to-one with source lines.
+    private func drawSourceGutterNumbersAndChevrons(in context: CGContext, map: SourceLineMap, numberAttrs: [NSAttributedString.Key: Any]) {
         let visibleLines = Set(map.entries.map(\.sourceLine))
         let foldable = Set(blocks.compactMap { block -> Int? in
             guard block.foldExtent != nil, visibleLines.contains(block.id.startLine) else { return nil }
             return block.id.startLine
         })
-        let numberFont = PlatformFont.monospaced(size: 11)
-        let numberColor = PlatformColor.secondaryLabel
-        let numberAttrs: [NSAttributedString.Key: Any] = [
-            .font: numberFont,
-            .foregroundColor: numberColor,
-        ]
-
         for entry in map.entries {
             if foldable.contains(entry.sourceLine) {
-                drawChevron(
-                    in: context,
-                    at: CGPoint(x: 4, y: entry.y + max(2, (entry.height - 8) / 2)),
-                    folded: blocks.first(where: { $0.id.startLine == entry.sourceLine }).map { foldStore.isFolded($0.id) } ?? false
-                )
+                drawChevron(in: context, at: chevronOrigin(for: entry), folded: isFolded(startLine: entry.sourceLine))
             }
             if showLineNumbers {
-                let label = "\(entry.sourceLine)" as NSString
-                let size = label.size(withAttributes: numberAttrs)
-                let x = GutterMetrics.chevronWidth + GutterMetrics.numberWidth - 6 - size.width
-                let y = entry.y + max(0, (min(entry.height, size.height + 4) - size.height) / 2)
-                label.draw(at: CGPoint(x: x, y: y), withAttributes: numberAttrs)
+                drawNumber(entry.sourceLine, at: entry, attrs: numberAttrs, in: context)
             }
         }
-        context.restoreGState()
+    }
+
+    /// Preview mode (R13): a chevron for every foldable block and a
+    /// number for every rendered block's true start — each resolved,
+    /// independently, to the nearest visible line at or after its own
+    /// anchor (`FoldingSession.nearestVisibleLine`), since a block's own
+    /// start line is sometimes itself invisible markup. The *drawn*
+    /// number is always the block's real anchor line; only *where* it
+    /// draws can differ from that line's own (nonexistent) position.
+    private func drawPreviewGutterNumbersAndChevrons(in context: CGContext, map: SourceLineMap, numberAttrs: [NSAttributedString.Key: Any]) {
+        guard !map.entries.isEmpty else { return }
+
+        for block in blocks where block.foldExtent != nil {
+            guard let displayLine = session.nearestVisibleLine(atOrAfter: block.id.startLine, in: map),
+                  let entry = map.entries.first(where: { $0.sourceLine == displayLine })
+            else { continue }
+            drawChevron(in: context, at: chevronOrigin(for: entry), folded: foldStore.isFolded(block.id))
+        }
+
+        guard showLineNumbers else { return }
+        for anchorLine in session.previewBlockAnchorLines.sorted() {
+            guard let displayLine = session.nearestVisibleLine(atOrAfter: anchorLine, in: map),
+                  let entry = map.entries.first(where: { $0.sourceLine == displayLine })
+            else { continue }
+            drawNumber(anchorLine, at: entry, attrs: numberAttrs, in: context)
+        }
+    }
+
+    private func isFolded(startLine: Int) -> Bool {
+        blocks.first(where: { $0.id.startLine == startLine }).map { foldStore.isFolded($0.id) } ?? false
+    }
+
+    private func chevronOrigin(for entry: SourceLineMap.Entry) -> CGPoint {
+        CGPoint(x: 4, y: entry.y + max(2, (entry.height - 8) / 2))
+    }
+
+    private func drawNumber(_ number: Int, at entry: SourceLineMap.Entry, attrs: [NSAttributedString.Key: Any], in context: CGContext) {
+        let label = "\(number)" as NSString
+        let size = label.size(withAttributes: attrs)
+        let x = GutterMetrics.chevronWidth + GutterMetrics.numberWidth - 6 - size.width
+        let y = entry.y + max(0, (min(entry.height, size.height + 4) - size.height) / 2)
+        label.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
     }
 
     private func drawChevron(in context: CGContext, at origin: CGPoint, folded: Bool) {
