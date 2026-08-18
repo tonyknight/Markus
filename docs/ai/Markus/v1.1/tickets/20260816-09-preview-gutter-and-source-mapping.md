@@ -3,10 +3,10 @@ id: 20260816-09-preview-gutter-and-source-mapping
 title: Preview gutter and source mapping
 type: feature
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-18
-closed:
+closed: 2026-08-18
 notes: ''
 parent:
 depends_on:
@@ -14,13 +14,13 @@ depends_on:
 subtasks:
 - id: T1
   title: Block-anchored gutter renderer for Preview (chevrons + block-start numbers)
-  status: todo
+  status: done
 - id: T2
   title: Source-line anchor carried per substituted paragraph
-  status: todo
+  status: done
 - id: T3
   title: Reconcile go-to-line, outline jump, and minimap against block anchors
-  status: todo
+  status: done
 ---
 ## Description
 
@@ -33,11 +33,11 @@ of v1's R6**.
 
 ## Acceptance criteria
 
-- [ ] Source shows a line number for every source line (unchanged
+- [x] Source shows a line number for every source line (unchanged
       behaviour) (R13).
-- [ ] Preview shows fold chevrons for every foldable block, plus a source
+- [x] Preview shows fold chevrons for every foldable block, plus a source
       line number at each rendered block's start (R13).
-- [ ] Go-to-line, outline jump, and the minimap all agree with both
+- [x] Go-to-line, outline jump, and the minimap all agree with both
       gutter modes (R13).
 
 ## Context
@@ -53,12 +53,12 @@ of v1's R6**.
 
 ## Subtasks
 
-- [ ] Implement the block-anchored gutter renderer for Preview mode
+- [x] Implement the block-anchored gutter renderer for Preview mode
       (chevron per foldable block, number at each rendered block's
       start).
-- [ ] Confirm each substituted paragraph exposes its source-line anchor
+- [x] Confirm each substituted paragraph exposes its source-line anchor
       to the gutter.
-- [ ] Update go-to-line, outline jump, and minimap click-to-scroll to
+- [x] Update go-to-line, outline jump, and minimap click-to-scroll to
       resolve against block anchors in Preview mode.
 
 ## Implementation plan
