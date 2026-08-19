@@ -332,3 +332,121 @@ passed clean with zero failures:
 the known pre-existing, out-of-scope error on ticket 08
 (`current_task 'T08' is not a task id`) reported — unrelated to this
 ticket's files.
+
+## Review
+
+### 2026-08-18
+
+**Verdict: Minor (clean to ship).** Commit range `2dc16af..HEAD`
+(bed7b4d T01, 66e664c T02, 8b70baa Notes) reviewed in full against the
+design note's catalogue, the AC, and N9. No Critical or Important
+findings.
+
+**T01 (bed7b4d).** Read the full diff. Deletions match the plan
+exactly: `MacOnlyChromeTests.swift` removed outright (its sole test was
+wholly tautological, both branches of `#if os(macOS)` feeding literal
+booleans, no live derivation); `MacTabsTests.swift` lost only
+`macUsesNSDocumentTabbingNotSwiftUITabBar` and the two single-line flag
+reads at the top of `openingSecondFileUsesNSDocumentNotSessionReplace`
+and `iOSChromeOpenReplacesSingleSession` — the real bodies of those two
+tests (opening real files, asserting real `DocumentHost` state) are
+byte-for-byte untouched. Independently verified the two extra findings
+claimed beyond the catalogue: `MarkusTests.swift` was in fact nothing
+but `struct MarkusTests { @Test func scaffoldCompiles() { #expect(true) } }`
+— a scaffold-generated tautology with zero real coverage riding on it,
+correctly deleted; and `MacMinimapTests.swift` lost exactly one line
+(`#expect(MacMinimapChrome.showsMinimap)`) from the top of
+`minimapUsesCurrentModeAndCompressesFoldedPackedY`, whose remaining body
+(loading real markdown, setting real modes, asserting real bar
+geometry) is untouched. Both claims check out.
+
+**T02 (66e664c).** `ModeChromeTests.swift`'s new
+`macTitleBarToolbarsSoleItemIsGenuinelyTheSegmentedModePicker` is
+genuine: it builds a real `MarkdownDocument`, calls
+`makeWindowControllers()`, forces layout on a real `NSWindow`, pulls
+the real `NSToolbar`, and recursively walks the toolbar item's actual
+materialized `NSView` subtree looking for a class name containing
+"SegmentedControl" — not a mock, not a type/count check that could
+pass without the control present. Ran it and its siblings
+(`ModeChromeTests`, `ThemePickerTests`, `MacTabsTests`,
+`MacMinimapTests`) via `-only-testing:` on macOS myself this session:
+`** TEST SUCCEEDED **`, all pass. `git diff 2dc16af..HEAD --
+Markus/Markus/ContentView.swift` is empty and `ContentView.swift` does
+not appear in either commit's changed-files list — the claimed RED
+temporary-swap-then-revert left no net production diff, confirmed
+empirically rather than just trusted. Confirmed `DocumentModePicker`
+(`Document/ModeChrome.swift:66`) does use `.pickerStyle(.segmented)`,
+so the new test's target actually exists and the RED/GREEN claim is
+plausible on its face.
+
+**`ThemePickerTests.swift`'s `showsHoverPreview` judgment call.**
+Legitimate scope call, not a dodge, but the recorded rationale
+overstates its own case. The plan's design note explicitly framed this
+as a choice ("decide whether to add a live check ... or judge it
+low-value ... record whichever call is made and why") — it did not
+mandate the fix, so declining it is squarely within what the ticket
+itself pre-authorized. However, the Notes argument that a
+single-platform test of the gate "would itself be exactly as
+unfalsifiable as the tautology it would replace" is not quite right: a
+test that constructs a real `ThemeCard`, invokes its `onHover` closure,
+and asserts `host`/`store` state actually changed via
+`ThemeChrome.preview` would still be a live, falsifiable assertion on
+whichever platform the suite is compiled for (it would fail if the
+closure stopped calling `preview`, or flipped the hover/unhover
+argument) — it just couldn't prove the cross-platform *gating* in one
+binary, which was never what the design note asked for. The file
+already has a working precedent for testing `ThemeCard`'s closures via
+real dispatched AppKit events without duplicating any guard
+(`clickOnCardSwatchDispatchesRealAppKitEventThatInvokesOnSelect`,
+line ~148) — the Notes entry doesn't address why that route wasn't
+viable for hover the way it was for click. This is worth a mention for
+whoever next touches theme hover, but since the ticket's own plan
+sanctioned "leave it untested, with rationale" as an equally valid
+outcome, and the actual coverage gap is small (the gating logic is a
+single inline `guard`), this stays Minor, non-blocking.
+
+**AC re-confirmation.** Spot-checked three of the five claimed areas
+directly (not just trusting the Notes): `MacMainMenuTests.swift`'s
+`foldAllAndUnfoldAllResolveThroughTheResponderChainAndActuallyFoldTheDocument`
+opens a real document, resolves `performFoldAll`/`performUnfoldAll`
+through the actual responder chain, and asserts real `FoldStore`
+fold-state per block — would fail if fold-all broke.
+`FolderChromeTests.swift`'s
+`folderImporterUsesFolderTypeAndTreeVisibilityFollowsSession` opens a
+real temp folder and a real lone file and asserts
+`FolderChrome.showsTree`/`host.isFolderTreeVisible` flips correctly
+between them — would fail if tree-visibility logic broke.
+`PreviewSubstitutionTests.swift`'s
+`previewModeHidesHeadingMarkupPunctuation` loads real markdown into a
+real `FoldingTextView`, renders it, and asserts the rendered paragraph
+text and the *un*touched source buffer — would fail if substitution
+broke. All three are genuinely falsifiable, not "doesn't crash"
+smoke tests. No gap found.
+
+**N9 completeness (independent grep pass, current suite state).**
+`grep -rn "#expect(true)\|#expect(false)"` across
+`Markus/MarkusTests/` returns nothing. A Python scan of
+`Markus/Markus/` for `#if os(macOS) <bool> #else <bool> #endif`
+production properties found exactly the seven already-catalogued flags
+(`MacOnlyChrome`, `ModeChrome` x2, `MacDocumentChrome` x2,
+`ThemeChrome.showsHoverPreview`, `MacMinimapChrome.showsMinimap`) and
+no others; a separate grep for unconditional `static let ... = true`
+found only `ThemeChrome.hostsPickerInSettings`. Grepping the test
+suite for any remaining reference to any of these flags turns up only
+doc-comment mentions in `ModeChromeTests.swift` (explaining what the
+new test replaces), no live assertions. Confirms the Notes' own claim
+that nothing else reduces to a bare-literal tautology.
+
+**Commit hygiene / TDD evidence.** All three commits follow
+`{ticket-id} {task-id}: {title}` (T01/T02) and
+`{ticket-id}: {description}` (Notes-only) format correctly. T02's
+commit message documents the RED (temporary `Button` swap, confirmed
+failure for the right reason) then GREEN (restored, passing) cycle;
+`ContentView.swift`'s absence from the commit's changed-file list is
+independent confirmation the swap was genuinely reverted, not just
+claimed.
+
+No findings block ticket completion. The one Minor item (hover-gating
+judgment call rationale) is worth a note for future maintainers but
+does not need rework before this ticket — and the whole board's last
+ticket — is marked done.
