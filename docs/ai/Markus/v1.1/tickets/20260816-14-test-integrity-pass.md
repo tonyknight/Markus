@@ -3,10 +3,10 @@ id: 20260816-14-test-integrity-pass
 title: Test integrity pass
 type: chore
 priority: low
-status: in-progress
+status: done
 created: 2026-08-16
 updated: 2026-08-18
-closed:
+closed: 2026-08-18
 notes: ''
 parent:
 depends_on:
@@ -14,10 +14,10 @@ depends_on:
 subtasks:
 - id: T1
   title: Audit suite for unfalsifiable assertions; delete/rewrite MacOnlyChromeTests
-  status: todo
+  status: done
 - id: T2
   title: Live-behaviour tests for menus, fold-all, theme, tree, preview
-  status: todo
+  status: done
 ---
 ## Description
 
@@ -30,16 +30,16 @@ that cannot fail.
 
 ## Acceptance criteria
 
-- [ ] `MacOnlyChromeTests` and any similar compile-time-flag assertions
+- [x] `MacOnlyChromeTests` and any similar compile-time-flag assertions
       are removed or replaced with live-behaviour tests (I.25).
-- [ ] Menu commands, fold-all, theme selection, tree population, and
+- [x] Menu commands, fold-all, theme selection, tree population, and
       Preview rendering all have tests that would fail if the feature
       were removed (I.26).
-- [ ] No assertion in the suite can pass unconditionally (N9).
-- [ ] Menu items are asserted by validating the built `NSMenu` and the
+- [x] No assertion in the suite can pass unconditionally (N9).
+- [x] Menu items are asserted by validating the built `NSMenu` and the
       responder chain resolving each action, per Testing requirements →
       "How to test UI".
-- [ ] The full suite passes on macOS, iPhone simulator, and iPad
+- [x] The full suite passes on macOS, iPhone simulator, and iPad
       simulator (Success criteria, final bullet).
 
 ## Context
@@ -52,14 +52,14 @@ that cannot fail.
 
 ## Subtasks
 
-- [ ] Audit the suite for assertions that cannot fail; catalogue them.
-- [ ] Delete or rewrite `MacOnlyChromeTests` and equivalents.
-- [ ] Add/replace tests for menu commands (built `NSMenu` + responder
+- [x] Audit the suite for assertions that cannot fail; catalogue them.
+- [x] Delete or rewrite `MacOnlyChromeTests` and equivalents.
+- [x] Add/replace tests for menu commands (built `NSMenu` + responder
       chain resolution), fold-all/unfold-all, theme selection, folder
       tree population, and Preview rendering — each asserting live
       behaviour, with at least one assertion that would fail if the
       feature were removed.
-- [ ] Run the full suite on all three destinations and confirm green.
+- [x] Run the full suite on all three destinations and confirm green.
 
 ## Implementation plan
 
