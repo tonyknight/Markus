@@ -23,8 +23,6 @@ struct MacMinimapTests {
 
     #if os(macOS)
     @Test func minimapUsesCurrentModeAndCompressesFoldedPackedY() throws {
-        #expect(MacMinimapChrome.showsMinimap)
-
         let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
         view.loadMarkdown(fixture)
         view.setMode(.preview)

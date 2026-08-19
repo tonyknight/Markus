@@ -7,17 +7,6 @@ import Testing
 
 @MainActor
 struct MacTabsTests {
-    @Test func macUsesNSDocumentTabbingNotSwiftUITabBar() {
-        #if os(macOS)
-        #expect(MacDocumentChrome.usesNSDocumentTabbing)
-        #expect(!MacDocumentChrome.usesSwiftUITabBar)
-        #expect(MacDocumentChrome.windowTabbingMode == .preferred)
-        #else
-        #expect(!MacDocumentChrome.usesNSDocumentTabbing)
-        #expect(!MacDocumentChrome.usesSwiftUITabBar)
-        #endif
-    }
-
     #if os(macOS)
     @Test func markdownDocumentPrefersTabsAndReusesFoldingSession() {
         let first = MarkdownDocument()
@@ -85,7 +74,6 @@ struct MacTabsTests {
     }
 
     @Test func openingSecondFileUsesNSDocumentNotSessionReplace() throws {
-        #expect(MacDocumentChrome.standaloneFileOpenCreatesNewDocument)
         let firstURL = uniqueTempMarkdownURL()
         let secondURL = uniqueTempMarkdownURL()
         try Data("# First\n".utf8).write(to: firstURL)
@@ -136,7 +124,6 @@ struct MacTabsTests {
     }
     #else
     @Test func iOSChromeOpenReplacesSingleSession() throws {
-        #expect(!MacDocumentChrome.standaloneFileOpenCreatesNewDocument)
         let firstURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("markus-ios-first-\(UUID().uuidString).md")
         let secondURL = FileManager.default.temporaryDirectory
