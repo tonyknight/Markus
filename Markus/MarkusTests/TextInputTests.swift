@@ -1033,6 +1033,30 @@ struct TextInputTests {
         #expect(view.selectedUTF16Range.location == foldStart)
         #expect(view.session.packedCaretRect(forUTF16Offset: view.selectedUTF16Range.location) != nil)
     }
+    @Test func documentSessionIsDirtyReturnsFalseAfterUndoingBackToTheSavedState() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-review-fix-\(UUID().uuidString).md")
+        try Data("Hello".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
 
+        let session = DocumentSession()
+        try session.open(url: url)
+        #expect(!session.isDirty)
+
+        session.editor.setMode(.source)
+        session.editor.selectedUTF16Range = NSRange(location: 5, length: 0)
+        session.editor.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(session.isDirty)
+
+        // The specific gap the review flagged: `isDirty` itself (not
+        // `NSDocument.isDocumentEdited`, a separate mechanism) must
+        // return to false once undo genuinely restores the saved text.
+        #expect(session.editor.undoLastChange())
+        #expect(session.editor.string == "Hello")
+        #expect(!session.isDirty)
+
+        #expect(session.editor.redoLastChange())
+        #expect(session.isDirty)
+    }
 }
 #endif
