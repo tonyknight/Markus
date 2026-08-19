@@ -142,6 +142,23 @@ final class MarkdownDocument: NSDocument {
         hasUndoManager = false
         MainActor.assumeIsolated {
             self.host.attachMacDocument(self)
+            // T04: the second callback the ticket's Design note calls
+            // for, alongside `onTextDidChange` — every committed text
+            // mutation (insertText/backspace/delete/undo/redo, and the
+            // pre-ticket `insertTextAtCaret`/`replaceSelection`
+            // helpers) reports its kind via real `UndoManager
+            // .isUndoing`/`.isRedoing` state at commit time
+            // (`FoldingTextView.currentTextChangeKind`), so this only
+            // has to map that kind onto the matching
+            // `NSDocument.ChangeType` (R21).
+            self.session.editor.onTextChangeCommitted = { [weak self] kind in
+                guard let self else { return }
+                switch kind {
+                case .done: self.updateChangeCount(.changeDone)
+                case .undone: self.updateChangeCount(.changeUndone)
+                case .redone: self.updateChangeCount(.changeRedone)
+                }
+            }
         }
     }
 

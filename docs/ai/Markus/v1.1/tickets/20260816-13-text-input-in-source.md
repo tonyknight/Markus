@@ -114,7 +114,7 @@ only; Preview stays a read-only, selectable reading surface.
 ## Implementation plan
 
 Status: approved
-Current task: T04
+Current task: T05
 
 Design note (read before touching `FoldingTextView.swift`): `FoldingTextView`
 is a `PlatformView` (`NSView`/`UIView`) that owns its own TextKit 2 stack

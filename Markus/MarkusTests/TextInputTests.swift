@@ -535,5 +535,76 @@ struct TextInputTests {
         #expect(view.undoLastChange())
         #expect(view.string == "")
     }
+
+    // MARK: - T04: dirty flag and updateChangeCount wiring
+
+    @Test func onTextChangeCommittedReportsDoneUndoneAndRedoneForRealInsertText() {
+        let view = makeSourceView("Hi")
+        var kinds: [TextChangeKind] = []
+        view.onTextChangeCommitted = { kinds.append($0) }
+
+        view.selectedUTF16Range = NSRange(location: 2, length: 0)
+        view.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(kinds == [.done])
+
+        #expect(view.undoLastChange())
+        #expect(kinds == [.done, .undone])
+
+        #expect(view.redoLastChange())
+        #expect(kinds == [.done, .undone, .redone])
+    }
+
+    @Test func onTextChangeCommittedFiresForInsertTextAtCaretAndReplaceSelectionToo() {
+        let view = makeSourceView("Hello")
+        var kinds: [TextChangeKind] = []
+        view.onTextChangeCommitted = { kinds.append($0) }
+
+        view.insertTextAtCaret("X")
+        #expect(kinds == [.done])
+        #expect(view.undoLastChange())
+        #expect(kinds == [.done, .undone])
+
+        kinds.removeAll()
+        view.selectedUTF16Range = NSRange(location: 0, length: 5)
+        #expect(view.replaceSelection(with: "Bye"))
+        #expect(kinds == [.done])
+    }
+
+    @Test func onTextChangeCommittedDoesNotFireForNonTextChangesLikeFoldOrModeOrZoom() {
+        let view = makeSourceView(fixture)
+        var kinds: [TextChangeKind] = []
+        view.onTextChangeCommitted = { kinds.append($0) }
+
+        view.setMode(.preview)
+        view.setMode(.source)
+        view.setZoomScale(1.3)
+        let heading = view.blocks.first { $0.id.kind == .heading && $0.foldExtent != nil }
+        if let heading {
+            view.toggleFold(atSourceLine: heading.id.startLine)
+        }
+        #expect(kinds.isEmpty, "fold/mode/zoom changes never touch the buffer and must not report a text change")
+    }
+
+    @Test func markdownDocumentUpdatesChangeCountOnEditAndUndoReturnsToClean() throws {
+        let document = MarkdownDocument()
+        try document.read(from: Data("Hello".utf8), ofType: "net.daringfireball.markdown")
+        #expect(!document.isDocumentEdited)
+
+        let editor = document.session.editor
+        editor.setMode(.source)
+        editor.selectedUTF16Range = NSRange(location: 5, length: 0)
+        editor.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(document.isDocumentEdited)
+
+        // Undoing back to exactly the loaded state must clear
+        // isDocumentEdited — real NSDocument change-count semantics
+        // (`.changeDone` then `.changeUndone` net to zero), not a
+        // hand-rolled dirty flag this test would trivially satisfy.
+        #expect(editor.undoLastChange())
+        #expect(!document.isDocumentEdited)
+
+        #expect(editor.redoLastChange())
+        #expect(document.isDocumentEdited)
+    }
 }
 #endif

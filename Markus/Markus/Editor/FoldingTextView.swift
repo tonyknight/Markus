@@ -1185,6 +1185,19 @@ enum CoalescingKind: Equatable {
 }
 #endif
 
+/// T04: which of `NSDocument.ChangeType`'s three text-editing cases a
+/// committed buffer mutation corresponds to — kept AppKit-free (not
+/// `NSDocument.ChangeType` itself) so `FoldingTextView`'s cross-platform
+/// surface (this callback is declared unconditionally, even though only
+/// macOS's `NSTextInputClient` path and `MarkdownDocument` consume it
+/// today) doesn't need to import AppKit. `MarkdownDocument` maps this
+/// to the real `NSDocument.ChangeType` and calls `updateChangeCount`.
+enum TextChangeKind: Sendable {
+    case done
+    case undone
+    case redone
+}
+
 @MainActor
 final class FoldingTextView: PlatformView {
     let session: FoldingSession
@@ -1422,6 +1435,7 @@ final class FoldingTextView: PlatformView {
         if ok {
             session.syncBlocksFromStorage()
             onTextDidChange?()
+            onTextChangeCommitted?(currentTextChangeKind)
         }
         return ok
     }
@@ -1440,6 +1454,27 @@ final class FoldingTextView: PlatformView {
         set { loadMarkdown(newValue) }
     }
     var onTextDidChange: (() -> Void)?
+    /// T04: fires alongside `onTextDidChange` for every *text-buffer*
+    /// mutation specifically (not fold/theme/zoom/mode changes, which
+    /// call `onTextDidChange` for SwiftUI re-publishing but never touch
+    /// the buffer) — `MarkdownDocument` sets this to call
+    /// `self.updateChangeCount(_:)` with the right `NSDocument
+    /// .ChangeType` (R21). Kept separate from `onTextDidChange` rather
+    /// than folding a kind parameter into it, since `DocumentSession`
+    /// already owns that callback for its own (unrelated) purpose and
+    /// this ticket's Design note explicitly calls for "a second
+    /// callback."
+    var onTextChangeCommitted: ((TextChangeKind) -> Void)?
+    /// The kind of text change currently being committed, determined
+    /// from `editingUndoManager.isUndoing`/`.isRedoing` at the moment a
+    /// mutation completes — real `UndoManager` properties, not manually
+    /// threaded kind information through every call site (per the
+    /// ticket's Design note).
+    private var currentTextChangeKind: TextChangeKind {
+        if editingUndoManager.isUndoing { return .undone }
+        if editingUndoManager.isRedoing { return .redone }
+        return .done
+    }
     var selectedUTF16Range = NSRange(location: 0, length: 0)
     var lastJumpedPackedY: CGFloat?
     var mode: EditorMode { session.mode }
@@ -1955,11 +1990,19 @@ final class FoldingTextView: PlatformView {
             editingUndoManager.endUndoGrouping()
         }
         editingUndoManager.beginUndoGrouping()
-        editingUndoManager.registerUndo(withTarget: documentTextStorage) { storage in
-            storage.replaceCharacters(in: inserted, with: "")
+        // T04: target `self`, not just `documentTextStorage`, so the
+        // undo replay can also fire `onTextDidChange`/
+        // `onTextChangeCommitted` — this test-only helper's own undo
+        // previously left both silent, unlike every real T01-T03
+        // mutation path (which already gets this via `mutateSourceText`).
+        editingUndoManager.registerUndo(withTarget: self) { view in
+            view.documentTextStorage.replaceCharacters(in: inserted, with: "")
+            view.onTextDidChange?()
+            view.onTextChangeCommitted?(view.currentTextChangeKind)
         }
         editingUndoManager.endUndoGrouping()
         onTextDidChange?()
+        onTextChangeCommitted?(currentTextChangeKind)
     }
 
     /// T03: if a coalescing group (a run of contiguous single-character
@@ -2117,6 +2160,7 @@ extension FoldingTextView {
         }
         session.syncBlocksFromStorage()
         onTextDidChange?()
+        onTextChangeCommitted?(currentTextChangeKind)
         needsDisplay = true
         return true
     }
