@@ -825,3 +825,184 @@ what actually got verified).
 - Commit messages all follow `{ticket-id} {task-id}: {title}`; the
   final wrap-up commit's plain `{ticket-id}: ...` form matches this
   project's established convention for verify/Notes commits.
+
+### 2026-08-18 (review 2)
+
+**Verdict: Minor** — all four Important findings from the first review
+round are genuinely resolved. Two small new Minor findings surfaced
+while re-checking the fixes closely (below); neither blocks this
+ticket, but both are worth recording. Do not re-litigate the five
+Minor findings the implementer deliberately left as-is — they were
+reviewed once already and are unchanged by these four commits.
+
+**Method**: read all four fix commits' diffs directly (`face2d4`,
+`64b9d3b`, `d4c56a7`, `42c90c5`) against the round-1 finding each
+claims to close, plus `ab298c5`'s Notes entry; traced the surrounding
+production code (not just the diff hunks) for each — `keyDown`,
+`undoLastChange`/`redoLastChange`, `MacMainMenu.swift` (grepped
+app-wide for any competing undo/redo wiring), `skipHiddenUTF16Offset`
+and `mergedDisjointRanges`, `mutateSourceText`'s undo-inverse
+registration, and `PreviewElementRenderer`/`PreviewSubstitutionIndex`.
+Wrote and ran one temporary probe test (not committed — reverted via
+`git checkout` immediately after, working tree confirmed clean
+afterward) to empirically settle the one open question the first
+round flagged (table content and Preview `accessibilityValue`) rather
+than reasoning about it from code alone. Ran
+`-only-testing:MarkusTests/TextInputTests` myself, fresh, foreground,
+no pipes: TEST SUCCEEDED (7.4s), matching the controller's independent
+7.3s run of `TextInputTests`+`DocumentSessionTests` and the
+implementer's own reported three-destination ticket-scope re-verify.
+Confirmed via `git diff --stat`/hunk headers across all four commits
+that only the five specific call sites each fix claims to touch were
+touched (`FoldingSession.skipHiddenUTF16Offset` at line 579,
+`keyDown`'s Cmd+Z branch at 1765, `moveHorizontally` at 2547/2555,
+`accessibilityValue` at 2641, `unmarkText` at 2837) — no incidental
+changes anywhere near T03's undo-grouping (`applyCoalescingGrouping`),
+T05's debounce, T06's table-selection mapping, or T08's performance
+test.
+
+#### Important findings from round 1 — status
+
+1. **Cmd+Z/Cmd+Shift+Z binding (`face2d4`) — resolved.** Confirmed by
+   reading `keyDown` directly: the new branch (`FoldingTextView.swift`
+   ~1765-1821) is checked and returns *before* the `guard session.mode
+   == .source` gate, exactly as claimed, so undo/redo survive a mode
+   switch. Confirmed no collision: grepped the whole app target for
+   `undo:`/`redo:`/`keyEquivalent` — `MacMainMenu.swift` builds its own
+   `NSMenu`s from scratch (no storyboard/xib default Edit menu) and its
+   Edit menu has exactly Find/Go to Line/Fold All/Unfold All, no
+   Undo/Redo item and no `"z"` key equivalent anywhere in the app,
+   confirming the round-1 finding's own premise and ruling out any
+   double-handling via a competing menu key equivalent or the default
+   responder-chain `undo:`/`redo:` actions. Confirmed the R22 concern is
+   unfounded by reading `undoLastChange()`/`redoLastChange()`
+   (`FoldingTextView.swift` ~2177-2199): both do nothing but close any
+   dangling coalescing group and call `editingUndoManager.undo()`/
+   `.redo()` — pure replay of previously-registered inverse mutations
+   from real Source-mode edits, never new input, so this cannot become
+   a Preview-mode editing path. New tests
+   (`cmdZAndCmdShiftZReachUndoAndRedoThroughKeyDown`,
+   `cmdZAlsoWorksInPreviewModeMatchingUndoLastChangesModeIndependence`)
+   drive the real `keyDown` entry point with real `NSEvent`s, not a
+   direct call to `undoLastChange()`. One stale side effect noted below
+   (Minor).
+
+2. **Arrow-key fold-skipping (`64b9d3b`) — resolved.** Read
+   `skipHiddenUTF16Offset` and the new `moveHorizontally` call sites
+   line-by-line. (a) Correct: binary-searches
+   `cachedHiddenUTF16Ranges` for the range with the greatest `location
+   <= offset`, then jumps to `hiddenEnd` (forward) or `hidden.location`
+   (backward) only when the offset falls *strictly* inside — an offset
+   exactly at either boundary is left alone, landing on real, visible
+   geometry. (b) Confirmed no off-by-one at either edge by tracing both
+   directions by hand: stepping one unit in from a near boundary lands
+   correctly inside and triggers a full skip past the far edge in one
+   press; stepping one unit further from a far boundary equally
+   triggers the reverse skip. Both are additionally exercised live by
+   the two new tests, which assert the landed offset resolves to real
+   `packedCaretRect` geometry (N9 discipline), not just a bare offset
+   number. (c) Confirmed structurally moot: `mergedDisjointRanges`
+   (pre-existing, unchanged by this fix) merges any two ranges where
+   `range.location <= currentEnd` — i.e., *touching* ranges get fused
+   into one — so two consecutive folds can never leave a zero-width
+   gap in `cachedHiddenUTF16Ranges` for the caret to get stuck in; a
+   one-visible-character gap between two folds is handled correctly by
+   ordinary two-press movement (verified by hand-tracing), and a wider
+   gap is untouched by this fix at all. (d) Plain non-folded movement
+   is unaffected: `skipHiddenUTF16Offset` returns its input unchanged
+   whenever `cachedHiddenUTF16Ranges` is empty or the offset isn't
+   inside any hidden range, so it's a pure pass-through outside actual
+   folds. RED claim is plausible: traced that before this fix, Cmd+Z
+   aside, an unhandled `moveRight:`/`moveLeft:` from inside a fold
+   would compute `movingFrom + delta` with no fold awareness, landing
+   inside the hidden range where `packedCaretRect` returns `nil` — the
+   two new tests' `packedCaretRect != nil` assertions would genuinely
+   have failed pre-fix, and the reverted-and-reran claim in the commit
+   message is consistent with that trace.
+
+3. **`isDirty` undo/redo round-trip test (`d4c56a7`) — resolved.** The
+   new test opens a real temp file via `DocumentSession.open(url:)`,
+   drives a real `insertText` through the real `FoldingTextView`, and
+   asserts `session.isDirty` (not `NSDocument.isDocumentEdited`)
+   directly at each of the four states the finding asked for: clean
+   after open, dirty after edit, clean again after
+   `undoLastChange()` genuinely restores `"Hello"`, dirty again after
+   `redoLastChange()`. This is a real integration test through the
+   actual `DocumentSession`/`FoldingTextView` stack, nothing mocked.
+   No production change was needed or made, consistent with round 1's
+   own assessment that the underlying logic already traced out as
+   sound.
+
+4. **Preview `accessibilityValue` (`42c90c5`) — resolved for its core
+   claim, with one new Minor gap found (see below).** Read the diff:
+   `accessibilityValue()` now returns the raw buffer whenever
+   `session.mode != .preview` or there's no live substitution index
+   (unchanged Source-mode behavior, confirmed by the new test's own
+   second assertion and by re-running `TextInputTests`), and otherwise
+   sorts `PreviewSubstitutionIndex.anchorSubstitutions` by anchor offset
+   and joins their `.string` values. For a heading + bold-paragraph
+   fixture this produces real reading text with no `#`/`**` — confirmed
+   by the new test's assertions and independently by reading
+   `PreviewElementRenderer.render`'s `.heading`/`.paragraph`/
+   `.listItemLead` cases, all of which build real character content via
+   `renderInline`. Does not crash for a table: traced `.table` in
+   `PreviewElementRenderer.render` to `PreviewElement(lines:
+   rendered: NSAttributedString(attachment: TableAttachment(...)))`,
+   and `.thematicBreak` follows the identical
+   `NSAttributedString(attachment:)` pattern. Empirically confirmed
+   (temporary probe test, reverted after, `swift -e` sanity check
+   alongside it) that `NSAttributedString(attachment:).string` is
+   exactly the single U+FFFC object-replacement character — no crash,
+   but the joined `accessibilityValue` silently substitutes that one
+   placeholder character for the table's/thematic-break's actual
+   content. New Minor finding below.
+
+#### Minor (new this round)
+
+- **Preview `accessibilityValue` silently drops table (and thematic-
+  break) content behind a U+FFFC placeholder, rather than reading
+  anything meaningful for it.** `PreviewElementRenderer.render`'s
+  `.table` and `.thematicBreak` cases both wrap their content in
+  `NSAttributedString(attachment:)`, whose `.string` is the bare
+  object-replacement character — confirmed empirically via a temporary
+  test (`makePreviewView` with a 3-column GFM table): the joined
+  `accessibilityValue` contains U+FFFC and does **not** contain any of
+  the table's actual cell text (e.g. "Left"), while correctly still
+  containing the surrounding paragraphs' text. Not a crash and not a
+  regression of the round-1 finding's core claim (headings/paragraphs/
+  lists/emphasis genuinely read correctly now), but it is a real,
+  undisclosed gap in exactly the scenario round 1 asked to have
+  checked, and — unlike the five Minor findings deliberately left as
+  Notes in the first round — this one isn't mentioned anywhere in the
+  fix's commit message or the `ab298c5` Notes entry. Likely a fast-
+  follow: give `TableAttachment`/`ThematicBreakAttachment` an
+  accessibility-description string (e.g. "table, N rows by M columns"
+  or a flattened cell-text join) that `accessibilityValue` could pull
+  in instead of `.string`, the same way image alt-text already
+  degrades to readable text in `PreviewElementRenderer`'s `.image`
+  case.
+- **Stale doc comment on `redoLastChange()`.** Its doc comment
+  (`FoldingTextView.swift` ~2187-2192, untouched by any of the four fix
+  commits — confirmed via `git show` grep) still reads "...the way
+  `undoLastChange` also isn't wired to Cmd+Z today," which `face2d4`
+  just made false. Purely cosmetic (no behavioral effect, nothing
+  reads this comment at runtime), but worth a one-line fix next time
+  this method is touched so it doesn't mislead a future reader into
+  thinking Cmd+Z still isn't wired.
+
+#### What checked out cleanly (beyond the four findings above)
+
+- All four fix commits' diffs touch only the specific lines each
+  claims to (verified via `git diff` hunk headers) — no incidental
+  changes to T01's core `NSTextInputClient` conformance, T03's
+  undo-grouping fix, T05's debounce, T06's table/Preview-selection
+  mapping, or T08's performance test.
+- Commit messages all follow `{ticket-id} {task-id}: {title}`
+  (`ab298c5`'s plain `{ticket-id}: ...` form again matches this
+  project's established convention for a Notes-only wrap-up commit).
+- `TextInputTests` re-run fresh, foreground, no pipes:
+  `-only-testing:MarkusTests/TextInputTests` → TEST SUCCEEDED (7.4s),
+  consistent with the controller's independent 7.3s run and the
+  implementer's own three-destination ticket-scope re-verify. Working
+  tree confirmed clean after the temporary probe test used to check
+  the table/accessibility question was reverted.
