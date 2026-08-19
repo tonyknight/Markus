@@ -47,6 +47,14 @@ struct TextInputTests {
         return view
     }
 
+    private func makePreviewView(_ markdown: String) -> FoldingTextView {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown(markdown)
+        view.setMode(.preview)
+        view.ensureLayout()
+        return view
+    }
+
     // MARK: - T01: caret geometry, blinking, NSTextInputClient
 
     @Test func caretIsVisibleAndPlaceableAtAnyOffsetInSourceMode() throws {
@@ -377,7 +385,16 @@ struct TextInputTests {
         #expect(NSPasteboard.general.string(forType: .string) == "World")
     }
 
-    @Test func copyIsANoOpWithNoSelectionOrInPreviewMode() {
+    // T06 note: this originally also asserted copy() was a no-op after
+    // switching to Preview mode — true only because Preview-mode copy
+    // wasn't implemented yet at T02 (the plan explicitly deferred "the
+    // Preview-mode case" to T06). Now that it is (see T06's own tests
+    // below), a Preview-mode selection genuinely does copy source
+    // Markdown, so that half of the original assertion would be
+    // actively wrong. Updated to keep testing what's still true —
+    // copy() no-ops when there is nothing selected, in either mode —
+    // rather than weakening or deleting the test.
+    @Test func copyIsANoOpWithNoSelectionInEitherMode() {
         let view = makeSourceView("Hello World")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("unchanged", forType: .string)
@@ -386,8 +403,8 @@ struct TextInputTests {
         view.copy(nil)
         #expect(NSPasteboard.general.string(forType: .string) == "unchanged")
 
-        view.selectedUTF16Range = (view.string as NSString).range(of: "World")
         view.setMode(.preview)
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
         view.copy(nil)
         #expect(NSPasteboard.general.string(forType: .string) == "unchanged")
     }
@@ -713,6 +730,147 @@ struct TextInputTests {
         #expect(blockARepaired.id.startLine != blockAOriginal.id.startLine)
         #expect(view.foldStore.isFolded(blockARepaired.id))
         #expect(!view.foldStore.foldedIDs.contains(blockAOriginal.id))
+    }
+
+    // MARK: - T06: Preview selection maps to source ranges, including across a table
+
+    private var tablesFixture: String {
+        """
+        ## Heading
+
+        A paragraph body here.
+
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+
+        Another paragraph.
+
+        | C | D |
+        |---|---|
+        | 3 | 4 |
+        """
+    }
+
+    /// A raw-buffer UTF-16 offset landing inside `needle`'s occurrence in
+    /// `markdown` — document-level paragraph/element boundaries are
+    /// preserved through Preview substitution (ticket 08 never rewrites
+    /// the buffer, N4), so this is a genuine document-coordinate offset
+    /// within the correct block, not a guess.
+    private func rawOffset(of needle: String, in markdown: String) -> Int {
+        (markdown as NSString).range(of: needle).location
+    }
+
+    @Test func previewSelectionOnAHeadingMapsToItsFullSourceLine() {
+        let view = makePreviewView(tablesFixture)
+        let offset = rawOffset(of: "Heading", in: tablesFixture)
+        let markdown = view.session.previewSelectionSourceMarkdown(forUTF16Range: NSRange(location: offset, length: 0))
+        #expect(markdown == "## Heading\n")
+    }
+
+    @Test func previewSelectionOnAParagraphMapsToItsFullSourceLine() {
+        let view = makePreviewView(tablesFixture)
+        let offset = rawOffset(of: "paragraph body", in: tablesFixture)
+        let markdown = view.session.previewSelectionSourceMarkdown(forUTF16Range: NSRange(location: offset, length: 0))
+        #expect(markdown == "A paragraph body here.\n")
+    }
+
+    @Test func previewSelectionOnATableMapsToItsCompleteSourceIncludingDataRows() {
+        let view = makePreviewView(tablesFixture)
+        // The table's own rendered attachment sits on its anchor line
+        // (the header row); every other row is a collapsed continuation
+        // (ticket 08) — a selection can only ever land on the anchor,
+        // but the reported markdown must still include the whole table.
+        let offset = rawOffset(of: "| A | B |", in: tablesFixture)
+        let markdown = view.session.previewSelectionSourceMarkdown(forUTF16Range: NSRange(location: offset, length: 0))
+        #expect(markdown == "| A | B |\n|---|---|\n| 1 | 2 |\n")
+    }
+
+    /// The exact gap ticket 01's review flagged, fixed by this ticket's
+    /// T06: a selection spanning two tables must copy *both*, not
+    /// silently drop the second.
+    @Test func previewSelectionSpanningTwoTablesCopiesBothTablesInOrder() throws {
+        let view = makePreviewView(tablesFixture)
+        let firstTableOffset = rawOffset(of: "| A | B |", in: tablesFixture)
+        let secondTableRowOffset = rawOffset(of: "| 3 | 4 |", in: tablesFixture)
+        let selection = NSRange(location: firstTableOffset, length: secondTableRowOffset - firstTableOffset)
+
+        let text = try #require(view.session.previewSelectionSourceMarkdown(forUTF16Range: selection))
+        #expect(text.contains("| A | B |"))
+        #expect(text.contains("| 1 | 2 |"))
+        #expect(text.contains("Another paragraph."))
+        #expect(text.contains("| C | D |"))
+        #expect(text.contains("| 3 | 4 |"))
+        // Order preserved: the first table's content must appear before
+        // the second's, matching source/document order.
+        let firstTableIndex = try #require(text.range(of: "| A | B |"))
+        let secondTableIndex = try #require(text.range(of: "| C | D |"))
+        #expect(firstTableIndex.lowerBound < secondTableIndex.lowerBound)
+    }
+
+    @Test func previewSelectionTouchingNothingMapsToNil() {
+        let view = makePreviewView(tablesFixture)
+        // A location past the end of the document.
+        let end = (view.string as NSString).length
+        let markdown = view.session.previewSelectionSourceMarkdown(forUTF16Range: NSRange(location: end, length: 0))
+        #expect(markdown == nil)
+    }
+
+    @Test func mouseClickAndDragSelectInPreviewModeTooAndCopyYieldsSourceMarkdownNotRenderedText() throws {
+        let view = makePreviewView(tablesFixture)
+        view.prepareForEditing()
+        defer { view.resignFirstResponder() } // stop the blink timer; see the first T01 test's comment
+        view.ensureLayout()
+
+        let offset = rawOffset(of: "Heading", in: tablesFixture)
+        // Double-click (word selection) rather than a bare click: copy
+        // requires a genuine (non-empty) selection in either mode, the
+        // same as Source — a bare click alone only places a caret with
+        // nothing selected, which must stay a copy no-op.
+        let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: offset, clickCount: 2)
+        view.mouseDown(with: down)
+
+        // A real click in Preview mode must actually place a selection
+        // (R22 "selectable") — not silently no-op the way it did before
+        // this ticket's T02 gated all mouse selection to Source only.
+        #expect(view.mode == .preview)
+        #expect(view.selectedUTF16Range.length > 0)
+
+        NSPasteboard.general.clearContents()
+        view.copy(nil)
+        let copied = NSPasteboard.general.string(forType: .string)
+        #expect(copied == "## Heading\n")
+        // The critical R22 assertion: the pasteboard holds real source
+        // Markdown (with its "##"), never the rendered/substituted
+        // reading-view text ("Heading" alone, no punctuation).
+        #expect(copied?.contains("#") == true)
+    }
+
+    @Test func cmdCInPreviewModeAlsoReachesCopy() {
+        let view = makePreviewView(tablesFixture)
+        let offset = rawOffset(of: "paragraph body", in: tablesFixture)
+        // A genuine (non-empty) selection — copy no-ops on a bare caret
+        // position in either mode (see copyIsANoOpWithNoSelectionInEitherMode).
+        view.selectedUTF16Range = NSRange(location: offset, length: 1)
+
+        NSPasteboard.general.clearContents()
+        let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "c", charactersIgnoringModifiers: "c",
+            isARepeat: false, keyCode: 8
+        )
+        if let event {
+            view.keyDown(with: event)
+        }
+        #expect(NSPasteboard.general.string(forType: .string) == "A paragraph body here.\n")
+    }
+
+    @Test func previewModeStillRefusesActualTyping() {
+        let view = makePreviewView(tablesFixture)
+        let before = view.string
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        view.insertText("X", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(view.string == before, "Preview must stay read-only even though it is now selectable")
     }
 }
 #endif

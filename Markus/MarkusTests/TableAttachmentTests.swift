@@ -180,7 +180,7 @@ struct TableAttachmentTests {
         let (combined, prefixLength) = documentWithEmbeddedTable(attachment)
 
         let selection = NSRange(location: prefixLength, length: 1)
-        #expect(combined.tableSourceRange(intersecting: selection) == attachment.sourceRange)
+        #expect(combined.tableSourceRanges(intersecting: selection) == [attachment.sourceRange])
     }
 
     @Test func selectionSpanningPastTheAttachmentStillResolvesToItsSourceRange() {
@@ -191,21 +191,58 @@ struct TableAttachmentTests {
         // overlaps it (rather than covering it exactly) still resolves to
         // the whole table's source range.
         let wideSelection = NSRange(location: 0, length: combined.length)
-        #expect(combined.tableSourceRange(intersecting: wideSelection) == attachment.sourceRange)
+        #expect(combined.tableSourceRanges(intersecting: wideSelection) == [attachment.sourceRange])
     }
 
-    @Test func selectionNotTouchingTheAttachmentResolvesToNil() {
+    @Test func selectionNotTouchingTheAttachmentResolvesToEmpty() {
         let attachment = TableAttachment(table: parsedTable, font: PlatformFont.monospaced(size: 14))
         let (combined, prefixLength) = documentWithEmbeddedTable(attachment)
 
         let selectionInPrefix = NSRange(location: 0, length: prefixLength)
-        #expect(combined.tableSourceRange(intersecting: selectionInPrefix) == nil)
+        #expect(combined.tableSourceRanges(intersecting: selectionInPrefix).isEmpty)
     }
 
-    @Test func documentWithNoTableAttachmentResolvesToNil() {
+    @Test func documentWithNoTableAttachmentResolvesToEmpty() {
         let plain = NSAttributedString(string: "Just plain text, no table here.")
         let selection = NSRange(location: 0, length: plain.length)
-        #expect(plain.tableSourceRange(intersecting: selection) == nil)
+        #expect(plain.tableSourceRanges(intersecting: selection).isEmpty)
+    }
+
+    /// The known gap ticket 01's review flagged, and this ticket's (13)
+    /// T06 exists specifically to fix: a selection spanning *two*
+    /// tables must resolve to *both* their source ranges, in document
+    /// order — not silently drop every table past the first.
+    @Test func selectionSpanningTwoTablesResolvesToBothTheirSourceRanges() {
+        let firstTable = ParsedTable(
+            sourceRange: 0..<42,
+            alignments: [.left],
+            rows: [["A"], ["a"]],
+            headerRowIndex: 0
+        )
+        let secondTable = ParsedTable(
+            sourceRange: 100..<142,
+            alignments: [.left],
+            rows: [["B"], ["b"]],
+            headerRowIndex: 0
+        )
+        let firstAttachment = TableAttachment(table: firstTable, font: PlatformFont.monospaced(size: 14))
+        let secondAttachment = TableAttachment(table: secondTable, font: PlatformFont.monospaced(size: 14))
+
+        let combined = NSMutableAttributedString()
+        combined.append(NSAttributedString(string: "Before. "))
+        combined.append(NSAttributedString(attachment: firstAttachment))
+        combined.append(NSAttributedString(string: " Between. "))
+        combined.append(NSAttributedString(attachment: secondAttachment))
+        combined.append(NSAttributedString(string: " After."))
+
+        let wholeDocument = NSRange(location: 0, length: combined.length)
+        #expect(combined.tableSourceRanges(intersecting: wholeDocument) == [firstTable.sourceRange, secondTable.sourceRange])
+
+        // A selection touching only the second table still resolves to
+        // just that one, not both — the fix must not over-resolve either.
+        let secondAttachmentLocation = combined.length - " After.".count - 1
+        let secondOnly = NSRange(location: secondAttachmentLocation, length: 1)
+        #expect(combined.tableSourceRanges(intersecting: secondOnly) == [secondTable.sourceRange])
     }
 
     private func opaquePixelFraction(of rendered: CGImage) -> Double? {

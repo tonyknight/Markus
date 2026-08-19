@@ -587,6 +587,96 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         return string
     }
 
+    // MARK: - T06: Preview selection → source ranges
+
+    /// The reverse of ticket 08's substitution mapping (which has none
+    /// today): for a Preview-mode selection (`selection`, document
+    /// UTF-16 coordinates), every touched rendered block's *complete*
+    /// source line range, unioned — block-line-grained by design (R22
+    /// as written: "copying yields source Markdown," not a byte-exact
+    /// mid-block slice).
+    ///
+    /// Detection and reporting deliberately use different spans. Ticket
+    /// 08's substitution collapses every physical line of a multi-line
+    /// element *except its first* to zero height (the same mechanism
+    /// folding uses, N3) — a table's header/data rows, a wrapped
+    /// paragraph's continuation lines — so a click/drag selection can
+    /// only ever land on a block's own *anchor* line; that is what
+    /// detection checks. Reporting still unions the block's whole
+    /// `lines` range, since copying the anchor line alone would silently
+    /// drop a table's rows or a wrapped paragraph's later lines. Fenced
+    /// code is the one exception in the other direction: ticket 08
+    /// leaves a fence's *content* lines to the default pass-through
+    /// styling path, un-substituted and genuinely visible one-for-one —
+    /// so a selection can land directly on any of a fence's own
+    /// physical lines, not just its (collapsed, markup-only) opening
+    /// delimiter, and detection uses the fence's whole `Block.lines`
+    /// span instead.
+    func previewSelectionSourceLineRanges(forUTF16Range selection: NSRange) -> [Range<Int>] {
+        guard let lineOffsets = cachedUTF16LineOffsets else { return [] }
+
+        func spanTouchesSelection(_ lines: Range<Int>) -> Bool {
+            guard let start = lineOffsets.utf16Offset(ofLine: lines.lowerBound) else { return false }
+            let end = lineOffsets.utf16EndOffset(ofLine: lines.upperBound - 1)
+            let span = NSRange(location: start, length: max(0, end - start))
+            if selection.length == 0 {
+                return NSLocationInRange(selection.location, span) || selection.location == span.location + span.length
+            }
+            return NSIntersectionRange(span, selection).length > 0
+        }
+
+        var touched: [Range<Int>] = []
+        for block in parsedPreviewBlocks {
+            // Fence delimiters are markup-only, always-collapsed anchor
+            // lines (ticket 08) — the fence as a whole is handled below,
+            // via `blocks`, using its full span instead of just the
+            // (unreachable) delimiter line.
+            if case .fenceDelimiter = block.kind { continue }
+            let anchorLine = block.lines.lowerBound
+            guard spanTouchesSelection(anchorLine..<(anchorLine + 1)) else { continue }
+            touched.append(block.lines)
+        }
+        for block in blocks where block.id.kind == .fence {
+            guard spanTouchesSelection(block.lines) else { continue }
+            touched.append(block.lines)
+        }
+        return touched
+    }
+
+    /// `previewSelectionSourceLineRanges` converted to actual source
+    /// Markdown text: each touched line range → raw bytes (via the
+    /// cached `SourceMap`), merged into minimal disjoint byte runs
+    /// (adjacent/overlapping ranges combined — the common case, since a
+    /// Preview drag-selection is visually contiguous top-to-bottom),
+    /// each run decoded verbatim, and genuinely separate runs joined
+    /// with a blank line. `nil` when the selection touches nothing.
+    func previewSelectionSourceMarkdown(forUTF16Range selection: NSRange) -> String? {
+        guard let string = documentString, let sourceMap = cachedSourceMap else { return nil }
+        let lineRanges = previewSelectionSourceLineRanges(forUTF16Range: selection)
+        guard !lineRanges.isEmpty else { return nil }
+
+        let byteRanges = lineRanges.map { lines -> Range<Int> in
+            let start = sourceMap.offset(ofLine: lines.lowerBound)
+            let end = sourceMap.endOffset(ofLine: lines.upperBound - 1)
+            return start..<end
+        }.sorted { $0.lowerBound < $1.lowerBound }
+
+        var merged: [Range<Int>] = []
+        for range in byteRanges {
+            if let last = merged.last, range.lowerBound <= last.upperBound {
+                merged[merged.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
+            } else {
+                merged.append(range)
+            }
+        }
+
+        let scalars = Array(string.utf8)
+        let fragments = merged.map { range in
+            String(decoding: scalars[range], as: UTF8.self)
+        }
+        return fragments.joined(separator: "\n")
+    }
+
     /// Recomputes `cachedHiddenUTF16Ranges`/`cachedPlaceholderUTF16Locations`
     /// from their real inputs (`blocks`, `foldStore`'s folded set,
     /// `mode`, `contentStorageDelegate.index`) in one batched pass —
@@ -1604,10 +1694,12 @@ final class FoldingTextView: PlatformView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if handleGutterClick(at: point) { return }
-        guard session.mode == .source else {
-            super.mouseDown(with: event)
-            return
-        }
+        // T06: Preview stays read-only (insertText/doCommand/
+        // setMarkedText all still gate on `.source` independently) but
+        // must remain *selectable* (R22) — click/drag selection
+        // mechanics themselves are mode-agnostic (the same point↔offset
+        // helpers, word/line range detection), so both modes fall
+        // through to them; only actual mutation stays source-only.
         window?.makeFirstResponder(self)
         guard let offset = utf16Offset(forViewPoint: point) else {
             super.mouseDown(with: event)
@@ -1634,7 +1726,10 @@ final class FoldingTextView: PlatformView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard session.mode == .source, let anchor = dragAnchorOffset else {
+        // T06: drag-selection is mode-agnostic too (see `mouseDown`'s
+        // comment) — `dragAnchorOffset` is only ever set by `mouseDown`,
+        // so this naturally no-ops whenever that didn't start a drag.
+        guard let anchor = dragAnchorOffset else {
             super.mouseDragged(with: event)
             return
         }
@@ -1659,12 +1754,19 @@ final class FoldingTextView: PlatformView {
     }
 
     override func keyDown(with event: NSEvent) {
-        guard session.mode == .source else {
-            super.keyDown(with: event)
-            return
-        }
+        // T06: Cmd+C must work in Preview mode too (R22 "selectable...
+        // copying yields source Markdown") — checked before the
+        // Source-only gate below, since `copy(_:)` itself branches on
+        // mode to produce the right pasteboard content either way.
+        // Everything else here (character/command input via
+        // `interpretKeyEvents`) stays Source-only; Preview never
+        // mutates.
         if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "c" {
             copy(nil)
+            return
+        }
+        guard session.mode == .source else {
+            super.keyDown(with: event)
             return
         }
         interpretKeyEvents([event])
@@ -2307,7 +2409,10 @@ extension FoldingTextView {
     /// draw path directly against a bitmap `CGContext`, mirroring
     /// `drawGutter`/`drawCaret`'s own testability precedent.
     func drawSelectionHighlight(in context: CGContext, visibleRect: CGRect) {
-        guard session.mode == .source, selectedUTF16Range.length > 0 else { return }
+        // T06: Preview is selectable too (R22) — the geometry is drawn
+        // from whatever's actually laid out (rendered glyph positions),
+        // correct in either mode without further change.
+        guard selectedUTF16Range.length > 0 else { return }
         let rects = session.packedSelectionRects(forUTF16Range: selectedUTF16Range, boundedBy: visibleRect)
         guard !rects.isEmpty else { return }
         context.saveGState()
@@ -2490,8 +2595,28 @@ extension FoldingTextView {
     /// Preview-mode copy (source-Markdown-from-rendered-selection) is
     /// T06's separate, harder problem.
     @objc func copy(_ sender: Any?) {
-        guard session.mode == .source, selectedUTF16Range.length > 0 else { return }
-        let text = (documentTextStorage.string as NSString).substring(with: selectedUTF16Range)
+        let text: String?
+        switch session.mode {
+        case .source:
+            text = selectedUTF16Range.length > 0
+                ? (documentTextStorage.string as NSString).substring(with: selectedUTF16Range)
+                : nil
+        case .preview:
+            // T06: Preview's own reverse mapping — block-line-grained
+            // source Markdown, not a slice of the rendered/substituted
+            // text (R22: "copying yields source Markdown"). Gated on a
+            // real (non-empty) selection the same way Source mode is —
+            // a bare caret position touching a block's own span (this
+            // is deliberately true in `previewSelectionSourceLineRanges`
+            // for a zero-length selection sitting right at a block's
+            // start, matching how a caret is considered "on" the text
+            // it precedes) must not make copy fire with nothing actually
+            // selected.
+            text = selectedUTF16Range.length > 0
+                ? session.previewSelectionSourceMarkdown(forUTF16Range: selectedUTF16Range)
+                : nil
+        }
+        guard let text else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
