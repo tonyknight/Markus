@@ -184,28 +184,61 @@ struct PerformanceBudgetTests {
         #expect(unfoldAllElapsed < 10.0)
     }
 
-    @Test func oneMegabyteFixtureSingleEditStaysWithinAGenerousKeystrokeAdjacentBudget() {
+    /// Ticket 13's real keystroke path, now that it exists:
+    /// `insertText(_:replacementRange:)` (T01) drives the buffer
+    /// mutation and glyph display synchronously, same-frame, while
+    /// `session.syncBlocksFromStorage()` (reparse + fold repair +
+    /// restyle + relayout) is debounced off the keystroke path
+    /// entirely (T05) — no longer the placeholder's `replaceSelection`
+    /// stand-in, which (before ticket 13 landed) still reparsed
+    /// synchronously on every call and could not honestly claim
+    /// anything close to the 16 ms keystroke budget on a 1 MB document.
+    @Test func oneMegabyteFixtureSingleKeystrokeStaysWithinAGenerousMarginOfTheRealBudget() throws {
         let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
         view.loadMarkdown(LargeMarkdownFixture.oneMegabyte)
         view.setMode(.source)
         view.ensureLayout()
 
-        // The real typing pipeline (debounced reparse) lands in ticket
-        // 13 — `replaceSelection` is this codebase's closest existing
-        // analogue to "keystroke to glyph" today, and it does still run
-        // a synchronous reparse (`syncBlocksFromStorage`). A literal 2x
-        // margin over the 16 ms keystroke budget is not achievable
-        // without ticket 13's debouncing, and this Mac's parallel test
-        // workers add further contention on top (see the type doc) — so
-        // this uses a deliberately generous budget: it exists to catch a
-        // gross regression (e.g. the quadratic bugs found and fixed on
-        // this ticket, T05) without asserting a number this architecture
-        // cannot yet honestly meet.
+        // (a) Deterministic, primary proof (N8): the counter, not the
+        // wall clock, is what actually enforces "reparse never blocks
+        // the keystroke" (Performance budgets table, keystroke row).
+        let before = view.session.parsesPerformed
         view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        view.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(view.string.hasPrefix("x"))
+        #expect(view.session.parsesPerformed == before, "no reparse may run synchronously on the keystroke path")
+        #expect(view.hasPendingDebouncedReparse)
+
+        // Firing the debounce is what eventually reparses — proves the
+        // counter isn't just permanently stuck at zero.
+        view.fireDebouncedReparse()
+        #expect(view.session.parsesPerformed == before + 1)
+
+        // (b) Wall-clock, secondary confirmation. Unlike the old
+        // `replaceSelection`-based placeholder (which still reparsed a
+        // 1 MB document synchronously and needed a 15 s allowance to
+        // stay green), the real keystroke path no longer touches the
+        // parser at all — a single insertText call is a same-paragraph
+        // buffer edit plus incremental TextKit 2 relayout, genuinely
+        // small work regardless of document size. This bound is far
+        // looser than a literal 2× over 16 ms (this Mac's parallel test
+        // workers measured 10-30x contention slowdowns elsewhere in
+        // this file, confirmed via direct process sampling to be
+        // genuine scheduling contention, not a regression) but is now,
+        // correctly, orders of magnitude tighter than the placeholder's
+        // 15 s — it exists to catch a gross regression (e.g. the
+        // reparse debounce silently regressing back to synchronous),
+        // not to assert a number the architecture cannot honestly meet.
+        let view2 = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view2.loadMarkdown(LargeMarkdownFixture.oneMegabyte)
+        view2.setMode(.source)
+        view2.ensureLayout()
+        view2.selectedUTF16Range = NSRange(location: 0, length: 0)
+
         let start = Date()
-        #expect(view.replaceSelection(with: "x"))
+        view2.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
         let elapsed = Date().timeIntervalSince(start)
-        #expect(elapsed < 15.0)
+        #expect(elapsed < 2.0)
     }
     #endif
 }
