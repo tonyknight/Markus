@@ -579,6 +579,43 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
     var hiddenUTF16RangeCount: Int { cachedHiddenUTF16Ranges.count }
 
+    /// Review fix (T02): if `offset` falls strictly inside a fully
+    /// hidden (folded, or a Preview markup-only/continuation range)
+    /// UTF-16 range, returns the nearest visible offset in the
+    /// direction of travel — the hidden range's end when moving
+    /// forward, its start when moving backward — so horizontal caret
+    /// movement (`moveHorizontally`) skips over hidden content the same
+    /// way point-based click/drag placement and vertical movement
+    /// already do (both resolve through `enumeratePackedVisibleFragments`,
+    /// which only ever visits non-collapsed fragments). An offset
+    /// exactly at a hidden range's boundary is left unchanged — that
+    /// position belongs to the adjacent *visible* fragment, not the
+    /// hidden one (mirrors `packedCaretRect`'s own inclusive-upperBound
+    /// fragment match). Same sorted/merged, binary-searchable
+    /// `cachedHiddenUTF16Ranges` `isFullyHidden` already uses — no new
+    /// cache, no new cost class.
+    func skipHiddenUTF16Offset(_ offset: Int, movingForward: Bool) -> Int {
+        let ranges = cachedHiddenUTF16Ranges
+        guard !ranges.isEmpty else { return offset }
+        var low = 0
+        var high = ranges.count - 1
+        var candidate = -1
+        while low <= high {
+            let mid = (low + high) / 2
+            if ranges[mid].location <= offset {
+                candidate = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        guard candidate >= 0 else { return offset }
+        let hidden = ranges[candidate]
+        let hiddenEnd = hidden.location + hidden.length
+        guard offset > hidden.location, offset < hiddenEnd else { return offset }
+        return movingForward ? hiddenEnd : hidden.location
+    }
+
     private var documentString: String? {
         let string = textStorage?.string
             ?? contentStorage?.textStorage?.string
@@ -2565,6 +2602,19 @@ extension FoldingTextView {
         needsDisplay = true
     }
 
+    /// Review fix: previously did raw `movingFrom + delta` arithmetic
+    /// with no awareness of hidden/folded ranges, unlike click/drag
+    /// placement and vertical movement (both point-based, and both
+    /// already fold-aware via `enumeratePackedVisibleFragments`).
+    /// Arrowing across a fold's boundary landed the caret inside the
+    /// hidden byte range, where `packedCaretRect` returns `nil` and the
+    /// caret silently stopped drawing — contradicting both the design
+    /// note and T02's own plan text ("arrow keys move the caret (skip
+    /// hidden ranges)"). Every computed target now passes through
+    /// `session.skipHiddenUTF16Offset`, which jumps straight past a
+    /// hidden range to its far edge in the direction of travel — the
+    /// same "one press skips the whole hidden span" behavior the point-
+    /// based paths already have.
     private func moveHorizontally(by delta: Int, extend: Bool) {
         let forward = delta > 0
         if !extend, selectedUTF16Range.length > 0 {
@@ -2573,11 +2623,14 @@ extension FoldingTextView {
             // additional step on top of that, matching standard "arrow
             // key collapses the selection" behavior (a second press,
             // now from a collapsed caret, steps by one as usual).
-            applyCaretMove(to: forward ? selectedUTF16Range.upperBound : selectedUTF16Range.location, extend: false, directionForward: forward)
+            let edge = forward ? selectedUTF16Range.upperBound : selectedUTF16Range.location
+            applyCaretMove(to: session.skipHiddenUTF16Offset(edge, movingForward: forward), extend: false, directionForward: forward)
             return
         }
         let movingFrom = currentMovingOffset(forward: forward, extend: extend)
-        applyCaretMove(to: movingFrom + delta, extend: extend, directionForward: forward)
+        let stepped = clampedOffset(movingFrom + delta)
+        let visible = session.skipHiddenUTF16Offset(stepped, movingForward: forward)
+        applyCaretMove(to: visible, extend: extend, directionForward: forward)
     }
 
     /// Moves the caret/selection-extending-end up or down one line by

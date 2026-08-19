@@ -956,5 +956,83 @@ struct TextInputTests {
         view.keyDown(with: keyEvent(command: true, characters: "z", keyCode: 6))
         #expect(view.string == "Hello")
     }
+
+    /// A *bounded* fold: a trailing "## Following two" heading, the
+    /// same pattern `FoldingTextViewTests.fixture` already uses, so
+    /// folding the first heading only hides the body between the two
+    /// headings — without a bounding heading, `BlockIndex.build`'s
+    /// `foldExtent` runs to the end of the document (no next same-or-
+    /// shallower heading to stop at), which would swallow
+    /// "Trailing paragraph." too and defeat the point of this test.
+    private var foldableFixture: String {
+        """
+        ## Heading two
+
+        Hidden body under the heading.
+
+        ## Following two
+
+        Trailing paragraph.
+        """
+    }
+
+    @Test func arrowRightSkipsOverAFoldedRangeInsteadOfLandingInsideItsHiddenText() throws {
+        let view = makeSourceView(foldableFixture)
+        let heading = try #require(view.blocks.first { $0.id.kind == .heading && $0.foldExtent != nil })
+        view.foldStore.toggle(heading.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(view.foldStore.isFolded(heading.id))
+
+        // A caret confidently *inside* the hidden body — not merely at
+        // its boundary. The boundary itself (right after the folded
+        // heading's own line) is still a valid, visible caret position
+        // (`packedCaretRect` resolves it to the end of that line's own
+        // fragment), so a single step onto the boundary from just
+        // before it is correct, unskipped behavior, not a bug; see
+        // `arrowLeft`'s own landing-offset math below for that boundary.
+        let insideFold = (view.string as NSString).range(of: "Hidden body").location
+        view.selectedUTF16Range = NSRange(location: insideFold, length: 0)
+
+        // One arrow-right press from inside the hidden span must skip
+        // straight to its end — landing anywhere still inside it is the
+        // bug this fix closes (the caret would then silently stop
+        // drawing, since `packedCaretRect` returns nil for a hidden
+        // offset).
+        view.doCommand(by: Selector(("moveRight:")))
+
+        let followingHeadingStart = (view.string as NSString).range(of: "## Following two").location
+        #expect(view.selectedUTF16Range.location == followingHeadingStart)
+        // The landed offset must itself resolve to real, visible
+        // geometry — the live, observable proof (N9) that this isn't
+        // merely "some number past the fold," but an actually-drawable
+        // caret position.
+        #expect(view.session.packedCaretRect(forUTF16Offset: view.selectedUTF16Range.location) != nil)
+    }
+
+    @Test func arrowLeftAlsoSkipsBackwardOverAFoldedRange() throws {
+        let view = makeSourceView(foldableFixture)
+        let heading = try #require(view.blocks.first { $0.id.kind == .heading && $0.foldExtent != nil })
+        view.foldStore.toggle(heading.id)
+        view.applyFolds()
+        view.ensureLayout()
+
+        let followingHeadingStart = (view.string as NSString).range(of: "## Following two").location
+        view.selectedUTF16Range = NSRange(location: followingHeadingStart, length: 0)
+
+        view.doCommand(by: Selector(("moveLeft:")))
+
+        // Lands exactly at the fold's own start boundary — one UTF-16
+        // unit past the folded heading's own line (that line's trailing
+        // newline is itself the last visible character before the
+        // hidden span begins; `foldExtent`'s lower bound is the byte
+        // right after the heading block's own bytes, which include that
+        // newline).
+        let headingLineEnd = (view.string as NSString).range(of: "## Heading two").upperBound
+        let foldStart = headingLineEnd + 1
+        #expect(view.selectedUTF16Range.location == foldStart)
+        #expect(view.session.packedCaretRect(forUTF16Offset: view.selectedUTF16Range.location) != nil)
+    }
+
 }
 #endif
