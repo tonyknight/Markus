@@ -2623,6 +2623,54 @@ extension FoldingTextView {
     }
 }
 
+// MARK: - T07: accessibility
+
+/// `FoldingTextView` is a bare `NSView`, not an `NSTextView` — it has
+/// none of `NSTextView`'s built-in `NSAccessibility` conformance, so
+/// VoiceOver would otherwise see an opaque, unreadable view. These
+/// overrides give it the minimum a real text field needs: a
+/// recognizable role, its text content, the current selection, and how
+/// many characters it holds. `accessibilityValue` reports the raw
+/// buffer in both modes (the single authoritative source, N4) rather
+/// than attempting a separate accessible rendering of Preview's
+/// substituted text — building a parallel "what a screen reader should
+/// say for rendered Markdown" representation is real, separate scope
+/// this ticket's plan does not ask for.
+extension FoldingTextView {
+    override func isAccessibilityElement() -> Bool { true }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
+
+    override func accessibilityValue() -> Any? {
+        documentTextStorage.string
+    }
+
+    override func accessibilitySelectedText() -> String? {
+        guard selectedUTF16Range.length > 0,
+              NSMaxRange(selectedUTF16Range) <= documentTextStorage.length
+        else { return "" }
+        return (documentTextStorage.string as NSString).substring(with: selectedUTF16Range)
+    }
+
+    override func accessibilitySelectedTextRange() -> NSRange {
+        selectedUTF16Range
+    }
+
+    /// The full document range — this view has no separate "visible
+    /// viewport in UTF-16 terms" API today (the gutter/scroll machinery
+    /// works in packed *y* coordinates, not character offsets), so this
+    /// reports everything rather than a genuinely viewport-bounded
+    /// slice. Still a correct, honest answer (VoiceOver treats it as
+    /// "all of this text is available"), not a placeholder constant.
+    override func accessibilityVisibleCharacterRange() -> NSRange {
+        NSRange(location: 0, length: documentTextStorage.length)
+    }
+
+    override func accessibilityNumberOfCharacters() -> Int {
+        documentTextStorage.length
+    }
+}
+
 extension FoldingTextView: NSTextInputClient {
     /// Real text input, gated to Source mode (R20's "editing decision" —
     /// Preview stays read-only, R22). Replaces `replacementRange` when

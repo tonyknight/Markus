@@ -872,5 +872,51 @@ struct TextInputTests {
         view.insertText("X", replacementRange: NSRange(location: NSNotFound, length: 0))
         #expect(view.string == before, "Preview must stay read-only even though it is now selectable")
     }
+
+    // MARK: - T07: accessibility
+
+    @Test func accessibilityRoleAndElementStatusIdentifyThisAsARealTextArea() {
+        let view = makeSourceView("Hello")
+        #expect(view.isAccessibilityElement())
+        #expect(view.accessibilityRole() == .textArea)
+    }
+
+    @Test func accessibilityValueReflectsTheLiveBufferNotAConstant() {
+        let view = makeSourceView("Hello World")
+        #expect(view.accessibilityValue() as? String == "Hello World")
+
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        view.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        // Live, not cached at construction time (N9) — the value must
+        // change when the real buffer changes.
+        #expect(view.accessibilityValue() as? String == "Hello! World")
+    }
+
+    @Test func accessibilitySelectedTextAndRangeReflectARealLiveSelection() {
+        let view = makeSourceView("Hello World")
+        let range = (view.string as NSString).range(of: "World")
+        view.selectedUTF16Range = range
+
+        #expect(view.accessibilitySelectedTextRange() == range)
+        #expect(view.accessibilitySelectedText() == "World")
+
+        // And a collapsed (caret-only) selection reports empty text,
+        // not stale content from the previous real selection.
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        #expect(view.accessibilitySelectedText() == "")
+        #expect(view.accessibilitySelectedTextRange() == NSRange(location: 0, length: 0))
+    }
+
+    @Test func accessibilityNumberOfCharactersAndVisibleRangeReflectRealDocumentLength() {
+        let view = makeSourceView("Hello World")
+        #expect(view.accessibilityNumberOfCharacters() == (view.string as NSString).length)
+        #expect(view.accessibilityVisibleCharacterRange() == NSRange(location: 0, length: (view.string as NSString).length))
+
+        // Live, not fixed at construction — grows with the real buffer.
+        view.selectedUTF16Range = NSRange(location: 11, length: 0)
+        view.insertText(" Again", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(view.accessibilityNumberOfCharacters() == (view.string as NSString).length)
+        #expect(view.accessibilityVisibleCharacterRange().length == (view.string as NSString).length)
+    }
 }
 #endif
