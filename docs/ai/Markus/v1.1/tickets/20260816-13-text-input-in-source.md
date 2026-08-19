@@ -364,3 +364,143 @@ xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platfor
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-18
+
+All eight plan tasks (T01–T08) complete, one commit each. `FoldingTextView`
+now has real caret/selection/input on macOS behind `#if os(macOS)`:
+`NSTextInputClient` conformance with real IME/dictation support (T01),
+mouse click/drag/double/triple-click selection and keyboard navigation
+(T02), undo/redo coalescing (T03), `NSDocument.updateChangeCount`
+wiring including undo/redo (T04), a debounced reparse off the
+keystroke path integrated with ticket 12's fold repair (T05), a new
+Preview-selection → source-Markdown reverse mapping including
+multi-table selections (T06), an accessibility pass (T07), and a
+rewritten keystroke-to-glyph performance test driving the real
+`insertText` path (T08). iOS/iPadOS keep building and passing the
+existing non-editing suite unchanged, per N6.
+
+Several real bugs found via TDD (RED for a genuine reason each time,
+not a compile error), recorded here in the style tickets 08/09/10 used
+— root cause, not just "fixed":
+
+1. **A leaked-timer crash, not the code bug it first looked like.**
+   Running the full `TextInputTests` file (not any single test)
+   intermittently crashed the shared AppKit test host with
+   `EXC_BREAKPOINT` inside `FoldingTextView.__ivar_destroyer`,
+   releasing the `hostWindow` ivar. Root cause: `prepareForEditing()`
+   (test scaffolding predating this ticket) creates a real `NSWindow`
+   with a genuine strong reference cycle (view retains window via
+   `hostWindow`, window retains view via `contentView`) that ARC never
+   breaks on its own; T01's new `becomeFirstResponder` override
+   schedules a real, repeating system `Timer` for caret blinking, which
+   — for any such leaked window/view pair a test never explicitly tore
+   down — kept firing indefinitely against a stale view for the rest of
+   the process's life. Fixed with two layers: a `deinit` invalidating
+   the timer as a general backstop, and explicit `resignFirstResponder()`
+   teardown at each of this file's five `prepareForEditing()` call
+   sites (which stops the timer regardless of whether the underlying
+   reference cycle ever actually deallocates). The same hazard applies
+   to T05's debounce timer; `deinit` covers both.
+
+2. **`NSUndoManager.registerUndo` requires an open group at call time —
+   true even before this ticket**, but silently papered over by
+   `editingUndoManager`'s default `groupsByEvent = true` supplying an
+   implicit one automatically. T03's first coalescing implementation
+   only opened a group for coalescing-*eligible* edits, so a plain
+   multi-character `insertText` call (e.g. an IME commit) crashed
+   outright with `NSInternalInconsistencyException: must begin a group
+   before registering undo`. This first surfaced as a whole-process
+   crash inside unrelated SwiftUI/AppKit rendering machinery when the
+   full suite ran under this Mac's parallel test workers — a real
+   instance of the exact contention class ticket 10's Notes already
+   documented, which very nearly got misdiagnosed as environment noise
+   a second time. Running the same suite with
+   `-parallel-testing-enabled NO` separated the signal from that
+   contention and surfaced the real, exact `NSInternalInconsistencyException`
+   and its call site directly. Fixed: every non-continuing edit always
+   opens its own group now, whether or not it is itself eligible to be
+   continued by a future one.
+
+3. **Once (2) was fixed, two separate single-character streaks with a
+   caret move between them still collapsed into one undo step.** Traced
+   with temporary `NSLog` instrumentation (`print()` and direct file
+   writes were both silently dropped under App Sandbox — only `NSLog`
+   survived and was actually captured) to `editingUndoManager
+   .groupingLevel` jumping straight to 2 on the very first
+   `registerUndo` of a supposedly-fresh group, not 1: `groupsByEvent`'s
+   default `true` was auto-opening an *additional* implicit group
+   nested inside this view's own explicit one on every `registerUndo`
+   call, so "close one level, reopen" never reached the true outer
+   boundary. Fixed by disabling `groupsByEvent` in `completeInit()` —
+   its own documented escape hatch for managing grouping entirely by
+   hand. This exposed a further, narrower regression: two *other*
+   pre-existing bare `registerUndo` calls (`unmarkText()` and the
+   pre-ticket `insertTextAtCaret` test helper, the latter used across
+   many existing test files) had always silently relied on the
+   automatic per-event group too; both needed the same explicit-group
+   fix once the automatic fallback was gone.
+
+4. **A build/test-tooling stall, confirmed environmental, not a hang in
+   the app.** `xcodebuild test` piped through `| tee | grep` intermittently
+   stalled for many minutes *after* the test suite itself had already
+   printed "passed" for every case — confirmed via direct process
+   inspection (`ps`, `sample`) that the app/test processes were idle,
+   not spinning, and that a plain `>` file redirect (no pipe) avoided
+   the stall consistently on retry. Recorded per the ticket brief's
+   explicit ask to profile rather than assume, the same discipline
+   ticket 10's Notes modeled for a different symptom.
+
+Judgment calls made where the plan left a genuine gap, each recorded
+at the point they were made and repeated here for visibility:
+
+- T01 folded backspace/forward-delete/newline/tab handling in
+  alongside `insertText` rather than waiting for T02, since the
+  Design note's own sentence lists them together as mutation paths
+  sharing one primitive; T02 kept arrow-key/word-boundary navigation
+  as its own explicit scope.
+- T01 added `FoldingTextView.redoLastChange()` alongside the existing
+  `undoLastChange()` test helper; neither is wired to a menu item or
+  Cmd+Z/Cmd+Shift+Z, since R3's Edit menu item list (Find, Go to Line,
+  Fold All, Unfold All) does not include Undo/Redo.
+- T02 wired Cmd+C directly in `keyDown` (checked ahead of
+  `interpretKeyEvents`) since Cmd+letter combinations aren't part of
+  AppKit's default text key-binding table and there is no Edit > Copy
+  menu item to route it through the responder chain either.
+- T06 relaxed T02's mouse-selection mode gate from Source-only to both
+  modes (selection *mechanics* — click/drag/word/line detection — are
+  mode-agnostic; only actual mutation stays Source-only), since R22
+  requires Preview to be genuinely "selectable" and T02's plan text
+  had explicitly deferred "the Preview-mode case" to T06 without
+  restricting that deferral to `copy(_:)` alone — leaving mouse
+  selection Source-only would have made T06's whole reverse mapping
+  unreachable through real interaction.
+- T06 fixed `tableSourceRanges` (renamed from the singular
+  `tableSourceRange`) as its own standalone, directly-tested utility,
+  but the Preview-selection reverse mapping itself uses a simpler,
+  independently-robust line-range-based approach (`ParsedPreviewBlock
+  .lines` via the cached `SourceMap`/`UTF16LineOffsets`) rather than
+  invoking it — reconstructing a document-level rendered
+  `NSAttributedString` with attachments correctly positioned to call
+  it against would have added real coordinate-space complexity for no
+  net gain the line-based approach doesn't already provide, including
+  the multi-table case.
+- T07 reports `accessibilityValue` as the raw buffer in both Source
+  and Preview modes, and `accessibilityVisibleCharacterRange` as the
+  whole document rather than a genuinely viewport-bounded slice —
+  building a separate accessible rendering of Preview's substituted
+  text, or a viewport-to-UTF-16 range API that doesn't exist anywhere
+  else in the codebase today, is real, additional scope the plan does
+  not ask for.
+
+Verify (fresh, this session, worktree/branch confirmed via `pwd`/`git
+branch --show-current` before every command): macOS `xcodebuild ...
+test` → TEST SUCCEEDED (134.9s); iOS Simulator iPhone 17 → TEST
+SUCCEEDED (112.1s); iOS Simulator iPad Pro 13-inch (M5) → TEST
+SUCCEEDED (177.0s). `bora dev lint` reports only the same pre-existing
+ticket-08 `current_task`/`### Tnn:` heading-format mismatch every
+other ticket on this board has already flagged as predating its own
+work. Working tree clean after eight commits (T01–T08). Ticket
+`status:` left `in-progress`, Acceptance Criteria/Subtask checkboxes
+left unchecked, `bora-review` not run — per this project's convention,
+that is the controlling session's job.
