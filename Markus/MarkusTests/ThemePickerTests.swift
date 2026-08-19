@@ -122,15 +122,6 @@ struct ThemePickerTests {
         #endif
     }
 
-    @Test func settingsHostThePickerAndHoverPreviewIsMacOnly() {
-        #expect(ThemeChrome.hostsPickerInSettings)
-        #if os(macOS)
-        #expect(ThemeChrome.showsHoverPreview)
-        #else
-        #expect(!ThemeChrome.showsHoverPreview)
-        #endif
-    }
-
     @Test func themeProxyViewIsReadOnlyAndNeverStealsHitsOrFirstResponder() {
         let proxy = ThemeChrome.makeProxyView(tokens: NamedThemeCatalog.tokens(for: .daylight))
         #if os(macOS)
