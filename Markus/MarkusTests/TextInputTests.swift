@@ -919,6 +919,23 @@ struct TextInputTests {
         #expect(view.accessibilityVisibleCharacterRange().length == (view.string as NSString).length)
     }
 
+    @Test func accessibilityValueInPreviewModeReportsRenderedTextNotRawMarkdown() {
+        let view = makePreviewView("## Heading\n\nA **bold** paragraph.\n")
+        let value = view.accessibilityValue() as? String
+
+        // The critical assertion: VoiceOver in Preview must hear
+        // rendered reading text, not literal syntax.
+        #expect(value?.contains("#") == false)
+        #expect(value?.contains("**") == false)
+        #expect(value?.contains("Heading") == true)
+        #expect(value?.contains("bold") == true)
+        #expect(value?.contains("paragraph") == true)
+
+        // Source mode is unaffected — still the raw buffer verbatim.
+        view.setMode(.source)
+        #expect(view.accessibilityValue() as? String == view.string)
+    }
+
     // MARK: - Review fixes (2026-08-18)
 
     private func keyEvent(command: Bool, shift: Bool = false, characters: String, keyCode: UInt16) -> NSEvent {

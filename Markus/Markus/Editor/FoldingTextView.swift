@@ -2712,8 +2712,26 @@ extension FoldingTextView {
 
     override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
 
+    /// Review fix: previously returned the raw buffer unconditionally
+    /// in both modes, so VoiceOver in Preview would read literal syntax
+    /// (`##`, `**bold**`, table pipes) instead of the rendered content
+    /// Preview visually shows. Reuses ticket 08's own substitution
+    /// index (`PreviewSubstitutionIndex.anchorSubstitutions`, keyed by
+    /// each rendered block's document UTF-16 anchor offset) rather than
+    /// building a second, parallel "how do I read this Markdown aloud"
+    /// representation — sorting those substitutions into document order
+    /// and joining their already-rendered strings gives real reading-
+    /// view text with no new rendering machinery. Falls back to the raw
+    /// buffer whenever there's no live substitution index (Source mode,
+    /// or Preview mode before the first `applyStyling` call).
     override func accessibilityValue() -> Any? {
-        documentTextStorage.string
+        guard session.mode == .preview, let index = session.contentStorageDelegate.index else {
+            return documentTextStorage.string
+        }
+        return index.anchorSubstitutions
+            .sorted { $0.key < $1.key }
+            .map(\.value.string)
+            .joined(separator: "\n")
     }
 
     override func accessibilitySelectedText() -> String? {
