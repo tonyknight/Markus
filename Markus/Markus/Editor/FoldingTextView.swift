@@ -1171,6 +1171,18 @@ enum DragSelectionMode {
     case word
     case line
 }
+
+/// T03: the class of single-character edit a coalescable mutation
+/// belongs to — inserts only coalesce with inserts, backward deletes
+/// only with backward deletes, forward deletes only with forward
+/// deletes (never mixed), matching the plan's "consecutive single-
+/// character insertText calls (and consecutive single-character
+/// deletes)" wording.
+enum CoalescingKind: Equatable {
+    case insert
+    case deleteBackward
+    case deleteForward
+}
 #endif
 
 @MainActor
@@ -1205,6 +1217,20 @@ final class FoldingTextView: PlatformView {
     /// set on `mouseDown`, read by `mouseDragged`, cleared on `mouseUp`.
     private var dragAnchorOffset: Int?
     private var dragAnchorMode: DragSelectionMode = .character
+    /// T03: the kind and end-position of the most recent coalescable
+    /// single-character edit, and when it happened — used by
+    /// `applyCoalescingGrouping` to decide whether the next edit
+    /// continues the same open `editingUndoManager` group (one undo
+    /// step for a whole typed run) or starts a fresh one. `nil` kind
+    /// means "nothing open should be extended" (a paste, a multi-
+    /// character insert, an IME commit, or an undo/redo replay).
+    private var coalescingKind: CoalescingKind?
+    private var coalescingCaretOffset: Int?
+    private var coalescingLastEditAt: Date = .distantPast
+    /// Injectable so tests can simulate a long pause between keystrokes
+    /// deterministically (N9) instead of sleeping for real wall-clock
+    /// time.
+    var coalescingClock: () -> Date = { Date() }
     #endif
 
     var foldStore: FoldStore { session.foldStore }
@@ -1473,6 +1499,25 @@ final class FoldingTextView: PlatformView {
         session.attach(layoutManager: textLayoutManager, contentStorage: contentStorage)
         updateTextContainerForGutter()
         paintCanvasBackground()
+        // T03: `editingUndoManager` groups every coalescable keystroke
+        // run explicitly (`applyCoalescingGrouping`'s own begin/end
+        // pairs) — `groupsByEvent`'s default `true` also auto-opens an
+        // *additional*, nested implicit group around each run-loop-
+        // observed "event" whenever `registerUndo` is called, on top of
+        // any explicit group already open. Found via a real crash/bug
+        // hunt (not guessed): tracing `groupingLevel` around every
+        // begin/end call showed it jumping straight to 2 on the very
+        // first keystroke of a fresh group, not 1 — the explicit
+        // "close one level, then reopen" logic in
+        // `applyCoalescingGrouping` only ever closed the automatic
+        // inner layer, never reaching the true outer boundary, so every
+        // "new" group after the first kept nesting inside the original
+        // one instead of standing alone — `undo()` then reverted every
+        // keystroke ever made in the test, not just the most recent
+        // group. Disabling `groupsByEvent` (its own documented escape
+        // hatch for "I manage grouping myself") removes the automatic
+        // layer entirely, leaving only the explicit grouping in control.
+        editingUndoManager.groupsByEvent = false
     }
 
     private func paintCanvasBackground() {
@@ -1838,6 +1883,33 @@ final class FoldingTextView: PlatformView {
 
     private var hostWindow: AnyObject?
 
+    #if os(macOS)
+    /// Safety net for T01's blink timer: `prepareForEditing()` (test
+    /// scaffolding predating this ticket, also used by
+    /// `insertTextAtCaret`) creates a real `NSWindow`/`hostWindow` pair
+    /// with `self` as `contentView` — a real, if usually test-scoped,
+    /// strong reference cycle (view retains window via `hostWindow`,
+    /// window retains view via `contentView`), and nothing before T01
+    /// ever left anything actively running against it. T01's
+    /// `becomeFirstResponder` override now schedules a genuinely
+    /// repeating system `Timer`, which — if a caller never calls
+    /// `resignFirstResponder()`/tears the window down — keeps firing
+    /// indefinitely against a stale view for the rest of the process's
+    /// life. Found via a real crash (not a hang): running the full
+    /// `TextInputTests` suite intermittently crashed the shared AppKit
+    /// test host (`EXC_BREAKPOINT` inside `FoldingTextView
+    /// .__ivar_destroyer`, releasing the `hostWindow` ivar) once enough
+    /// such leaked, still-ticking timers had accumulated across many
+    /// `prepareForEditing()`-using tests. This `deinit` is the general
+    /// backstop; call sites that create a real window should still
+    /// prefer explicit teardown (`resignFirstResponder()`) where
+    /// convenient, since a genuine reference cycle means `deinit` may
+    /// never run without it.
+    deinit {
+        caretBlinkTimer?.invalidate()
+    }
+    #endif
+
     func prepareForEditing() {
         #if os(macOS)
         let window = NSWindow(
@@ -1868,13 +1940,38 @@ final class FoldingTextView: PlatformView {
         let insertRange = NSRange(location: 0, length: 0)
         documentTextStorage.replaceCharacters(in: insertRange, with: string)
         let inserted = NSRange(location: 0, length: nsString.length)
+        // `registerUndo` requires an open group at call time — true
+        // even pre-T03, but previously papered over by
+        // `editingUndoManager`'s default `groupsByEvent = true`
+        // supplying an implicit one automatically. T03 disables
+        // `groupsByEvent` (see `completeInit`'s doc comment: the
+        // automatic per-event group was nesting unpredictably inside
+        // this view's own explicit coalescing groups), which turned
+        // this pre-existing test helper's bare `registerUndo` call
+        // into a real crash risk it never previously had. Same fix
+        // shape as `unmarkText()`'s: an explicit, immediately-closed
+        // group of its own.
+        if editingUndoManager.groupingLevel > 0 {
+            editingUndoManager.endUndoGrouping()
+        }
+        editingUndoManager.beginUndoGrouping()
         editingUndoManager.registerUndo(withTarget: documentTextStorage) { storage in
             storage.replaceCharacters(in: inserted, with: "")
         }
+        editingUndoManager.endUndoGrouping()
         onTextDidChange?()
     }
 
+    /// T03: if a coalescing group (a run of contiguous single-character
+    /// edits) is still open when undo is requested, close it first —
+    /// `UndoManager.undo()` while `groupingLevel > 0` is a programming
+    /// error (it asserts). A real coalescing streak otherwise only ever
+    /// closes lazily, at the next edit that doesn't continue it; undo
+    /// can arrive at any time, including mid-streak.
     func undoLastChange() -> Bool {
+        if editingUndoManager.groupingLevel > 0 {
+            editingUndoManager.endUndoGrouping()
+        }
         guard editingUndoManager.canUndo else { return false }
         editingUndoManager.undo()
         return true
@@ -1888,6 +1985,9 @@ final class FoldingTextView: PlatformView {
     /// ticket's scope) rather than via a `Selector`-based responder-chain
     /// action the way `undoLastChange` also isn't wired to Cmd+Z today.
     func redoLastChange() -> Bool {
+        if editingUndoManager.groupingLevel > 0 {
+            editingUndoManager.endUndoGrouping()
+        }
         guard editingUndoManager.canRedo else { return false }
         editingUndoManager.redo()
         return true
@@ -1968,9 +2068,36 @@ extension FoldingTextView {
     /// stack. The override carries the true pre-composition text
     /// forward instead, so the commit's one undo step restores exactly
     /// what was there before composition began.
+    /// `coalescingKind`, when non-nil and `registerUndo` is true (T03),
+    /// makes this a candidate to join the same open `editingUndoManager`
+    /// group as the previous coalescable edit — see
+    /// `applyCoalescingGrouping`. Left `nil` (the default) for anything
+    /// that must never coalesce: a multi-character insert/paste, an IME
+    /// commit, a selection-replacing edit, or — critically — the
+    /// self-registered undo-inverse closure below, which always omits
+    /// it so an undo/redo replay is never itself treated as a fresh
+    /// coalescable edit.
     @discardableResult
-    private func mutateSourceText(in range: NSRange, with replacement: String, registerUndo: Bool = true, undoPreviousOverride: String? = nil) -> Bool {
+    private func mutateSourceText(
+        in range: NSRange,
+        with replacement: String,
+        registerUndo: Bool = true,
+        undoPreviousOverride: String? = nil,
+        coalescingKind: CoalescingKind? = nil
+    ) -> Bool {
         guard range.location != NSNotFound, NSMaxRange(range) <= documentTextStorage.length else { return false }
+        // Never manage grouping while an undo/redo replay is actually
+        // in progress: `UndoManager.undo()`/`.redo()` already opens its
+        // own internal group around the replay so the inverse actions
+        // it invokes register as one atomic redo/undo step — calling
+        // `endUndoGrouping()` from inside that (which `groupingLevel >
+        // 0` would otherwise trigger, since the manager's own internal
+        // group counts too) would prematurely close the replay's own
+        // group and corrupt the undo manager's bookkeeping.
+        let isReplaying = editingUndoManager.isUndoing || editingUndoManager.isRedoing
+        if registerUndo, !isReplaying {
+            applyCoalescingGrouping(for: coalescingKind, range: range)
+        }
         let previous = undoPreviousOverride ?? (documentTextStorage.string as NSString).substring(with: range)
         let ok = FindReplace.replace(range, with: replacement, in: documentTextStorage)
         guard ok else { return false }
@@ -1983,10 +2110,71 @@ extension FoldingTextView {
         }
         selectedUTF16Range = NSRange(location: range.location + insertedLength, length: 0)
         selectionAnchorOffset = nil
+        if registerUndo {
+            self.coalescingKind = coalescingKind
+            coalescingCaretOffset = coalescingKind != nil ? selectedUTF16Range.location : nil
+            coalescingLastEditAt = coalescingClock()
+        }
         session.syncBlocksFromStorage()
         onTextDidChange?()
         needsDisplay = true
         return true
+    }
+
+    /// Opens, continues, or closes `editingUndoManager`'s undo group so
+    /// a contiguous run of same-kind single-character edits arriving
+    /// within `coalescingWindow` of each other becomes ONE undo step
+    /// (T03) — "typing 'hello' should be one undo step, not five." A
+    /// non-contiguous edit (caret moved elsewhere, then typed), a
+    /// different kind (an insert run doesn't merge with a delete run),
+    /// a stale streak (paused too long), or any non-coalescable edit
+    /// (`kind == nil`: a paste/multi-char insert, an IME commit,
+    /// replacing a selection, an undo/redo replay) always starts fresh.
+    /// Nested `beginUndoGrouping()`/`endUndoGrouping()` calls are what
+    /// actually coalesce multiple `registerUndo` calls into one
+    /// `undo()` step — NSUndoManager's own per-"event" auto-grouping
+    /// isn't reliable here (headless tests and real keystrokes don't
+    /// share a run-loop-cycle boundary the same way), so this manages
+    /// the group explicitly rather than depending on it.
+    private static let coalescingWindow: TimeInterval = 2.0
+
+    private func applyCoalescingGrouping(for kind: CoalescingKind?, range: NSRange) {
+        var continuesStreak = false
+        if let kind, let previousKind = coalescingKind, kind == previousKind,
+           let lastCaret = coalescingCaretOffset,
+           coalescingClock().timeIntervalSince(coalescingLastEditAt) <= Self.coalescingWindow {
+            switch kind {
+            case .insert:
+                continuesStreak = range.location == lastCaret
+            case .deleteBackward:
+                continuesStreak = range.upperBound == lastCaret
+            case .deleteForward:
+                continuesStreak = range.location == lastCaret
+            }
+        }
+
+        if continuesStreak { return }
+
+        // Every call that is about to `registerUndo` needs *some* open
+        // group at that moment — `UndoManager.registerUndo` throws
+        // ("must begin a group before registering undo") without one,
+        // and nothing here can rely on NSUndoManager's own per-"event"
+        // auto-grouping to supply it (see this method's doc comment).
+        // A non-coalescable edit (`kind == nil`) still needs its own
+        // self-contained group; it just won't be treated as
+        // continuable by the *next* edit (`coalescingKind` is reset to
+        // `nil` alongside it in `mutateSourceText`), so the next call
+        // always finds `continuesStreak == false` and closes this group
+        // before opening its own — found via a real crash (not
+        // guessed): a genuine `NSInternalInconsistencyException`
+        // ("must begin a group before registering undo") on the very
+        // first multi-character `insertText` call, once a serial (non-
+        // parallel) test run separated it from unrelated flaky
+        // SwiftUI/AppKit contention noise that had been masking it.
+        if editingUndoManager.groupingLevel > 0 {
+            editingUndoManager.endUndoGrouping()
+        }
+        editingUndoManager.beginUndoGrouping()
     }
 
     private func deleteBackward() {
@@ -1996,7 +2184,7 @@ extension FoldingTextView {
         }
         guard selectedUTF16Range.location > 0 else { return }
         let range = NSRange(location: selectedUTF16Range.location - 1, length: 1)
-        mutateSourceText(in: range, with: "")
+        mutateSourceText(in: range, with: "", coalescingKind: .deleteBackward)
     }
 
     private func deleteForward() {
@@ -2006,7 +2194,7 @@ extension FoldingTextView {
         }
         guard selectedUTF16Range.location < documentTextStorage.length else { return }
         let range = NSRange(location: selectedUTF16Range.location, length: 1)
-        mutateSourceText(in: range, with: "")
+        mutateSourceText(in: range, with: "", coalescingKind: .deleteForward)
     }
 
     // MARK: - T02: selection drawing, mouse click/drag, keyboard navigation, copy
@@ -2243,7 +2431,12 @@ extension FoldingTextView: NSTextInputClient {
         }
         markedTextUTF16Range = nil
         composingOriginalText = nil
-        mutateSourceText(in: range, with: text, undoPreviousOverride: undoOverride)
+        // T03: only a genuine single-character insert into an empty
+        // (non-replacing) range is coalescing-eligible — a multi-
+        // character paste/IME commit, or replacing an existing
+        // selection, always stands as its own undo step.
+        let kind: CoalescingKind? = (range.length == 0 && (text as NSString).length == 1) ? .insert : nil
+        mutateSourceText(in: range, with: text, undoPreviousOverride: undoOverride, coalescingKind: kind)
     }
 
     /// Keyboard commands `interpretKeyEvents(_:)` routes here when no
@@ -2259,9 +2452,9 @@ extension FoldingTextView: NSTextInputClient {
         guard session.mode == .source else { return }
         switch selector {
         case Selector(("insertNewline:")), Selector(("insertNewlineIgnoringFieldEditor:")):
-            mutateSourceText(in: selectedUTF16Range, with: "\n")
+            mutateSourceText(in: selectedUTF16Range, with: "\n", coalescingKind: selectedUTF16Range.length == 0 ? .insert : nil)
         case Selector(("insertTab:")):
-            mutateSourceText(in: selectedUTF16Range, with: "\t")
+            mutateSourceText(in: selectedUTF16Range, with: "\t", coalescingKind: selectedUTF16Range.length == 0 ? .insert : nil)
         case Selector(("deleteBackward:")):
             deleteBackward()
         case Selector(("deleteForward:")):
@@ -2371,9 +2564,28 @@ extension FoldingTextView: NSTextInputClient {
     /// history at all.
     func unmarkText() {
         if let marked = markedTextUTF16Range, let original = composingOriginalText {
+            // `registerUndo` requires *some* open group at the moment
+            // it's called — `groupsByEvent` is disabled (T03's own
+            // fix, see `completeInit`'s doc comment), so there is no
+            // automatic fallback here the way there might otherwise be.
+            // This path bypasses `mutateSourceText`/
+            // `applyCoalescingGrouping` entirely (finalizing a
+            // composition without an explicit `insertText` commit is
+            // its own standalone action, never coalescable with
+            // anything), so it must open and close its own group —
+            // found via a real crash (`NSInternalInconsistencyException`
+            // "must begin a group before registering undo"), the same
+            // hazard class `applyCoalescingGrouping` already guards
+            // against for every path that *does* go through
+            // `mutateSourceText`.
+            if editingUndoManager.groupingLevel > 0 {
+                editingUndoManager.endUndoGrouping()
+            }
+            editingUndoManager.beginUndoGrouping()
             editingUndoManager.registerUndo(withTarget: self) { view in
                 view.mutateSourceText(in: marked, with: original)
             }
+            editingUndoManager.endUndoGrouping()
         }
         markedTextUTF16Range = nil
         composingOriginalText = nil

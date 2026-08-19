@@ -198,6 +198,16 @@ struct TextInputTests {
     @Test func firstRectForCharacterRangeAndCharacterIndexRoundTripThroughScreenCoordinates() throws {
         let view = makeSourceView("Hello World")
         view.prepareForEditing()
+        // `prepareForEditing()` creates a real NSWindow with `view` as
+        // its content view — a genuine strong reference cycle
+        // (view.hostWindow <-> window.contentView) that ARC alone never
+        // breaks. Left alone, `becomeFirstResponder()`'s blink timer
+        // (T01) would keep firing against this leaked view for the
+        // rest of the process's life — found via a real crash running
+        // the full suite (see FoldingTextView's `deinit` doc comment).
+        // `resignFirstResponder()` stops it explicitly regardless of
+        // whether the pair ever actually deallocates.
+        defer { view.resignFirstResponder() }
         view.ensureLayout()
 
         let targetOffset = 6 // "World" start
@@ -247,6 +257,7 @@ struct TextInputTests {
     @Test func singleClickPlacesTheCaretNearTheClickedOffsetWithNoSelection() throws {
         let view = makeSourceView("Hello World")
         view.prepareForEditing()
+        defer { view.resignFirstResponder() } // stop the blink timer; see the first T01 test's comment
         view.ensureLayout()
 
         let targetOffset = 6 // "World"
@@ -260,6 +271,7 @@ struct TextInputTests {
     @Test func dragAfterMouseDownExtendsACharacterSelectionFromTheAnchor() throws {
         let view = makeSourceView("Hello World")
         view.prepareForEditing()
+        defer { view.resignFirstResponder() } // stop the blink timer; see the first T01 test's comment
         view.ensureLayout()
 
         let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: 0)
@@ -283,6 +295,7 @@ struct TextInputTests {
     @Test func doubleClickSelectsTheWholeWordUnderThePoint() throws {
         let view = makeSourceView("Hello World")
         view.prepareForEditing()
+        defer { view.resignFirstResponder() } // stop the blink timer; see the first T01 test's comment
         view.ensureLayout()
 
         let down = try mouseEvent(.leftMouseDown, view: view, atUTF16Offset: 8, clickCount: 2)
@@ -295,6 +308,7 @@ struct TextInputTests {
     @Test func tripleClickSelectsTheWholeLineIncludingItsNewline() throws {
         let view = makeSourceView("First line.\nSecond line.\nThird line.")
         view.prepareForEditing()
+        defer { view.resignFirstResponder() } // stop the blink timer; see the first T01 test's comment
         view.ensureLayout()
 
         let secondLineOffset = (view.string as NSString).range(of: "Second").location
@@ -391,6 +405,135 @@ struct TextInputTests {
         let context = makeBitmapContext()
         view.selectedUTF16Range = range
         view.drawSelectionHighlight(in: context, visibleRect: view.currentVisiblePackedRect())
+    }
+
+    // MARK: - T03: undo/redo coalescing
+
+    /// Types `text` one character at a time via the real `insertText`
+    /// entry point (not a single multi-char call) — this is what a real
+    /// keystroke-by-keystroke typing session actually drives.
+    private func typeCharacterByCharacter(_ text: String, into view: FoldingTextView) {
+        for character in text {
+            view.insertText(String(character), replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+    }
+
+    @Test func typingAWordCharacterByCharacterCoalescesIntoOneUndoStep() {
+        let view = makeSourceView("")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        typeCharacterByCharacter("hello", into: view)
+        #expect(view.string == "hello")
+
+        #expect(view.undoLastChange())
+        #expect(view.string == "", "one undo step must remove the whole typed run")
+        #expect(!view.undoLastChange(), "nothing further to undo — only one step was registered")
+    }
+
+    @Test func typingThenMovingTheCaretThenTypingElsewhereStartsANewGroup() {
+        let view = makeSourceView("")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        typeCharacterByCharacter("ab", into: view)
+        #expect(view.string == "ab")
+
+        // Caret moved (not a contiguous continuation of the typed run)
+        // before typing again elsewhere.
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        typeCharacterByCharacter("X", into: view)
+        #expect(view.string == "Xab")
+
+        #expect(view.undoLastChange())
+        #expect(view.string == "ab", "the non-contiguous 'X' is its own undo step")
+        #expect(view.undoLastChange())
+        #expect(view.string == "", "the original contiguous 'ab' run is the other undo step")
+    }
+
+    @Test func consecutiveBackspacesCoalesceSeparatelyFromConsecutiveInserts() {
+        let view = makeSourceView("hello")
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        view.doCommand(by: Selector(("deleteBackward:")))
+        view.doCommand(by: Selector(("deleteBackward:")))
+        view.doCommand(by: Selector(("deleteBackward:")))
+        #expect(view.string == "he")
+
+        #expect(view.undoLastChange())
+        #expect(view.string == "hello", "three coalesced backspaces are one undo step")
+    }
+
+    @Test func insertsAndBackspacesNeverCoalesceWithEachOtherEvenWhenAdjacent() {
+        let view = makeSourceView("")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        typeCharacterByCharacter("ab", into: view)
+        #expect(view.string == "ab")
+        // Backspacing immediately after typing is a different kind
+        // (delete vs insert) — must not merge into the insert group.
+        view.doCommand(by: Selector(("deleteBackward:")))
+        #expect(view.string == "a")
+
+        #expect(view.undoLastChange())
+        #expect(view.string == "ab", "the backspace is its own undo step")
+        #expect(view.undoLastChange())
+        #expect(view.string == "", "the coalesced 'ab' insert run is the other undo step")
+    }
+
+    @Test func aPauseLongerThanTheCoalescingWindowStartsANewGroupEvenWhenContiguous() {
+        let view = makeSourceView("")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        view.coalescingClock = { now }
+
+        typeCharacterByCharacter("ab", into: view)
+        #expect(view.string == "ab")
+
+        // Simulate a long pause (well past the coalescing window) before
+        // the next, otherwise-contiguous character — deterministic via
+        // the injectable clock (N9), no real sleeping.
+        now = now.addingTimeInterval(30)
+        typeCharacterByCharacter("c", into: view)
+        #expect(view.string == "abc")
+
+        #expect(view.undoLastChange())
+        #expect(view.string == "ab", "the stale 'c' is its own undo step despite being contiguous")
+        #expect(view.undoLastChange())
+        #expect(view.string == "")
+    }
+
+    @Test func redoReplaysTheWholeCoalescedRunInOneStep() {
+        let view = makeSourceView("")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        typeCharacterByCharacter("hi", into: view)
+        #expect(view.undoLastChange())
+        #expect(view.string == "")
+        #expect(view.redoLastChange())
+        #expect(view.string == "hi")
+        #expect(!view.redoLastChange())
+    }
+
+    @Test func multiCharacterInsertAndSelectionReplacementAreNeverCoalesced() {
+        let view = makeSourceView("Hello")
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        // A multi-character insert (IME commit / paste analogue) must
+        // always be its own atomic undo step, never merged with
+        // anything before or after it.
+        view.insertText(" World", replacementRange: NSRange(location: NSNotFound, length: 0))
+        typeCharacterByCharacter("!", into: view)
+        #expect(view.string == "Hello World!")
+
+        #expect(view.undoLastChange())
+        #expect(view.string == "Hello World", "the coalescable '!' is its own step")
+        #expect(view.undoLastChange())
+        #expect(view.string == "Hello", "the multi-character insert is its own separate step")
+    }
+
+    /// Calling undo while a coalescing group is still open (no
+    /// subsequent edit ever closed it) must not crash —
+    /// `UndoManager.undo()` while `groupingLevel > 0` is a programming
+    /// error if not guarded against.
+    @Test func undoImmediatelyAfterTypingWithNoInterveningEditDoesNotCrash() {
+        let view = makeSourceView("")
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+        typeCharacterByCharacter("ab", into: view)
+        #expect(view.undoLastChange())
+        #expect(view.string == "")
     }
 }
 #endif
