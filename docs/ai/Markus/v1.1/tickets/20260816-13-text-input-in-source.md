@@ -504,3 +504,229 @@ work. Working tree clean after eight commits (T01–T08). Ticket
 `status:` left `in-progress`, Acceptance Criteria/Subtask checkboxes
 left unchecked, `bora-review` not run — per this project's convention,
 that is the controlling session's job.
+
+## Review
+
+### 2026-08-18
+
+**Verdict: Important** — do not mark `done`, do not start the next
+ticket. Two findings below should be fixed (or explicitly deferred by
+the human) before this ticket closes; the rest are real but lower
+priority and can travel as ticket Notes / fast-follows.
+
+**Method**: read the full ticket-range diff (`745595b..HEAD`, 10
+commits) directly, not just commit messages; dispatched five parallel
+fresh reviewers each owning one plan-task cluster (T01; T02+T03;
+T04+T05; T06+T07; T08+test-quality) with the actual diff and full
+current source files, then independently re-verified the two
+highest-risk claims myself by reading the raw undo-grouping and
+caret-geometry code line-by-line rather than trusting either the
+Notes or the sub-reviews. Ran targeted `xcodebuild ... -only-testing:`
+verification myself, foreground, no pipes (avoiding the documented
+`tee`/`grep` stall): `MarkusTests/TextInputTests` alone (TEST
+SUCCEEDED, 4.3s), a second run with `-parallel-testing-enabled NO`
+(TEST SUCCEEDED, 3.2s — the exact configuration that originally
+surfaced the T03 crash, now clean), and
+`DocumentSessionTests`+`TableAttachmentTests`+`PerformanceBudgetTests`
+together (TEST SUCCEEDED, 82.8s). All real per-test pass lines
+present, nothing silently skipped — corroborates the ticket's own
+Notes item 4 (the `tee`/`grep` stall was tooling, not a shortcut in
+what actually got verified).
+
+#### Important
+
+1. **Undo and redo are not reachable by any real user interaction.**
+   `keyDown` (`FoldingTextView.swift:1756`) special-cases only Cmd+C;
+   there is no Cmd+Z/Cmd+Shift+Z interception and no Edit-menu Undo/Redo
+   item (confirmed by grep across the app target — the only
+   undo/redo-related menu code is the ticket's own Notes explaining why
+   R3's Edit menu doesn't include them). `undoLastChange()`/
+   `redoLastChange()` are real, correctly-implemented, and well-tested,
+   but only test code and other programmatic callers can reach them.
+   R20 states plainly "undo and redo work" as an Acceptance Criterion;
+   as shipped, a person typing in Markus today has no way to undo a
+   typo. The judgment call to skip menu wiring was disclosed
+   transparently in Notes, but the practical result doesn't meet R20's
+   plain reading. Low-risk, contained fix: bind Cmd+Z/Cmd+Shift+Z in
+   `keyDown` the same way Cmd+C is already bound, calling
+   `undoLastChange()`/`redoLastChange()` directly (mirrors the existing
+   precedent and rationale for why Cmd+letter needs explicit handling
+   here). Needs either that fix or an explicit human decision to defer
+   it to a follow-up ticket before this one closes.
+
+2. **Arrow-key (horizontal) caret movement does not skip hidden/folded
+   ranges, contradicting the plan's own explicit requirement.**
+   `clampedOffset(_:)` (`FoldingTextView.swift:2436-2438`) only clamps
+   to `[0, documentTextStorage.length]`; `moveHorizontally`
+   (`:2550-2563`) computes the new offset by raw arithmetic
+   (`movingFrom + delta`) with no hidden-range awareness. This differs
+   from click/drag placement and vertical (up/down) movement, both of
+   which resolve through point-based helpers
+   (`utf16Offset(atPackedPoint:)`/`packedCaretRect`) that only ever
+   walk visible fragments via `enumeratePackedVisibleFragments`
+   (skipping `isCollapsed` fragments). The design note explicitly
+   required the offset helpers to "skip hidden/folded UTF-16 ranges,"
+   and T02's own plan text says "arrow keys move the caret (skip
+   hidden ranges)" — this specific case isn't met. Practical effect:
+   arrowing across a folded region's boundary in Source mode moves the
+   caret into the hidden byte range; `packedCaretRect` then returns
+   `nil` for that offset and the caret silently stops drawing (per T01
+   agent's independent trace of the same nil-contract) until the user
+   arrows past the whole hidden span — and typing at that point inserts
+   into hidden/folded text with no visual feedback. No test in
+   `TextInputTests.swift` exercises arrow-key movement across a fold
+   (grepped for fold-related tests; the only one found covers
+   debounce/fold-repair, not caret movement). Untested and unaddressed.
+
+3. **`DocumentSession.isDirty`'s undo/redo round-trip claim in Notes is
+   asserted but not directly tested.** Notes says isDirty "should"
+   already reflect undo/redo correctly since it's a plain string
+   comparison, and treats this as out of T04's scope. Independent
+   tracing (mine, and one sub-review's) confirms the underlying logic
+   is genuinely sound — `mutateSourceText`'s registered undo inverse
+   replays the exact pre-edit substring, so the buffer round-trips
+   byte-for-byte and the comparison will evaluate correctly — but the
+   cited test (`markdownDocumentUpdatesChangeCountOnEditAndUndoReturnsToClean`)
+   asserts `NSDocument.isDocumentEdited` (a separate, counter-based
+   mechanism), not `DocumentSession.isDirty` itself. No test does
+   `insertText` → save → `insertText` → `undoLastChange()` → assert
+   `!session.isDirty`. Recommend adding that one direct test; the fix,
+   if any is even needed, should be cheap given the logic already
+   checks out.
+
+4. **Preview-mode `accessibilityValue` reads raw Markdown source, not
+   rendered text — a real (if disclosed) accessibility regression risk
+   for Preview specifically.** `accessibilityValue()` returns
+   `documentTextStorage.string` unconditionally in both modes. A
+   VoiceOver user navigating Preview would hear raw syntax (`##`,
+   `**bold**`, table pipes) rather than the rendered content Preview
+   visually shows, making Preview accessibility indistinguishable from
+   Source's. Notes disclose this openly as a scope-limiting judgment
+   call, and a full verbalized-rendered-Markdown projection is
+   legitimately larger scope than this ticket — but as shipped it
+   undercuts the accessibility pass's own stated goal for Preview mode.
+   Recommend a fast-follow ticket rather than treating this as fully
+   resolved.
+
+#### Minor
+
+- `unmarkText()` (`FoldingTextView.swift:2839`) is the one
+  `NSTextInputClient` entry point not gated on `session.mode ==
+  .source`. Reachable only if the user switches to Preview mid-IME
+  composition (narrow), but inconsistent with every sibling entry
+  point's explicit gate.
+- `undoManager` still exposes `editingUndoManager` directly
+  (pre-existing); the "close any open coalescing group before calling
+  undo/redo" guard lives only inside `undoLastChange()`/
+  `redoLastChange()`, not in the exposed `UndoManager` itself. Not
+  currently reachable any other way (nothing else calls
+  `editingUndoManager.undo()`/`.redo()` directly), but would become a
+  live crash risk the moment a future ticket wires a standard Edit >
+  Undo/Redo menu item through the default responder-chain `undo:`/
+  `redo:` actions (which bypass these wrapper methods). Worth a
+  comment or a same-guard override on `UndoManager` for whoever picks
+  that up — plausibly the same fix as Important finding #1 above.
+- In `mutateSourceText`, `applyCoalescingGrouping` opens/continues a
+  group before `FindReplace.replace` is attempted; if `replace` ever
+  returned `false` the function returns early (`guard ok else { return
+  false }`) with a freshly-opened group left dangling. Currently dead
+  code — `mutateSourceText`'s own entry guard is identical to
+  `FindReplace.replace`'s internal failure condition, so `replace`
+  can't currently fail once the outer guard has passed — but a fragile
+  duplicate-guard hazard if the two conditions ever diverge.
+- `tableSourceRanges` (T06's fix for the multi-table selection gap in
+  `TableAttachment.swift`) is correctly implemented and directly
+  tested, but has zero call sites in production code — the actual
+  Preview→source reverse mapping uses an independent, also-correct
+  line-range-based approach instead (a deliberate, disclosed judgment
+  call). Not a bug, just worth knowing the fixed utility is presently
+  inert outside its own tests.
+- The T05 debounce tests call `fireDebouncedReparse()` directly rather
+  than waiting on a real `Timer` interval — deterministic and
+  appropriate given this suite's established N9 philosophy (see
+  `toggleCaretVisibility`'s identical precedent for the blink timer),
+  but it means no test exercises the real `Timer.scheduledTimer`
+  wiring/interval end-to-end. A bug in the interval itself, or in the
+  timer never actually being scheduled, wouldn't be caught by this
+  suite alone. My own two full-file `TextInputTests` runs passed
+  reliably, which is reassuring but doesn't close this specific gap.
+- Both the caret-blink and debounce timers hop through `Task { @MainActor
+  in ... }` from their `Timer` callback rather than a synchronous
+  main-actor call, even though both already fire on the main run loop.
+  A purely theoretical (never observed) double-fire race exists if a
+  reschedule lands in the narrow window between a timer tick and its
+  hopped `Task` actually running. Shared pattern between T01 and T05,
+  not a new hazard introduced by either individually.
+- `caretDoesNotDrawWhenSelectionIsNonEmptyOrModeIsPreview` verifies
+  caret *state* (visibility flag, mode, selection range), not actual
+  pixel-level draw-skipping in `draw(_:)` — an honestly-documented
+  coverage limitation (headless bitmap testing constraint), not a
+  false-passing test.
+
+#### What checked out cleanly
+
+- The point↔UTF-16-offset and offset↔`CGRect` geometry helpers (T01)
+  correctly skip folded/hidden content for click placement, caret
+  drawing, and selection-highlight drawing, via the same
+  `enumeratePackedVisibleFragments`/`isCollapsed` mechanism
+  `drawFragments` already used — no O(document×viewport) regression of
+  ticket 09's fixed bug.
+- The leaked-timer crash fix (`deinit` backstop + `resignFirstResponder`
+  teardown) is real and correctly scoped: the retain cycle it targets
+  exists only in test-only `prepareForEditing()` scaffolding, not in
+  the production `SessionEditorRepresentable` hosting path; both timer
+  closures use `[weak self]`, so a fired-after-dealloc call is already
+  a safe no-op independent of `deinit`.
+- The core T03 undo-grouping fix is sound, verified by direct code
+  reading (not just trusting Notes/tests): `applyCoalescingGrouping`
+  unconditionally closes any dangling group and opens a fresh one
+  whenever a streak doesn't continue — including for non-coalescable
+  edits (`kind == nil`) — so every `registerUndo` call site has a
+  guaranteed open group. `groupsByEvent = false` is set in
+  `completeInit()`. Both other pre-existing bare `registerUndo` sites
+  (`insertTextAtCaret`, `unmarkText`) now use the identical
+  open/close-group pattern. `undoLastChange()`/`redoLastChange()`
+  explicitly close any dangling coalescing group before calling
+  `undo()`/`redo()`, preventing the "undo mid-streak" leak scenario.
+  Re-ran `TextInputTests` twice myself, including once with
+  `-parallel-testing-enabled NO` (the exact configuration that
+  originally surfaced the crash) — both passed clean.
+- T04's `updateChangeCount` wiring correctly reads
+  `isUndoing`/`isRedoing` synchronously within the same call frame as
+  the undo/redo replay (no async hop), so change-kind classification is
+  reliable.
+- T05's debounce is genuinely off the keystroke path (`parsesPerformed`
+  counter proves zero synchronous reparses on `insertText`, exactly one
+  after the debounce fires) and correctly cancels/reschedules on every
+  keystroke, never leaking multiple pending timers.
+  `replaceSelection(with:)` (Find/Replace) is unchanged and still
+  reparses synchronously.
+- T06's line-range-based Preview→source reverse mapping (chosen over
+  the also-fixed `tableSourceRanges` utility) correctly resolves a
+  table block to its complete source, including a selection spanning
+  an ordinary paragraph and a table, in correct document order with
+  clean block separation.
+- `copy(_:)` is a proper `@objc` responder-chain override in both
+  modes; `keyDown`'s explicit Cmd+C interception calls it directly
+  rather than duplicating logic, and doesn't collide with anything
+  since the Edit menu has no Copy item today.
+- Save (`write(to:)`/`data(ofType:)`) reads directly from
+  `session.textStorage`, unaffected by T05's debounce — R23's
+  byte-identical save is not at risk from delayed reparse.
+- T08's rewritten performance test drives the real `insertText` path
+  (not the old `replaceSelection` stand-in), asserts the
+  `parsesPerformed`/`hasPendingDebouncedReparse` counters directly, and
+  uses a real, meaningfully tight wall-clock budget (2.0s, a 125×
+  tightening from the placeholder's 15s) rather than a disguised loose
+  bound.
+- Spot-checked 15+ tests across `TextInputTests.swift`,
+  `TableAttachmentTests.swift`, and `PerformanceBudgetTests.swift`
+  (caret placement, IME composition/undo, mouse click/drag/double/
+  triple-click, coalescing in both directions, dirty flag, debounce,
+  multi-table Preview copy, accessibility) — all assert specific,
+  falsifiable outcomes (exact strings/ranges/counts/order), not
+  shallow "doesn't crash" checks. No violation of N9 found in the
+  sample.
+- Commit messages all follow `{ticket-id} {task-id}: {title}`; the
+  final wrap-up commit's plain `{ticket-id}: ...` form matches this
+  project's established convention for verify/Notes commits.
