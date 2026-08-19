@@ -505,6 +505,101 @@ work. Working tree clean after eight commits (T01–T08). Ticket
 left unchecked, `bora-review` not run — per this project's convention,
 that is the controlling session's job.
 
+### 2026-08-18 (review fixes)
+
+`bora-review` found four Important findings (see `## Review` below);
+all four addressed, plus one Minor picked up along the way since it
+was quick and low-risk.
+
+**Important #1 — undo/redo unreachable by any real user interaction.**
+`keyDown` special-cased only Cmd+C; there was no Cmd+Z/Cmd+Shift+Z
+binding and no Edit-menu Undo/Redo item, so R20's "undo and redo work"
+wasn't actually true for a real user. Fixed by checking Cmd+Z/Cmd+
+Shift+Z in `keyDown` the same way Cmd+C already was — ahead of the
+Source-only gate, since undo/redo must keep working after switching to
+Preview mid-edit, matching `undoLastChange`/`redoLastChange`'s own
+mode-independence. Picked up Minor finding "unmarkText() not gated on
+Source mode" in the same commit, since it's the same area of code and
+a one-line fix.
+
+**Important #2 — arrow-key horizontal caret movement didn't skip
+folded/hidden ranges.** `moveHorizontally` did raw `movingFrom + delta`
+arithmetic with no fold-awareness, unlike click/drag and vertical
+movement (both already point-based and fold-aware via
+`enumeratePackedVisibleFragments`). Fixed with a new
+`FoldingSession.skipHiddenUTF16Offset(_:movingForward:)`, built on the
+same sorted/merged `cachedHiddenUTF16Ranges` binary search
+`isFullyHidden` already uses — jumps straight to a hidden range's far
+edge in the direction of travel when the computed target lands inside
+one. RED confirmed directly per the review's own request: temporarily
+reverted the fix and reran `TextInputTests` — exactly the two new
+fold-navigation tests failed, nothing else — before restoring it.
+Found and fixed a fixture mistake of my own while writing the RED
+test: a single heading with no subsequent heading to bound its
+`foldExtent` swallows the entire rest of the document when folded
+(no next same-or-shallower heading for `BlockIndex.build` to stop at)
+— needed a trailing "## Following two" heading, the same pattern
+`FoldingTextViewTests.fixture` already uses, to keep the fold bounded
+and leave real content to land on.
+
+**Important #3 — `DocumentSession.isDirty`'s undo/redo round-trip
+claimed in Notes but not directly tested.** The cited test asserted
+`NSDocument.isDocumentEdited` (a separate mechanism), not `isDirty`
+itself. The underlying logic already traced out as sound (both mine
+and the review's independent tracing agreed), so this was a coverage
+gap, not a suspected bug — added
+`documentSessionIsDirtyReturnsFalseAfterUndoingBackToTheSavedState`,
+no production change needed.
+
+**Important #4 — Preview-mode `accessibilityValue` read raw Markdown,
+not rendered text.** The review suggested a fast-follow ticket was an
+acceptable alternative if a real fix needed meaningfully new machinery;
+judgment call here was that it didn't — ticket 08's own
+`PreviewSubstitutionIndex.anchorSubstitutions` (already built) holds
+exactly the rendered strings needed. `accessibilityValue` now sorts
+those into document order and joins their already-rendered strings,
+falling back to the raw buffer in Source mode or before the first
+`applyStyling` call.
+
+Deliberately not picked up (left as-is, per the review's own "Minor,
+non-blocking" framing and the coordinator's explicit "don't let it
+slow you down"): the remaining five Minor findings (exposed
+`editingUndoManager` lacking the same coalescing-group guard as
+`undoLastChange`/`redoLastChange` — real but only reachable once a
+future ticket wires a standard Edit > Undo/Redo menu item through the
+default responder chain, which none does yet; the dead-code dangling-
+group-on-`replace`-failure hazard in `mutateSourceText`; the inert
+`tableSourceRanges` utility; debounce tests calling
+`fireDebouncedReparse()` directly rather than exercising the real
+`Timer` interval end-to-end; the `Task { @MainActor in }` hop in both
+timer callbacks). None block correctness today; each is either already
+disclosed as a known limitation elsewhere in these Notes or is a
+low-risk, well-scoped item for whoever picks it up next.
+
+Four separate commits, one per Important finding
+(`git add -p` to split `FoldingTextView.swift`'s hunks by concern; a
+manual scratch-file reconstruction to split `TextInputTests.swift`'s
+single contiguous addition-only diff into four incremental states,
+since `git add -p` cannot split a hunk with no unchanged context lines
+to split on). Each commit's file state was independently built and
+tested before committing.
+
+Verify (fresh, this session, worktree/branch confirmed via `pwd`/`git
+branch --show-current` before every command, including after cwd
+drifted back to the main checkout mid-session and had to be corrected):
+`-only-testing:MarkusTests/TextInputTests` → TEST SUCCEEDED at every
+intermediate commit stage (T01-only, T01+T02, T01+T02+T04, and the
+full T01+T02+T04+T07 state) and once more on the final `HEAD`; RED
+independently confirmed for the T02 fix as described above. Full
+three-destination ticket-scope re-verify on the final committed state:
+macOS → TEST SUCCEEDED (135.2s); iOS Simulator iPhone 17 → TEST
+SUCCEEDED (107.7s); iOS Simulator iPad Pro 13-inch (M5) → TEST
+SUCCEEDED (116.4s). `bora dev lint` reports only the same pre-existing
+ticket-08 mismatch. Working tree clean after four commits. Ticket
+`status:` still left `in-progress`, Acceptance Criteria/Subtask
+checkboxes still unchecked — per this project's convention, that
+remains the controlling session's job.
+
 ## Review
 
 ### 2026-08-18
