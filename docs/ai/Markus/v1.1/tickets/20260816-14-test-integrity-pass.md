@@ -227,3 +227,108 @@ xcodebuild -project Markus/Markus.xcodeproj -scheme Markus -destination 'platfor
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-18
+
+**T01.** Re-read every file/line cited in the design note's catalogue
+and confirmed it exactly: `MacOnlyChrome.minimapIsRequired`,
+`MacDocumentChrome.usesNSDocumentTabbing`/
+`.standaloneFileOpenCreatesNewDocument`, `MacMinimapChrome.showsMinimap`,
+`ModeChrome.showsMacTitleBarControl`/`.showsIOSSegmentedControl`,
+`ThemeChrome.showsHoverPreview`/`.hostsPickerInSettings` are all either
+pure `#if os(macOS) true #else false #endif` or (for
+`hostsPickerInSettings`) unconditional `true` with no counterfactual —
+confirmed via direct reads of `Document/MacOnlyChrome.swift`,
+`Document/MacDocumentChrome.swift`, `Editor/MacMinimap.swift`,
+`Document/ModeChrome.swift`, `Theme/ThemeChrome.swift`. Deleted
+`MacOnlyChromeTests.swift` outright (its claims are redundant with
+`MacMinimapTests.swift` and `MacTabsTests.swift`, per the design note).
+Deleted `MacTabsTests.swift`'s `macUsesNSDocumentTabbingNotSwiftUITabBar`
+and the two single-line flag assertions at the top of
+`openingSecondFileUsesNSDocumentNotSessionReplace` and
+`iOSChromeOpenReplacesSingleSession`, leaving their real live bodies
+untouched.
+
+Extended the audit with a grep across `Markus/MarkusTests/` for
+`#expect(true)`/`#expect(false)` and for `#if os(macOS)` blocks whose
+only content is a bare bool literal into `#expect`, per T01's own
+instruction to "add anything the audit above missed." Found two the
+catalogue didn't list: `MarkusTests.swift`'s scaffold-generated
+`#expect(true)` (the plainest possible N9 violation, unconditionally
+true with no derivation at all) — deleted the file; and a single
+embedded `#expect(MacMinimapChrome.showsMinimap)` line inside
+`MacMinimapTests.swift`'s otherwise fully live
+`minimapUsesCurrentModeAndCompressesFoldedPackedY` (only compiled under
+`#if os(macOS)`, so it reduces to `#expect(true)` on this platform) —
+deleted just that line, same treatment as the catalogued single-line
+cases. No other `#if os(macOS)` block in the suite reduces to a bare
+bool literal, and no other unconditional-`true` production constant is
+asserted anywhere in `Markus/Markus/` — confirmed by grep.
+
+**T02.** Replaced `ModeChromeTests.swift`'s three tautological
+`showsMacTitleBarControl`/`showsIOSSegmentedControl` line-pairs
+(former `:71-72`, `:89-90`, `:92-93`) with one new test,
+`macTitleBarToolbarsSoleItemIsGenuinelyTheSegmentedModePicker`, modeled
+directly on `MacTitleBarChromeTests.macTitleBarToolbarHasOnlyTheModePickerAndNothingElse`:
+materializes a real `MarkdownDocument`'s window/toolbar and asserts the
+sole toolbar item's materialized view subtree contains a real AppKit
+segmented control, not just that a lone item exists (that exclusivity
+claim was already proven by `MacTitleBarChromeTests`; this test adds
+the item's *identity*). TDD: wrote the test, then temporarily swapped
+the toolbar's `DocumentModePicker` for a plain `Button` in
+`ContentView.swift` and reran — the new test failed for the right
+reason (RED, no segmented-control descendant found), then restored the
+picker and confirmed GREEN. `ContentView.swift` has no net diff.
+
+Fixed `ThemePickerTests.swift`'s `settingsHostThePickerAndHoverPreviewIsMacOnly`:
+deleted it outright rather than partially. `hostsPickerInSettings` had
+no live counterpart (unconditionally `true`, never platform-conditional).
+For `showsHoverPreview`'s *gating* (whether `ThemeCard`'s `onHover`
+closure calls `ThemeChrome.preview` only when the flag is true):
+judged this **not worth a live test** and left it untested. Rationale:
+the gate is a single inline `guard ThemeChrome.showsHoverPreview else { return }`
+inside `ThemePickerView.body`'s closures, not independently callable
+without either duplicating that one-line guard in the test (testing a
+copy, not the real wiring) or invasively refactoring production code
+just to make it testable. More fundamentally, `showsHoverPreview` is
+fixed at compile time per platform, so within any single-platform test
+binary the gate can only ever be exercised in the one direction that
+platform's build takes — there is no way to observe both "gated off"
+and "gated on" behaviour in one run, so a single-platform test of the
+gate would itself be exactly as unfalsifiable as the tautology it
+would replace. This matches the codebase's established pattern (noted
+in ticket 13's research) of not simulating platform hover/hit-test
+events and instead testing the underlying method directly —
+`ThemeChrome.preview(_:on:)`'s real effect stays covered by
+`macHoverPreviewChangesOnlyTheProxysTokensNeverTheRealDocument`
+elsewhere in the same file.
+
+Re-confirmed (read in full, not assumed) that each of the AC's five
+named areas has genuinely falsifiable coverage: menu commands and
+fold-all/unfold-all via `MacMainMenuTests.swift` (real `NSMenu` built
+via `MacMainMenu.build()`, real responder-chain walk via
+`resolveAndPerform`, real `FoldStore` state assertions in
+`foldAllAndUnfoldAllResolveThroughTheResponderChainAndActuallyFoldTheDocument`);
+theme selection via `ThemePickerTests.swift`/`CustomThemeTests.swift`
+(real `ThemeStore`/`CustomTheme.tokens` value assertions, a real
+AppKit mouse-event dispatch test for card selection); tree population
+via `FolderChromeTests.swift` plus the more extensive
+`MarkdownFolderTreeTests.swift`/`FolderSessionTests.swift` (real
+folder enumeration, real security-scoped bookmark round-trips); Preview
+rendering via `PreviewSubstitutionTests.swift`/`PreviewRenderingTests.swift`
+(extensive, real GFM substitution assertions per element). No genuine
+gap found beyond what T01/T02 already fixed — no new test files added.
+
+**Verify.** T01's and T02's own scoped verify commands passed
+individually. Ticket-scope verify (full suite, all three destinations)
+passed clean with zero failures:
+- macOS: `** TEST SUCCEEDED **` (135.9s), 243 passed, 0 failed.
+- iOS Simulator, iPhone 17: `** TEST SUCCEEDED **` (116.8s), 147
+  passed, 0 failed.
+- iOS Simulator, iPad Pro 13-inch (M5): `** TEST SUCCEEDED **` (177.9s),
+  147 passed, 0 failed.
+
+`bora dev lint "Markus/v1.1"` run after each ticket-file edit; only
+the known pre-existing, out-of-scope error on ticket 08
+(`current_task 'T08' is not a task id`) reported — unrelated to this
+ticket's files.
