@@ -606,5 +606,113 @@ struct TextInputTests {
         #expect(editor.redoLastChange())
         #expect(document.isDocumentEdited)
     }
+
+    // MARK: - T05: debounced reparse off the keystroke path
+
+    @Test func insertTextDoesNotReparseSynchronouslyButFiringTheDebounceDoes() {
+        let view = makeSourceView("Hello")
+        let before = view.session.parsesPerformed
+        #expect(!view.hasPendingDebouncedReparse)
+
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        view.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        // The keystroke itself must not reparse — proves the debounce,
+        // not just that a reparse eventually happens somewhere.
+        #expect(view.session.parsesPerformed == before)
+        #expect(view.hasPendingDebouncedReparse)
+        // But the glyph/buffer change is still same-frame (R20).
+        #expect(view.string == "Hello!")
+
+        view.fireDebouncedReparse()
+        #expect(view.session.parsesPerformed == before + 1)
+        #expect(!view.hasPendingDebouncedReparse)
+    }
+
+    @Test func aBurstOfKeystrokesReparsesOnlyOnceWhenTheDebounceFinallyFires() {
+        let view = makeSourceView("")
+        let before = view.session.parsesPerformed
+        view.selectedUTF16Range = NSRange(location: 0, length: 0)
+
+        typeCharacterByCharacter("hello", into: view)
+        #expect(view.string == "hello")
+        // Five keystrokes, five reschedules, but still only one pending
+        // debounce — not five accumulated ones.
+        #expect(view.session.parsesPerformed == before)
+
+        view.fireDebouncedReparse()
+        #expect(view.session.parsesPerformed == before + 1)
+    }
+
+    @Test func doCommandDeleteAlsoDebouncesRatherThanReparsingSynchronously() {
+        let view = makeSourceView("Hello")
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        let before = view.session.parsesPerformed
+
+        view.doCommand(by: Selector(("deleteBackward:")))
+        #expect(view.string == "Hell")
+        #expect(view.session.parsesPerformed == before)
+        #expect(view.hasPendingDebouncedReparse)
+
+        view.fireDebouncedReparse()
+        #expect(view.session.parsesPerformed == before + 1)
+    }
+
+    @Test func replaceSelectionFindAndReplaceStillReparsesSynchronouslyNotDebounced() {
+        let view = makeSourceView("Hello World")
+        let before = view.session.parsesPerformed
+        view.selectedUTF16Range = (view.string as NSString).range(of: "World")
+
+        #expect(view.replaceSelection(with: "There"))
+
+        // Find/Replace is not a keystroke-path caller (plan: "keeps
+        // calling syncBlocksFromStorage() synchronously") — no pending
+        // debounce, and the reparse already happened.
+        #expect(!view.hasPendingDebouncedReparse)
+        #expect(view.session.parsesPerformed == before + 1)
+    }
+
+    /// Integration with ticket 12's fold repair (not a new repair API,
+    /// only its timing, per the plan): typing elsewhere in the document
+    /// shifts a folded block's line number, and firing the debounce
+    /// must both rebuild the block index AND repair the existing fold
+    /// against its anchor — the exact same repair mechanism
+    /// `syncBlocksFromStorage` already provides, now reached through
+    /// the keystroke path instead of only through `replaceSelection`.
+    @Test func firingTheDebounceRepairsFoldIDsAfterAKeystrokeShiftsBlockLines() throws {
+        let twoBlockFixture = """
+        ## Block B
+
+        Body B marker HERE.
+
+        ## Block A
+
+        Body A.
+        """
+        let view = makeSourceView(twoBlockFixture)
+
+        let blockAOriginal = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.startLine != 1 })
+        view.foldStore.toggle(blockAOriginal.id)
+        view.applyFolds()
+        view.ensureLayout()
+        #expect(view.foldStore.isFolded(blockAOriginal.id))
+
+        // Type at the end of "HERE." — inserting two new lines pushes
+        // "## Block A" further down, via the real insertText path.
+        let hereEnd = (view.string as NSString).range(of: "HERE.").upperBound
+        view.selectedUTF16Range = NSRange(location: hereEnd, length: 0)
+        view.insertText("\nExtra line one.\nExtra line two.", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        // Still stale immediately after the keystroke — the debounce
+        // hasn't fired yet, so the old (pre-edit) block index remains.
+        #expect(view.blocks.first { $0.id.anchor == blockAOriginal.id.anchor }?.id.startLine == blockAOriginal.id.startLine)
+
+        view.fireDebouncedReparse()
+
+        let blockARepaired = try #require(view.blocks.first { $0.id.kind == .heading && $0.id.anchor == blockAOriginal.id.anchor })
+        #expect(blockARepaired.id.startLine != blockAOriginal.id.startLine)
+        #expect(view.foldStore.isFolded(blockARepaired.id))
+        #expect(!view.foldStore.foldedIDs.contains(blockAOriginal.id))
+    }
 }
 #endif

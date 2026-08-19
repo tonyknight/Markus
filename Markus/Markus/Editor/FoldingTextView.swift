@@ -1244,6 +1244,11 @@ final class FoldingTextView: PlatformView {
     /// deterministically (N9) instead of sleeping for real wall-clock
     /// time.
     var coalescingClock: () -> Date = { Date() }
+    /// T05: the pending debounced `session.syncBlocksFromStorage()`
+    /// call — cancelled and rescheduled on every keystroke so a burst
+    /// of typing reparses once, after a quiet period, rather than once
+    /// per character.
+    private var reparseDebounceTimer: Timer?
     #endif
 
     var foldStore: FoldStore { session.foldStore }
@@ -1942,6 +1947,7 @@ final class FoldingTextView: PlatformView {
     /// never run without it.
     deinit {
         caretBlinkTimer?.invalidate()
+        reparseDebounceTimer?.invalidate()
     }
     #endif
 
@@ -2069,6 +2075,52 @@ extension FoldingTextView {
         needsDisplay = true
     }
 
+    // MARK: - T05: debounced reparse off the keystroke path
+
+    /// Comfortably under the Bulk budget's 200 ms (Performance budgets
+    /// table) so a keystroke burst's reparse still lands well inside
+    /// it, while being long enough that ordinary typing cadence (real
+    /// keystrokes tens of milliseconds apart) keeps rescheduling
+    /// instead of firing mid-word.
+    private static let reparseDebounceInterval: TimeInterval = 0.12
+
+    /// Cancels any pending debounced reparse and schedules a new one —
+    /// called from every keystroke-path mutation (`mutateSourceText`),
+    /// never from `replaceSelection(with:)` (Find/Replace), which keeps
+    /// reparsing synchronously per the plan (it is not a keystroke-path
+    /// caller).
+    private func scheduleDebouncedReparse() {
+        reparseDebounceTimer?.invalidate()
+        reparseDebounceTimer = Timer.scheduledTimer(withTimeInterval: Self.reparseDebounceInterval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.fireDebouncedReparse()
+            }
+        }
+    }
+
+    /// The exact action the debounce timer performs when it fires —
+    /// exposed (rather than only reachable via a real timer firing) so
+    /// tests can assert its real effect directly and deterministically
+    /// (N9), the same testability precedent as `toggleCaretVisibility`
+    /// for the blink timer. `session.syncBlocksFromStorage()` is the
+    /// existing "reparse + ticket 12's fold repair + restyle + full
+    /// relayout" sequence (`FoldingSession.syncBlocksFromStorage`) —
+    /// this only changes *when* it runs, not what it does.
+    func fireDebouncedReparse() {
+        reparseDebounceTimer?.invalidate()
+        reparseDebounceTimer = nil
+        session.syncBlocksFromStorage()
+        needsDisplay = true
+    }
+
+    /// Whether a debounced reparse is currently pending — the live,
+    /// testable proxy for "did the last keystroke schedule/reschedule
+    /// the debounce" (N9), since a private `Timer` reference can't be
+    /// asserted on directly.
+    var hasPendingDebouncedReparse: Bool {
+        reparseDebounceTimer != nil
+    }
+
     /// Draws the blinking caret at `selectedUTF16Range`'s location when
     /// the selection is a real (zero-length) caret, in Source mode, and
     /// the current blink phase is on. Internal (not `private`) so tests
@@ -2090,11 +2142,16 @@ extension FoldingTextView {
     /// immediate buffer edit — the same "replace range, wrapped in
     /// begin/endEditing" shape as `FindReplace.replace`/
     /// `replaceSelection(with:)` (the ticket's Design note names this as
-    /// the existing "mutate then reparse" precedent to reuse). Calls
-    /// `session.syncBlocksFromStorage()` synchronously for now — T05
-    /// moves that one call behind a debounce timer; nothing else about
-    /// this primitive changes then. Mode gating (`session.mode ==
-    /// .source`) happens at each public entry point, not here, so that
+    /// the existing "mutate then reparse" precedent to reuse). The
+    /// buffer mutation and glyph display happen synchronously, same-
+    /// frame (R20's "typing inserts at the caret") — real TextKit 2
+    /// incremental layout already relays out the edited range as soon
+    /// as `documentTextStorage` changes, independent of this method.
+    /// Only `session.syncBlocksFromStorage()` (reparse + ticket 12's
+    /// fold repair + restyle + full relayout) is debounced (T05): a
+    /// keystroke burst reparses once, after a quiet period, not once
+    /// per character — see `scheduleDebouncedReparse`. Mode gating
+    /// (`session.mode == .source`) happens at each public entry point, not here, so that
     /// undo/redo — which must keep working even if the user has since
     /// switched to Preview — is never itself blocked by the gate that
     /// stops *new* edits.
@@ -2158,7 +2215,7 @@ extension FoldingTextView {
             coalescingCaretOffset = coalescingKind != nil ? selectedUTF16Range.location : nil
             coalescingLastEditAt = coalescingClock()
         }
-        session.syncBlocksFromStorage()
+        scheduleDebouncedReparse()
         onTextDidChange?()
         onTextChangeCommitted?(currentTextChangeKind)
         needsDisplay = true
