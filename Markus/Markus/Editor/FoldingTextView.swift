@@ -1765,6 +1765,24 @@ final class FoldingTextView: PlatformView {
             copy(nil)
             return
         }
+        // Review fix: undo/redo were only reachable programmatically —
+        // R20 says plainly "undo and redo work," and as shipped a
+        // person typing in Markus had no way to undo a typo (no Edit >
+        // Undo/Redo menu item exists either, per R3's explicit item
+        // list). Same precedent as Cmd+C just above: Cmd+letter
+        // combinations aren't part of AppKit's default text key-binding
+        // table, so this is checked explicitly, ahead of the Source-only
+        // gate — undo/redo must keep working even after switching to
+        // Preview mid-edit, matching `undoLastChange`/`redoLastChange`'s
+        // own mode-independence.
+        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "z" {
+            if event.modifierFlags.contains(.shift) {
+                redoLastChange()
+            } else {
+                undoLastChange()
+            }
+            return
+        }
         guard session.mode == .source else {
             super.keyDown(with: event)
             return
@@ -2837,7 +2855,11 @@ extension FoldingTextView: NSTextInputClient {
     /// without this the whole session would otherwise leave no undo
     /// history at all.
     func unmarkText() {
-        if let marked = markedTextUTF16Range, let original = composingOriginalText {
+        // Review fix (Minor): consistency with every other
+        // NSTextInputClient entry point, all of which explicitly gate
+        // on Source mode — this was the one exception, reachable only
+        // if the user switches to Preview mid-composition.
+        if session.mode == .source, let marked = markedTextUTF16Range, let original = composingOriginalText {
             // `registerUndo` requires *some* open group at the moment
             // it's called — `groupsByEvent` is disabled (T03's own
             // fix, see `completeInit`'s doc comment), so there is no

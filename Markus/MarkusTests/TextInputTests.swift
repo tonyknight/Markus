@@ -918,5 +918,43 @@ struct TextInputTests {
         #expect(view.accessibilityNumberOfCharacters() == (view.string as NSString).length)
         #expect(view.accessibilityVisibleCharacterRange().length == (view.string as NSString).length)
     }
+
+    // MARK: - Review fixes (2026-08-18)
+
+    private func keyEvent(command: Bool, shift: Bool = false, characters: String, keyCode: UInt16) -> NSEvent {
+        var flags: NSEvent.ModifierFlags = []
+        if command { flags.insert(.command) }
+        if shift { flags.insert(.shift) }
+        return NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+            windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: characters,
+            isARepeat: false, keyCode: keyCode
+        )!
+    }
+
+    @Test func cmdZAndCmdShiftZReachUndoAndRedoThroughKeyDown() {
+        let view = makeSourceView("Hello")
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        view.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(view.string == "Hello!")
+
+        // R20 "undo and redo work": a real user has no menu item and no
+        // other keyboard path to either — this is the only route.
+        view.keyDown(with: keyEvent(command: true, characters: "z", keyCode: 6))
+        #expect(view.string == "Hello")
+
+        view.keyDown(with: keyEvent(command: true, shift: true, characters: "z", keyCode: 6))
+        #expect(view.string == "Hello!")
+    }
+
+    @Test func cmdZAlsoWorksInPreviewModeMatchingUndoLastChangesModeIndependence() {
+        let view = makeSourceView("Hello")
+        view.selectedUTF16Range = NSRange(location: 5, length: 0)
+        view.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        view.setMode(.preview)
+
+        view.keyDown(with: keyEvent(command: true, characters: "z", keyCode: 6))
+        #expect(view.string == "Hello")
+    }
 }
 #endif
