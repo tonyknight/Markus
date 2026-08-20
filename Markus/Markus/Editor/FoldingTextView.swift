@@ -1902,6 +1902,20 @@ final class FoldingTextView: PlatformView {
         // never changed, so Source appeared to do nothing.
         #if os(macOS)
         needsDisplay = true
+        // Switching to Source is switching *into an editable state*, but
+        // nothing was ever explicitly making this view first responder —
+        // a user had to separately click inside the text area first, and
+        // even then (see `mouseDown`) that click alone doesn't guarantee
+        // real keyboard focus if something else already held it. Without
+        // this, the caret drawn after switching modes was just
+        // `caretVisible`'s static default (never blinking, never wired
+        // to real `keyDown`/`insertText`), and typing went nowhere —
+        // AppKit's default response to a key event nothing claims is a
+        // beep. The `!== self` check just avoids a redundant reassignment
+        // when this view already has focus.
+        if mode == .source, window?.firstResponder !== self {
+            window?.makeFirstResponder(self)
+        }
         #else
         setNeedsDisplay()
         #endif

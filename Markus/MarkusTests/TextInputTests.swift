@@ -103,6 +103,47 @@ struct TextInputTests {
         #expect(resolved == 0)
     }
 
+    // Nothing in this app's real flow ever clicks inside the text area
+    // before a person tries to type — switching to Source via the
+    // toolbar picker is itself the only action taken. Before this fix,
+    // `setMode` never claimed first responder, so the view could go on
+    // drawing a caret (`caretVisible`'s static default, independent of
+    // real focus) that never actually blinked and never received
+    // `keyDown`/`insertText` — typing did nothing, or beeped, until a
+    // separate click happened to land inside the text area itself.
+    @Test func switchingToSourceClaimsFirstResponderWithoutRequiringASeparateClick() {
+        let view = makeSourceView()
+        let window = NSWindow(
+            contentRect: view.frame,
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = view
+        window.makeKeyAndOrderFront(nil)
+        defer { view.resignFirstResponder() }
+
+        // `NSWindow.initialFirstResponder` defaults to the window's
+        // `contentView` — here that's `view` itself directly, so it's
+        // already first responder as a pure artifact of this simplified
+        // single-view test window. The real app's window content view is
+        // an `NSHostingView` wrapping the whole SwiftUI chrome, several
+        // layers above the actual `FoldingTextView`, so that default
+        // never reaches it there — nothing hands it focus automatically,
+        // which is the real gap `setMode` now closes explicitly. Reset
+        // to a neutral "nothing specific has focus" state here so this
+        // test exercises the same transition the real app needs: some
+        // other control has focus, then Source is switched to.
+        window.makeFirstResponder(nil)
+        #expect(window.firstResponder !== view)
+
+        view.setMode(.preview)
+        #expect(window.firstResponder !== view)
+
+        view.setMode(.source)
+        #expect(window.firstResponder === view)
+    }
+
     @Test func caretDoesNotDrawWhenSelectionIsNonEmptyOrModeIsPreview() {
         let view = makeSourceView()
         view.selectedUTF16Range = NSRange(location: 0, length: 3)
