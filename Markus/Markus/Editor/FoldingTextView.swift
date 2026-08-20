@@ -916,7 +916,15 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         // one considered): clamp to the end of the last fragment seen,
         // matching a standard text view's "click past the last line
         // places the caret at the very end" behavior.
-        return lastSeenEnd
+        if let lastSeenEnd { return lastSeenEnd }
+        // No fragment was visited at all — a brand-new, still-empty
+        // document has nothing for TextKit 2 to lay out yet, so there's
+        // nothing to hit-test against. The only sensible offset for an
+        // empty buffer is 0; without this, a click on a new document
+        // resolved to `nil`, `mouseDown` fell through to
+        // `super.mouseDown(with:)`, and the caret could never be placed
+        // (surfacing as an alert beep on any click attempt).
+        return (textStorage?.length ?? 0) == 0 ? 0 : nil
     }
 
     private static func characterOffset(inPackedFragment fragment: NSTextLayoutFragment, at localPoint: CGPoint, elementStartUTF16: Int) -> Int {
@@ -951,7 +959,16 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             guard offset >= utf16Range.location, offset <= utf16Range.upperBound else { return }
             result = Self.caretRect(inPackedFragment: fragment, atUTF16Offset: offset, elementStartUTF16: utf16Range.location, packedY: packedY)
         }
-        return result
+        if let result { return result }
+        // Same empty-document gap as `utf16Offset(atPackedPoint:)`: no
+        // fragment exists yet to anchor offset 0 to, so without this the
+        // caret could never be drawn at all on a brand-new document —
+        // not even before any click, which is why a new document didn't
+        // already show a placed caret the way it should.
+        guard offset == 0, (textStorage?.length ?? 0) == 0 else { return nil }
+        let font = PlatformFont.monospaced(size: 14 * zoomScale)
+        let lineHeight = max(font.ascender - font.descender + font.leading, 1)
+        return CGRect(x: 0, y: 0, width: 2, height: lineHeight)
     }
 
     private static func caretRect(inPackedFragment fragment: NSTextLayoutFragment, atUTF16Offset offset: Int, elementStartUTF16: Int, packedY: CGFloat) -> CGRect {
@@ -1876,6 +1893,18 @@ final class FoldingTextView: PlatformView {
     func setMode(_ mode: EditorMode) {
         session.setMode(mode, textStorage: documentTextStorage)
         onTextDidChange?()
+        // `session.setMode` invalidates TextKit 2's own layout, but that
+        // alone never schedules an AppKit/UIKit redraw of this view's
+        // custom-drawn content (`draw(_:)` composes glyphs manually,
+        // it isn't `NSTextView`) — without this, switching modes updated
+        // `session.mode` and the SwiftUI picker's highlight (both driven
+        // by `onTextDidChange`/`objectWillChange`) but the visible pixels
+        // never changed, so Source appeared to do nothing.
+        #if os(macOS)
+        needsDisplay = true
+        #else
+        setNeedsDisplay()
+        #endif
     }
 
     func setTheme(_ tokens: ThemeTokens) {
@@ -1886,6 +1915,12 @@ final class FoldingTextView: PlatformView {
     func setZoomScale(_ scale: CGFloat) {
         session.setZoomScale(scale, textStorage: documentTextStorage)
         onTextDidChange?()
+        // Same real-repaint gap as `setMode` above.
+        #if os(macOS)
+        needsDisplay = true
+        #else
+        setNeedsDisplay()
+        #endif
     }
 
     func foldCurrent() {

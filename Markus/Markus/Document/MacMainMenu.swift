@@ -45,6 +45,12 @@ enum MacMainMenu {
         main.addItem(appMenuItem())
         main.addItem(fileMenuItem())
         main.addItem(editMenuItem())
+        let (windowItem, windowMenu) = windowMenuItem()
+        main.addItem(windowItem)
+        let (helpItem, helpMenu) = helpMenuItem()
+        main.addItem(helpItem)
+        NSApp.windowsMenu = windowMenu
+        NSApp.helpMenu = helpMenu
         return main
     }
 
@@ -124,6 +130,33 @@ enum MacMainMenu {
             keyEquivalent: ""
         ))
         return items
+    }
+
+    // MARK: Window menu
+
+    /// AppKit populates this menu's window list automatically once it's
+    /// assigned to `NSApp.windowsMenu` — the items below are just the
+    /// standard fixed entries every Window menu carries.
+    private static func windowMenuItem() -> (NSMenuItem, NSMenu) {
+        let item = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Window")
+        menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        item.submenu = menu
+        return (item, menu)
+    }
+
+    // MARK: Help menu
+
+    private static func helpMenuItem() -> (NSMenuItem, NSMenu) {
+        let appName = ProcessInfo.processInfo.processName
+        let item = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Help")
+        menu.addItem(withTitle: "\(appName) Help", action: #selector(NSApplication.showHelp(_:)), keyEquivalent: "?")
+        item.submenu = menu
+        return (item, menu)
     }
 
     // MARK: Edit menu

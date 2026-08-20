@@ -137,6 +137,22 @@ final class DocumentHost: ObservableObject {
         themeStore.setCustomTextStyle(style)
     }
 
+    func setCustomHeading(_ color: PlatformColorType) {
+        themeStore.setCustomHeading(color)
+    }
+
+    func setCustomBody(_ color: PlatformColorType) {
+        themeStore.setCustomBody(color)
+    }
+
+    func setCustomLink(_ color: PlatformColorType) {
+        themeStore.setCustomLink(color)
+    }
+
+    func setCustomFence(_ color: PlatformColorType) {
+        themeStore.setCustomFence(color)
+    }
+
     private func applyCommittedTheme() {
         session.editor.setTheme(themeStore.committedTokens)
         objectWillChange.send()

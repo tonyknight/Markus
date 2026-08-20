@@ -25,7 +25,7 @@ struct FileImporterChromeTests {
         try Data("# Hi\n".utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
 
-        FileImporterChrome.handle(.success([url]), on: host)
+        FileImporterChrome.handle(.success([url]), isFolder: false, on: host)
 
         // macOS opens standalone files as a new NSDocument/window rather
         // than mutating this host's session (see MacTabsTests), so assert
@@ -49,7 +49,7 @@ struct FileImporterChromeTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        FileImporterChrome.handle(.success([root]), on: host)
+        FileImporterChrome.handle(.success([root]), isFolder: true, on: host)
 
         #expect(host.folderSession?.rootURL == root)
         #expect(!host.isImporterPresented)
@@ -73,13 +73,35 @@ struct FileImporterChromeTests {
             recents: RecentDocuments(defaults: UserDefaults(suiteName: "markus.fileimporter.\(UUID().uuidString)")!)
         )
         host.isFolderImporterPresented = true
-        FileImporterChrome.handle(.failure(CocoaError(.fileReadUnknown)), on: host)
+        FileImporterChrome.handle(.failure(CocoaError(.fileReadUnknown)), isFolder: true, on: host)
         #expect(host.errorMessage == "Could not open folder.")
         #expect(!host.isFolderImporterPresented)
 
         host.isImporterPresented = true
-        FileImporterChrome.handle(.failure(CocoaError(.fileReadUnknown)), on: host)
+        FileImporterChrome.handle(.failure(CocoaError(.fileReadUnknown)), isFolder: false, on: host)
         #expect(host.errorMessage == "Could not open file.")
         #expect(!host.isImporterPresented)
+    }
+
+    // `.fileImporter`'s `isPresented` binding `set(false)` and its
+    // `onCompletion` handler both fire on dismissal, in an order SwiftUI
+    // doesn't guarantee — `ContentView` used to read `host
+    // .isFolderImporterPresented` fresh *inside* `handle`, which could
+    // already be cleared by the time it ran, mislabeling a folder-open
+    // failure as a file-open failure. `handle` now takes `isFolder`
+    // explicit, captured by the caller before dismissal can race it —
+    // this proves the explicit parameter wins even when the published
+    // flag has already been cleared to `false` by the time `handle` runs.
+    @Test func handleUsesTheExplicitIsFolderParameterEvenWhenThePublishedFlagAlreadyClearedFirst() {
+        let host = DocumentHost(
+            recents: RecentDocuments(defaults: UserDefaults(suiteName: "markus.fileimporter.\(UUID().uuidString)")!)
+        )
+        host.isFolderImporterPresented = true
+        // Simulates the binding's set(false) winning the race and firing
+        // before the completion handler does.
+        host.isFolderImporterPresented = false
+
+        FileImporterChrome.handle(.failure(CocoaError(.fileReadUnknown)), isFolder: true, on: host)
+        #expect(host.errorMessage == "Could not open folder.")
     }
 }

@@ -58,7 +58,23 @@ struct DocumentModePicker: View {
     var body: some View {
         Picker("Mode", selection: Binding(
             get: { host.mode },
-            set: { ModeChrome.select($0, on: host) }
+            set: { newMode in
+                // SwiftUI invokes this synchronously as part of its own
+                // view-update transaction for the segmented control.
+                // `ModeChrome.select` → `host.setMode` publishes
+                // `objectWillChange` up through `DocumentSession`/
+                // `DocumentHost` — doing that synchronously from inside a
+                // Binding.set triggers "Publishing changes from within
+                // view updates is not allowed" and the state change can
+                // be silently dropped, which is why picking "Source"
+                // appeared to do nothing. Deferring to the next run-loop
+                // turn lets SwiftUI's current update transaction finish
+                // first. (`ModeChrome.select` itself stays synchronous —
+                // tests and other non-UI callers depend on that.)
+                DispatchQueue.main.async {
+                    ModeChrome.select(newMode, on: host)
+                }
+            }
         )) {
             Text("Source").tag(EditorMode.source)
             Text("Preview").tag(EditorMode.preview)

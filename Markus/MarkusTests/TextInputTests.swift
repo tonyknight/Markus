@@ -80,6 +80,29 @@ struct TextInputTests {
         view.drawCaret(in: context)
     }
 
+    // A brand-new document (`MarkdownDocument.init()` loading empty
+    // content, matching what a real File > New does) has zero TextKit 2
+    // layout fragments — nothing has been typed yet. Before this fix,
+    // both `packedCaretRect`/`utf16Offset(atPackedPoint:)` returned `nil`
+    // whenever fragment enumeration found nothing to hit-test against,
+    // so a brand-new document could never place a caret at all: no
+    // visible caret on load, and any click attempt fell through
+    // `mouseDown`'s nil-offset guard to `super.mouseDown(with:)`,
+    // surfacing as an alert beep with no caret ever appearing.
+    @Test func emptyDocumentResolvesACaretAtOffsetZeroWithNoTypedContentYet() throws {
+        let view = FoldingTextView(frame: CGRect(x: 0, y: 0, width: 480, height: 800), foldStore: FoldStore())
+        view.loadMarkdown("")
+        view.setMode(.source)
+        view.ensureLayout()
+        #expect(view.string.isEmpty)
+
+        let rect = try #require(view.session.packedCaretRect(forUTF16Offset: 0))
+        #expect(rect.height > 0)
+
+        let resolved = view.session.utf16Offset(atPackedPoint: CGPoint(x: 5, y: 5))
+        #expect(resolved == 0)
+    }
+
     @Test func caretDoesNotDrawWhenSelectionIsNonEmptyOrModeIsPreview() {
         let view = makeSourceView()
         view.selectedUTF16Range = NSRange(location: 0, length: 3)

@@ -32,6 +32,10 @@ final class ThemeStore: ObservableObject {
     static let selectionKey = "markus.theme.selection"
     static let customBackgroundKey = "markus.theme.customBackground"
     static let customTextKey = "markus.theme.customText"
+    static let customHeadingKey = "markus.theme.customHeading"
+    static let customBodyKey = "markus.theme.customBody"
+    static let customLinkKey = "markus.theme.customLink"
+    static let customFenceKey = "markus.theme.customFence"
 
     /// The single app-scoped store. Every real document window/tab/scene
     /// is wired to this instance (`MarkdownDocument.init()` on macOS,
@@ -49,6 +53,14 @@ final class ThemeStore: ObservableObject {
     @Published private(set) var hoverSelection: ThemeSelection?
     @Published private(set) var customBackground: PlatformColorType
     @Published private(set) var customTextStyle: CustomTextStyle
+    // `nil` means "not yet individually customized" — the custom theme
+    // falls back to `CustomTheme.tokens`'s auto-derived value for that
+    // element (kept coherent with `customBackground`/`customTextStyle`)
+    // until the user explicitly picks a color for it.
+    @Published private(set) var customHeading: PlatformColorType?
+    @Published private(set) var customBody: PlatformColorType?
+    @Published private(set) var customLink: PlatformColorType?
+    @Published private(set) var customFence: PlatformColorType?
 
     /// Fires after a *committed* theme change (selection or a custom-theme
     /// edit) — never for hover. `DocumentHost` subscribes to this to
@@ -87,6 +99,10 @@ final class ThemeStore: ObservableObject {
         if defaults.string(forKey: Self.selectionKey) == nil {
             defaults.set(ThemeSelection.named(.daylight).persistenceID, forKey: Self.selectionKey)
         }
+        self.customHeading = Self.loadColor(from: defaults, key: Self.customHeadingKey)
+        self.customBody = Self.loadColor(from: defaults, key: Self.customBodyKey)
+        self.customLink = Self.loadColor(from: defaults, key: Self.customLinkKey)
+        self.customFence = Self.loadColor(from: defaults, key: Self.customFenceKey)
     }
 
     func tokens(for selection: ThemeSelection) -> ThemeTokens {
@@ -94,7 +110,12 @@ final class ThemeStore: ObservableObject {
         case .named(let id):
             return NamedThemeCatalog.tokens(for: id)
         case .custom:
-            return CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
+            var tokens = CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
+            if let customHeading { tokens.heading = customHeading }
+            if let customBody { tokens.body = customBody }
+            if let customLink { tokens.link = customLink }
+            if let customFence { tokens.fence = customFence }
+            return tokens
         }
     }
 
@@ -130,6 +151,34 @@ final class ThemeStore: ObservableObject {
         themeChanged.send(())
     }
 
+    func setCustomHeading(_ color: PlatformColorType) {
+        customHeading = color
+        defaults.set(Self.encodeColor(color), forKey: Self.customHeadingKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
+    func setCustomBody(_ color: PlatformColorType) {
+        customBody = color
+        defaults.set(Self.encodeColor(color), forKey: Self.customBodyKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
+    func setCustomLink(_ color: PlatformColorType) {
+        customLink = color
+        defaults.set(Self.encodeColor(color), forKey: Self.customLinkKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
+    func setCustomFence(_ color: PlatformColorType) {
+        customFence = color
+        defaults.set(Self.encodeColor(color), forKey: Self.customFenceKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
     private static func encodeColor(_ color: PlatformColorType) -> [Double] {
         var red: CGFloat = 0
         var green: CGFloat = 0
@@ -145,7 +194,11 @@ final class ThemeStore: ObservableObject {
     }
 
     private static func loadBackground(from defaults: UserDefaults) -> PlatformColorType? {
-        guard let values = defaults.array(forKey: customBackgroundKey) as? [Double], values.count == 4 else {
+        loadColor(from: defaults, key: customBackgroundKey)
+    }
+
+    private static func loadColor(from defaults: UserDefaults, key: String) -> PlatformColorType? {
+        guard let values = defaults.array(forKey: key) as? [Double], values.count == 4 else {
             return nil
         }
         let red = CGFloat(values[0])

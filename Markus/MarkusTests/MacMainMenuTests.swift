@@ -83,19 +83,18 @@ struct MacMainMenuTests {
         #expect(unfoldAll.keyEquivalentModifierMask == [.command, .shift])
     }
 
-    @Test func markusAppDelegateInstallsTheBuiltMenuAsTheAppMainMenu() {
-        let delegate = MarkusAppDelegate()
-        NSApp.mainMenu = nil
-        delegate.applicationWillFinishLaunching(Notification(name: Notification.Name("test.willFinishLaunching")))
+    // `MarkusAppDelegate` no longer imperatively installs `MacMainMenu
+    // .build()` as `NSApp.mainMenu` — that lost a real, repeating race
+    // against SwiftUI's own Scene/Commands machinery in the actual
+    // running app (confirmed by launching a real build, not just by
+    // this suite, which never exercises the true `@main` App lifecycle).
+    // File/Edit content now lives in `MarkusCommands` (SwiftUI
+    // `Commands`, see its doc comment), which isn't unit-testable the
+    // way an `NSMenu` is — verified by manual/human testing instead, per
+    // this project's Testing requirements now favoring live app checks
+    // for exactly this class of behaviour.
 
-        let installed = NSApp.mainMenu
-        #expect(installed != nil)
-        let titles = installed?.items.map(\.title) ?? []
-        #expect(titles.contains("File"))
-        #expect(titles.contains("Edit"))
-    }
-
-    // Walks the real responder chain starting at `responder` (not via
+// Walks the real responder chain starting at `responder` (not via
     // `NSApplication`/system key-window resolution, which is arbitrated
     // machine-wide and flaky whenever another process on the same
     // desktop also owns a window — e.g. sibling test runs). This proves

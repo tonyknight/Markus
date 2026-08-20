@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DE61FB7A303163D000E271C1 /* cmark-gfm in Frameworks */ = {isa = PBXBuildFile; productRef = DE61FB7B303163D000E271C1 /* cmark-gfm */; };
+		DE61FB7C303163D000E271C1 /* cmark-gfm-extensions in Frameworks */ = {isa = PBXBuildFile; productRef = DE61FB7D303163D000E271C1 /* cmark-gfm-extensions */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		DE61FB5C303163D000E271C1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -59,11 +64,6 @@
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXBuildFile section */
-		DE61FB7A303163D000E271C1 /* cmark-gfm in Frameworks */ = {isa = PBXBuildFile; productRef = DE61FB7B303163D000E271C1 /* cmark-gfm */; };
-		DE61FB7C303163D000E271C1 /* cmark-gfm-extensions in Frameworks */ = {isa = PBXBuildFile; productRef = DE61FB7D303163D000E271C1 /* cmark-gfm-extensions */; };
-/* End PBXBuildFile section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		DE61FB49303163CF00E271C1 /* Frameworks */ = {

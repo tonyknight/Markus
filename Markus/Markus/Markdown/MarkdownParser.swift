@@ -139,7 +139,7 @@ nonisolated struct MarkdownBlock: Equatable, Sendable {
     var lines: Range<Int>
 }
 
-nonisolated enum MarkdownSpanKind: Equatable, Sendable {
+nonisolated enum MarkdownSpanKind: Hashable, Sendable {
     case heading(level: Int)
     case table
     case taskListItem

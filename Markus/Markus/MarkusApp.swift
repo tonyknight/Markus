@@ -18,6 +18,9 @@ struct MarkusApp: App {
         Settings {
             Text("Open a Markdown document to edit.")
         }
+        .commands {
+            MarkusCommands()
+        }
         #else
         WindowGroup {
             AppRootView()

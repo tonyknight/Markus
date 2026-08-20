@@ -92,24 +92,79 @@ struct ThemePickerView: View {
 
     private var customControls: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Every `set` below defers to the next run-loop turn:
+            // SwiftUI invokes these synchronously as part of its own
+            // view-update transaction for the picker, and mutating the
+            // published `ThemeStore` state synchronously from inside a
+            // Binding.set triggers "Publishing changes from within view
+            // updates is not allowed" — the same bug confirmed and fixed
+            // for the Source/Preview mode picker (`ModeChrome.swift`).
             ColorPicker(
                 "Background",
                 selection: Binding(
                     get: { colorFromPlatform(host.themeStore.customBackground) },
                     set: { newValue in
-                        host.setCustomBackground(platformColor(from: newValue))
+                        let color = platformColor(from: newValue)
+                        DispatchQueue.main.async { host.setCustomBackground(color) }
                     }
                 )
             )
             Picker("Text style", selection: Binding(
                 get: { host.themeStore.customTextStyle },
-                set: { host.setCustomTextStyle($0) }
+                set: { newValue in
+                    DispatchQueue.main.async { host.setCustomTextStyle(newValue) }
+                }
             )) {
                 Text("Auto").tag(CustomTextStyle.auto)
                 Text("Light").tag(CustomTextStyle.light)
                 Text("Dark").tag(CustomTextStyle.dark)
             }
             .pickerStyle(.segmented)
+
+            // Text style above only governs the elements not listed here
+            // (inline code, lists, fold markers, tables, strikethrough,
+            // footnotes) — these four are independently overridable and,
+            // once picked, no longer move when Text style changes.
+            ColorPicker(
+                "Headings (# ##)",
+                selection: Binding(
+                    get: { colorFromPlatform(host.themeStore.tokens(for: .custom).heading) },
+                    set: { newValue in
+                        let color = platformColor(from: newValue)
+                        DispatchQueue.main.async { host.setCustomHeading(color) }
+                    }
+                )
+            )
+            ColorPicker(
+                "Normal text",
+                selection: Binding(
+                    get: { colorFromPlatform(host.themeStore.tokens(for: .custom).body) },
+                    set: { newValue in
+                        let color = platformColor(from: newValue)
+                        DispatchQueue.main.async { host.setCustomBody(color) }
+                    }
+                )
+            )
+            ColorPicker(
+                "Links",
+                selection: Binding(
+                    get: { colorFromPlatform(host.themeStore.tokens(for: .custom).link) },
+                    set: { newValue in
+                        let color = platformColor(from: newValue)
+                        DispatchQueue.main.async { host.setCustomLink(color) }
+                    }
+                )
+            )
+            ColorPicker(
+                "Code blocks",
+                selection: Binding(
+                    get: { colorFromPlatform(host.themeStore.tokens(for: .custom).fence) },
+                    set: { newValue in
+                        let color = platformColor(from: newValue)
+                        DispatchQueue.main.async { host.setCustomFence(color) }
+                    }
+                )
+            )
         }
     }
 

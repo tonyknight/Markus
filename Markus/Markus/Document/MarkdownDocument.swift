@@ -9,8 +9,8 @@ enum MacWindowGeometry {
     /// screen's top-left corner. AppKit's y-axis is bottom-up, so "pinned
     /// to the top" means the window's `maxY` matches the screen's `maxY`.
     static func windowFrame(forVisibleFrame visibleFrame: NSRect) -> NSRect {
-        let width = visibleFrame.width * 0.75
-        let height = visibleFrame.height * 0.75
+        let width = visibleFrame.width * 0.50
+        let height = visibleFrame.height * 0.60
         let x = visibleFrame.minX
         let y = visibleFrame.maxY - height
         return NSRect(x: x, y: y, width: width, height: height)
@@ -141,6 +141,23 @@ final class MarkdownDocument: NSDocument {
         super.init()
         hasUndoManager = false
         MainActor.assumeIsolated {
+            // `loadMarkdown` is "the single place text-derived state is
+            // rebuilt" (`FoldingSession.reparse` — `blocks`, `SourceMap`,
+            // `UTF16LineOffsets`, everything caret placement, click
+            // hit-testing, and the gutter depend on). `read(from:ofType:)`
+            // calls it for an opened file via `session.open(url:)`, but a
+            // brand-new untitled document (`NSDocumentController
+            // .makeUntitledDocument`) never goes through `read` at all —
+            // it just sits with those caches at their default empty/nil
+            // state indefinitely. That's why new documents couldn't be
+            // typed into: Source mode's caret/click geometry had nothing
+            // to resolve against. Loading empty content here reparses
+            // once, unconditionally, so a new document starts in the same
+            // state an opened one reaches via `read` — redundant (and
+            // immediately overwritten) for the opened-file case, since
+            // `read` runs right after this and reparses again with the
+            // real content, but harmless and not worth special-casing.
+            self.session.editor.loadMarkdown("")
             self.host.attachMacDocument(self)
             // T04: the second callback the ticket's Design note calls
             // for, alongside `onTextDidChange` — every committed text
@@ -223,9 +240,14 @@ final class MarkdownDocument: NSDocument {
 final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
     private let documentController = MarkusDocumentController()
 
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MacMainMenu.build()
-    }
+    // The File/Edit menu content lives in `MarkusCommands` (SwiftUI
+    // `Commands`, attached via `.commands { }` on `MarkusApp`'s Settings
+    // scene), not here. An earlier version of this delegate imperatively
+    // assigned `NSApp.mainMenu = MacMainMenu.build()` — that lost a race
+    // against SwiftUI's own Scene/Commands machinery, which reinstalls
+    // its own default menu at multiple points during and after launch,
+    // silently replacing (not merging with) anything assigned here. See
+    // `MarkusCommands`'s doc comment for the full story.
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true

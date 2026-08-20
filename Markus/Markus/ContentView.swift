@@ -35,8 +35,16 @@ struct ContentView: View {
                     ),
                     allowedContentTypes: FileImporterChrome.allowedContentTypes(for: host),
                     allowsMultipleSelection: false
-                ) { result in
-                    FileImporterChrome.handle(result, on: host)
+                ) { [isFolder = host.isFolderImporterPresented] result in
+                    // Captured at closure-creation time (this render pass),
+                    // not read fresh from `host` inside `handle` — the
+                    // `isPresented` binding's own `set(false)` and this
+                    // completion handler both fire on dismissal, in an
+                    // order SwiftUI doesn't guarantee, so reading the
+                    // published flag *inside* the completion handler could
+                    // already see it cleared and mislabel a folder-open
+                    // failure as a file-open failure (or vice versa).
+                    FileImporterChrome.handle(result, isFolder: isFolder, on: host)
                 }
                 .modifier(SettingsSheetModifier(host: host))
                 .sheet(isPresented: $host.isOutlinePresented) {

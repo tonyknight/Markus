@@ -35,8 +35,7 @@ enum FileImporterChrome {
     }
 
     @MainActor
-    static func handle(_ result: Result<[URL], Error>, on host: DocumentHost) {
-        let isFolder = host.isFolderImporterPresented
+    static func handle(_ result: Result<[URL], Error>, isFolder: Bool, on host: DocumentHost) {
         switch result {
         case .success(let urls):
             if let url = urls.first {
