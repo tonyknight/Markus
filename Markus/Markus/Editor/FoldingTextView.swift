@@ -834,6 +834,8 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         textStorage.beginEditing()
         switch mode {
         case .source:
+            // Source is a 1:1 buffer view. H1–H6, emphasis, and callout
+            // colors are Preview-only (v1.2 architecture).
             let source = [
                 NSAttributedString.Key.font: PlatformFont.monospaced(size: 14 * zoomScale),
                 NSAttributedString.Key.foregroundColor: tokens.body,

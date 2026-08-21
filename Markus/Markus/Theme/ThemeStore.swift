@@ -43,6 +43,22 @@ final class ThemeStore: ObservableObject {
     static let customBodyKey = "markus.theme.customBody"
     static let customLinkKey = "markus.theme.customLink"
     static let customFenceKey = "markus.theme.customFence"
+    static let customH1Key = "markus.theme.customH1"
+    static let customH2Key = "markus.theme.customH2"
+    static let customH3Key = "markus.theme.customH3"
+    static let customH4Key = "markus.theme.customH4"
+    static let customH5Key = "markus.theme.customH5"
+    static let customH6Key = "markus.theme.customH6"
+    static let customBoldKey = "markus.theme.customBold"
+    static let customItalicKey = "markus.theme.customItalic"
+    static let customBoldItalicKey = "markus.theme.customBoldItalic"
+    static let customCalloutKey = "markus.theme.customCallout"
+    static let customListKey = "markus.theme.customList"
+    static let customInlineCodeKey = "markus.theme.customInlineCode"
+    static let customTableKey = "markus.theme.customTable"
+    static let customStrikethroughKey = "markus.theme.customStrikethrough"
+    static let customFootnoteKey = "markus.theme.customFootnote"
+    static let customFoldMarkerKey = "markus.theme.customFoldMarker"
 
     /// The single app-scoped store. Every real document window/tab/scene
     /// is wired to this instance (`MarkdownDocument.init()` on macOS,
@@ -69,6 +85,22 @@ final class ThemeStore: ObservableObject {
     @Published private(set) var customBody: PlatformColorType?
     @Published private(set) var customLink: PlatformColorType?
     @Published private(set) var customFence: PlatformColorType?
+    @Published private(set) var customH1: PlatformColorType?
+    @Published private(set) var customH2: PlatformColorType?
+    @Published private(set) var customH3: PlatformColorType?
+    @Published private(set) var customH4: PlatformColorType?
+    @Published private(set) var customH5: PlatformColorType?
+    @Published private(set) var customH6: PlatformColorType?
+    @Published private(set) var customBold: PlatformColorType?
+    @Published private(set) var customItalic: PlatformColorType?
+    @Published private(set) var customBoldItalic: PlatformColorType?
+    @Published private(set) var customCallout: PlatformColorType?
+    @Published private(set) var customList: PlatformColorType?
+    @Published private(set) var customInlineCode: PlatformColorType?
+    @Published private(set) var customTable: PlatformColorType?
+    @Published private(set) var customStrikethrough: PlatformColorType?
+    @Published private(set) var customFootnote: PlatformColorType?
+    @Published private(set) var customFoldMarker: PlatformColorType?
 
     /// Leftover for the iOS `ThemePickerView` proxy (`displayedTokens`).
     /// The macOS Appearance page does not read or write this — its hover
@@ -137,6 +169,22 @@ final class ThemeStore: ObservableObject {
         self.customBody = Self.loadColor(from: defaults, key: Self.customBodyKey)
         self.customLink = Self.loadColor(from: defaults, key: Self.customLinkKey)
         self.customFence = Self.loadColor(from: defaults, key: Self.customFenceKey)
+        self.customH1 = Self.loadColor(from: defaults, key: Self.customH1Key)
+        self.customH2 = Self.loadColor(from: defaults, key: Self.customH2Key)
+        self.customH3 = Self.loadColor(from: defaults, key: Self.customH3Key)
+        self.customH4 = Self.loadColor(from: defaults, key: Self.customH4Key)
+        self.customH5 = Self.loadColor(from: defaults, key: Self.customH5Key)
+        self.customH6 = Self.loadColor(from: defaults, key: Self.customH6Key)
+        self.customBold = Self.loadColor(from: defaults, key: Self.customBoldKey)
+        self.customItalic = Self.loadColor(from: defaults, key: Self.customItalicKey)
+        self.customBoldItalic = Self.loadColor(from: defaults, key: Self.customBoldItalicKey)
+        self.customCallout = Self.loadColor(from: defaults, key: Self.customCalloutKey)
+        self.customList = Self.loadColor(from: defaults, key: Self.customListKey)
+        self.customInlineCode = Self.loadColor(from: defaults, key: Self.customInlineCodeKey)
+        self.customTable = Self.loadColor(from: defaults, key: Self.customTableKey)
+        self.customStrikethrough = Self.loadColor(from: defaults, key: Self.customStrikethroughKey)
+        self.customFootnote = Self.loadColor(from: defaults, key: Self.customFootnoteKey)
+        self.customFoldMarker = Self.loadColor(from: defaults, key: Self.customFoldMarkerKey)
         Self.persistMigratedStateIfNeeded(
             defaults: defaults,
             rawSelection: rawSelection,
@@ -164,19 +212,9 @@ final class ThemeStore: ObservableObject {
             }
             return NamedThemeCatalog.tokens(for: family, variant: variant)
         case .custom:
-            var tokens = CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
-            if let customHeading {
-                tokens.h1 = customHeading
-                tokens.h2 = customHeading
-                tokens.h3 = customHeading
-                tokens.h4 = customHeading
-                tokens.h5 = customHeading
-                tokens.h6 = customHeading
-            }
-            if let customBody { tokens.body = customBody }
-            if let customLink { tokens.link = customLink }
-            if let customFence { tokens.fence = customFence }
-            return tokens
+            return applyCustomOverrides(
+                CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
+            )
         }
     }
 
@@ -267,6 +305,55 @@ final class ThemeStore: ObservableObject {
     func setCustomFence(_ color: PlatformColorType) {
         customFence = color
         defaults.set(Self.encodeColor(color), forKey: Self.customFenceKey)
+        broadcastCommit()
+    }
+
+    func setCustomH1(_ color: PlatformColorType) { persistCustom(&customH1, color, key: Self.customH1Key) }
+    func setCustomH2(_ color: PlatformColorType) { persistCustom(&customH2, color, key: Self.customH2Key) }
+    func setCustomH3(_ color: PlatformColorType) { persistCustom(&customH3, color, key: Self.customH3Key) }
+    func setCustomH4(_ color: PlatformColorType) { persistCustom(&customH4, color, key: Self.customH4Key) }
+    func setCustomH5(_ color: PlatformColorType) { persistCustom(&customH5, color, key: Self.customH5Key) }
+    func setCustomH6(_ color: PlatformColorType) { persistCustom(&customH6, color, key: Self.customH6Key) }
+    func setCustomBold(_ color: PlatformColorType) { persistCustom(&customBold, color, key: Self.customBoldKey) }
+    func setCustomItalic(_ color: PlatformColorType) { persistCustom(&customItalic, color, key: Self.customItalicKey) }
+    func setCustomBoldItalic(_ color: PlatformColorType) { persistCustom(&customBoldItalic, color, key: Self.customBoldItalicKey) }
+    func setCustomCallout(_ color: PlatformColorType) { persistCustom(&customCallout, color, key: Self.customCalloutKey) }
+    func setCustomList(_ color: PlatformColorType) { persistCustom(&customList, color, key: Self.customListKey) }
+    func setCustomInlineCode(_ color: PlatformColorType) { persistCustom(&customInlineCode, color, key: Self.customInlineCodeKey) }
+    func setCustomTable(_ color: PlatformColorType) { persistCustom(&customTable, color, key: Self.customTableKey) }
+    func setCustomStrikethrough(_ color: PlatformColorType) { persistCustom(&customStrikethrough, color, key: Self.customStrikethroughKey) }
+    func setCustomFootnote(_ color: PlatformColorType) { persistCustom(&customFootnote, color, key: Self.customFootnoteKey) }
+    func setCustomFoldMarker(_ color: PlatformColorType) { persistCustom(&customFoldMarker, color, key: Self.customFoldMarkerKey) }
+
+    /// Per-level heading keys win; legacy `customHeading` fills any
+    /// level that has not been set on its own (ticket 08 wells).
+    private func applyCustomOverrides(_ base: ThemeTokens) -> ThemeTokens {
+        var tokens = base
+        tokens.h1 = customH1 ?? customHeading ?? tokens.h1
+        tokens.h2 = customH2 ?? customHeading ?? tokens.h2
+        tokens.h3 = customH3 ?? customHeading ?? tokens.h3
+        tokens.h4 = customH4 ?? customHeading ?? tokens.h4
+        tokens.h5 = customH5 ?? customHeading ?? tokens.h5
+        tokens.h6 = customH6 ?? customHeading ?? tokens.h6
+        if let customBody { tokens.body = customBody }
+        if let customLink { tokens.link = customLink }
+        if let customFence { tokens.fence = customFence }
+        if let customBold { tokens.bold = customBold }
+        if let customItalic { tokens.italic = customItalic }
+        if let customBoldItalic { tokens.boldItalic = customBoldItalic }
+        if let customCallout { tokens.callout = customCallout }
+        if let customList { tokens.list = customList }
+        if let customInlineCode { tokens.inlineCode = customInlineCode }
+        if let customTable { tokens.table = customTable }
+        if let customStrikethrough { tokens.strikethrough = customStrikethrough }
+        if let customFootnote { tokens.footnote = customFootnote }
+        if let customFoldMarker { tokens.foldMarker = customFoldMarker }
+        return tokens
+    }
+
+    private func persistCustom(_ slot: inout PlatformColorType?, _ color: PlatformColorType, key: String) {
+        slot = color
+        defaults.set(Self.encodeColor(color), forKey: key)
         broadcastCommit()
     }
 
