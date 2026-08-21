@@ -13,15 +13,14 @@ depends_on: []
 subtasks:
 - id: T1
   title: Persist family, pinned variant, follow-system, named-vs-custom
-  status: todo
+  status: done
 - id: T2
   title: Map named families to Light/Dark from system appearance when Follow is on
-  status: todo
+  status: done
 - id: T3
   title: themeChanged on commit only, never on hover
-  status: todo
-plan_status: in-progress
-current_task: T03
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -49,14 +48,14 @@ This ticket is the store and persistence. The twelve recipes are ticket 04. The 
 
 ## Subtasks
 
-- [ ] Introduce family + variant (+ custom) in `ThemeStore` with UserDefaults round-trip.
-- [ ] Observe system appearance when follow is on.
-- [ ] Keep `themeChanged` for commits only.
+- [x] Introduce family + variant (+ custom) in `ThemeStore` with UserDefaults round-trip.
+- [x] Observe system appearance when follow is on.
+- [x] Keep `themeChanged` for commits only.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Persist family, pinned variant, follow-system, named-vs-custom
 Replace `NamedThemeID` with `ThemeFamily` (nord, monokai, solarized, github, catppuccin, gruvbox) × `ThemeVariant` (light | dark) and `ThemeSelection` as `named(family) | custom`. Persist `selection`, `followSystem`, and `pinnedVariant` in `UserDefaults` (new keys for follow and pin; keep `markus.theme.selection` as family raw or `custom`). Migrate v1.1 IDs (`daylight`/`fog`/`parchment`/`meadow`/`harbor` → nord + light pin; `lampblack` → nord + dark pin). Applied tokens for this task: custom → custom snapshot; named + !follow → `catalog[family][pinnedVariant]`; named + follow → same formula using a live `systemIsDark` read (no observer yet). Stub `NamedThemeCatalog.tokens(for:variant:)` with daylight/lampblack stand-ins. Update `ThemePickerView`, `ThemeTokens.default`, `DocumentHost` apply/hover signatures, and MarkusTests call sites so the module still compiles. No Follow checkbox (ticket 05). No twelve palettes (ticket 04).
@@ -81,7 +80,7 @@ Route selection, follow toggle, and custom edits through one private commit help
 Files: `Markus/Markus/Theme/ThemeStore.swift`
 Verify: same three `xcodebuild … build` commands as T01, from `Markus/`.
 - [ ] todo
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -91,3 +90,6 @@ T01: family×variant selection, follow/pin persistence, catalog stand-ins. macOS
 
 ### 2026-08-20
 T02: NSApp.effectiveAppearance KVO (macOS) and colorScheme/didBecomeActive (iOS) remap named+follow; Custom skipped. Three Debug builds succeeded.
+
+### 2026-08-20
+T03: broadcastCommit is the only themeChanged sender; hover uses objectWillChange only. Three Debug builds succeeded. Plan complete; ticket left in-progress for review.

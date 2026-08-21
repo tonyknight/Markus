@@ -77,16 +77,14 @@ final class ThemeStore: ObservableObject {
     private(set) var hoverTokens: ThemeTokens?
 
     /// Fires after a *committed* theme change (selection, follow toggle,
-    /// or a custom-theme edit) — never for hover. `DocumentHost`
-    /// subscribes to this to re-apply `committedTokens` to its real
-    /// editor, which is what makes every open document repaint when
-    /// *any* of them commits a theme change (R9). Kept separate from
-    /// `objectWillChange` (which also fires on hover, for the
-    /// proxy/chrome to redraw) so a hover in one window can never force
-    /// every other open document to reparse — that would just relocate
-    /// the "heavy and jarring" bug T02 removed, not fix it. Sent *after*
-    /// the property write (unlike `@Published`, which publishes before
-    /// the value is actually stored) so subscribers that read
+    /// custom-theme edit, or a Follow-on system appearance remap) — never
+    /// for hover (N2). The only sender is `broadcastCommit`. `DocumentHost`
+    /// subscribes to re-apply `committedTokens` to its real editor.
+    /// Kept separate from `objectWillChange` (which also fires on hover,
+    /// for the proxy/chrome to redraw) so a hover in one window can never
+    /// force every other open document to reparse. Sent *after* the
+    /// property write (unlike `@Published`, which publishes before the
+    /// value is actually stored) so subscribers that read
     /// `committedTokens` synchronously always see the new value.
     let themeChanged = PassthroughSubject<Void, Never>()
 
@@ -182,10 +180,8 @@ final class ThemeStore: ObservableObject {
 
     func select(_ selection: ThemeSelection) {
         self.selection = selection
-        hoverTokens = nil
         defaults.set(selection.persistenceID, forKey: Self.selectionKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func selectNamed(_ family: ThemeFamily, variant: ThemeVariant) {
@@ -194,10 +190,8 @@ final class ThemeStore: ObservableObject {
             pinnedVariant = variant
             defaults.set(variant.rawValue, forKey: Self.pinnedVariantKey)
         }
-        hoverTokens = nil
         defaults.set(selection.persistenceID, forKey: Self.selectionKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func setFollowSystem(_ enabled: Bool) {
@@ -208,8 +202,7 @@ final class ThemeStore: ObservableObject {
         followSystem = enabled
         defaults.set(enabled, forKey: Self.followSystemKey)
         lastFollowedSystemIsDark = enabled ? systemIsDark : nil
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     /// SwiftUI `colorScheme` / iOS trait changes call this so Follow can
@@ -218,11 +211,13 @@ final class ThemeStore: ObservableObject {
         handleSystemAppearanceChange()
     }
 
+    /// Proxy-only preview. Must never call `broadcastCommit` / `themeChanged` (N2).
     func beginHover(_ tokens: ThemeTokens) {
         hoverTokens = tokens
         objectWillChange.send()
     }
 
+    /// Proxy-only preview. Must never call `broadcastCommit` / `themeChanged` (N2).
     func endHover() {
         hoverTokens = nil
         objectWillChange.send()
@@ -231,43 +226,37 @@ final class ThemeStore: ObservableObject {
     func setCustomBackground(_ color: PlatformColorType) {
         customBackground = color
         defaults.set(Self.encodeColor(color), forKey: Self.customBackgroundKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func setCustomTextStyle(_ style: CustomTextStyle) {
         customTextStyle = style
         defaults.set(style.rawValue, forKey: Self.customTextKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func setCustomHeading(_ color: PlatformColorType) {
         customHeading = color
         defaults.set(Self.encodeColor(color), forKey: Self.customHeadingKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func setCustomBody(_ color: PlatformColorType) {
         customBody = color
         defaults.set(Self.encodeColor(color), forKey: Self.customBodyKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func setCustomLink(_ color: PlatformColorType) {
         customLink = color
         defaults.set(Self.encodeColor(color), forKey: Self.customLinkKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     func setCustomFence(_ color: PlatformColorType) {
         customFence = color
         defaults.set(Self.encodeColor(color), forKey: Self.customFenceKey)
-        objectWillChange.send()
-        themeChanged.send(())
+        broadcastCommit()
     }
 
     private func startObservingSystemAppearance() {
@@ -299,6 +288,14 @@ final class ThemeStore: ObservableObject {
         let isDark = systemIsDark
         if lastFollowedSystemIsDark == isDark { return }
         lastFollowedSystemIsDark = isDark
+        broadcastCommit(clearHover: false)
+    }
+
+    /// The only path that sends `themeChanged`. Hover must not call this (N2).
+    private func broadcastCommit(clearHover: Bool = true) {
+        if clearHover {
+            hoverTokens = nil
+        }
         objectWillChange.send()
         themeChanged.send(())
     }
