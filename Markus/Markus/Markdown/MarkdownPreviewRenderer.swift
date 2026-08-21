@@ -38,9 +38,9 @@ enum MarkdownPreviewRenderer {
                 .markdownSpanKind: span.kind,
             ]
             switch span.kind {
-            case .heading:
+            case .heading(let level):
                 attributes[.font] = PlatformFont.heading(size: 22 * scale)
-                attributes[.foregroundColor] = tokens.h1
+                attributes[.foregroundColor] = tokens.headingColor(level: level)
             case .table:
                 attributes[.foregroundColor] = tokens.table
             case .taskListItem:

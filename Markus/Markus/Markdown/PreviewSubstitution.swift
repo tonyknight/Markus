@@ -77,7 +77,12 @@ enum PreviewElementRenderer {
             switch block.kind {
             case .heading(let level, let inline):
                 let font = PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale))
-                let attributed = renderInline(inline, font: font, tokens: tokens, defaultColor: tokens.h1)
+                let attributed = renderInline(
+                    inline,
+                    font: font,
+                    tokens: tokens,
+                    defaultColor: tokens.headingColor(level: level)
+                )
                 return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
             case .paragraph(let inline, let quoted):
                 let font = PlatformFont.body(size: 16 * zoomScale)
@@ -134,21 +139,28 @@ enum PreviewElementRenderer {
     // MARK: - Inline rendering
 
     /// Concatenates the rendered inline content of `nodes`: emphasis/
-    /// strong become font traits, inline code and strikethrough get
-    /// their own attributes, links carry `.link` and lose their `[]()`
-    /// syntax, and everything else falls back to literal text — always
-    /// via the parsed structure, never a raw-source slice, so markup
-    /// punctuation is structurally absent rather than merely colored
-    /// over (R10).
+    /// strong become font traits *and* their own token colors, inline
+    /// code and strikethrough get their own attributes, links carry
+    /// `.link` and lose their `[]()` syntax, and everything else falls
+    /// back to literal text — always via the parsed structure, never a
+    /// raw-source slice, so markup punctuation is structurally absent
+    /// rather than merely colored over (R10).
     private static func renderInline(
         _ nodes: [PreviewInlineNode],
         font: PlatformFontType,
         tokens: ThemeTokens,
-        defaultColor: PlatformColorType
+        defaultColor: PlatformColorType,
+        emphasis: InlineEmphasis = .none
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for node in nodes {
-            result.append(renderInlineNode(node, font: font, tokens: tokens, defaultColor: defaultColor))
+            result.append(renderInlineNode(
+                node,
+                font: font,
+                tokens: tokens,
+                defaultColor: defaultColor,
+                emphasis: emphasis
+            ))
         }
         return result
     }
@@ -157,7 +169,8 @@ enum PreviewElementRenderer {
         _ node: PreviewInlineNode,
         font: PlatformFontType,
         tokens: ThemeTokens,
-        defaultColor: PlatformColorType
+        defaultColor: PlatformColorType,
+        emphasis: InlineEmphasis
     ) -> NSAttributedString {
         switch node {
         case .text(let string):
@@ -176,12 +189,32 @@ enum PreviewElementRenderer {
                 .foregroundColor: tokens.inlineCode,
             ])
         case .emph(let children):
-            return renderInline(children, font: PlatformFont.italic(font), tokens: tokens, defaultColor: defaultColor)
+            let next = emphasis.applyingItalic
+            return renderInline(
+                children,
+                font: PlatformFont.italic(font),
+                tokens: tokens,
+                defaultColor: next.color(tokens: tokens),
+                emphasis: next
+            )
         case .strong(let children):
-            return renderInline(children, font: PlatformFont.bold(font), tokens: tokens, defaultColor: defaultColor)
+            let next = emphasis.applyingBold
+            return renderInline(
+                children,
+                font: PlatformFont.bold(font),
+                tokens: tokens,
+                defaultColor: next.color(tokens: tokens),
+                emphasis: next
+            )
         case .link(let url, let children):
             let inner = NSMutableAttributedString(
-                attributedString: renderInline(children, font: font, tokens: tokens, defaultColor: tokens.link)
+                attributedString: renderInline(
+                    children,
+                    font: font,
+                    tokens: tokens,
+                    defaultColor: tokens.link,
+                    emphasis: emphasis
+                )
             )
             let fullRange = NSRange(location: 0, length: inner.length)
             inner.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
@@ -201,7 +234,13 @@ enum PreviewElementRenderer {
             ])
         case .strikethrough(let children):
             let inner = NSMutableAttributedString(
-                attributedString: renderInline(children, font: font, tokens: tokens, defaultColor: tokens.strikethrough)
+                attributedString: renderInline(
+                    children,
+                    font: font,
+                    tokens: tokens,
+                    defaultColor: tokens.strikethrough,
+                    emphasis: emphasis
+                )
             )
             let fullRange = NSRange(location: 0, length: inner.length)
             inner.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
@@ -210,7 +249,45 @@ enum PreviewElementRenderer {
             // Unhandled container kinds (footnote references, raw
             // inline HTML, …) fall back to their own rendered children
             // with no additional styling.
-            return renderInline(children, font: font, tokens: tokens, defaultColor: defaultColor)
+            return renderInline(
+                children,
+                font: font,
+                tokens: tokens,
+                defaultColor: defaultColor,
+                emphasis: emphasis
+            )
+        }
+    }
+}
+
+/// Nested emphasis for Preview substitution. Font traits still come
+/// from `PlatformFont.italic` / `.bold`; these cases only pick color.
+private enum InlineEmphasis {
+    case none
+    case italic
+    case bold
+    case boldItalic
+
+    var applyingItalic: InlineEmphasis {
+        switch self {
+        case .none, .italic: .italic
+        case .bold, .boldItalic: .boldItalic
+        }
+    }
+
+    var applyingBold: InlineEmphasis {
+        switch self {
+        case .none, .bold: .bold
+        case .italic, .boldItalic: .boldItalic
+        }
+    }
+
+    func color(tokens: ThemeTokens) -> PlatformColorType {
+        switch self {
+        case .none: tokens.body
+        case .italic: tokens.italic
+        case .bold: tokens.bold
+        case .boldItalic: tokens.boldItalic
         }
     }
 }
