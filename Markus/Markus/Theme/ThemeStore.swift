@@ -7,29 +7,36 @@ import UIKit
 #endif
 
 enum ThemeSelection: Equatable, Hashable {
-    case named(NamedThemeID)
+    case named(ThemeFamily)
     case custom
 
     var persistenceID: String {
         switch self {
-        case .named(let id):
-            return id.rawValue
+        case .named(let family):
+            return family.rawValue
         case .custom:
             return "custom"
         }
     }
 
     static func parse(_ raw: String?) -> ThemeSelection {
-        guard let raw else { return .named(.daylight) }
+        guard let raw else { return .named(.nord) }
         if raw == "custom" { return .custom }
-        if let id = NamedThemeID(rawValue: raw) { return .named(id) }
-        return .named(.daylight)
+        if let family = ThemeFamily(rawValue: raw) { return .named(family) }
+        switch raw {
+        case "daylight", "fog", "parchment", "meadow", "harbor", "lampblack":
+            return .named(.nord)
+        default:
+            return .named(.nord)
+        }
     }
 }
 
 @MainActor
 final class ThemeStore: ObservableObject {
     static let selectionKey = "markus.theme.selection"
+    static let followSystemKey = "markus.theme.followSystem"
+    static let pinnedVariantKey = "markus.theme.pinnedVariant"
     static let customBackgroundKey = "markus.theme.customBackground"
     static let customTextKey = "markus.theme.customText"
     static let customHeadingKey = "markus.theme.customHeading"
@@ -50,7 +57,8 @@ final class ThemeStore: ObservableObject {
 
     let defaults: UserDefaults
     @Published private(set) var selection: ThemeSelection
-    @Published private(set) var hoverSelection: ThemeSelection?
+    @Published private(set) var followSystem: Bool
+    @Published private(set) var pinnedVariant: ThemeVariant
     @Published private(set) var customBackground: PlatformColorType
     @Published private(set) var customTextStyle: CustomTextStyle
     // `nil` means "not yet individually customized" — the custom theme
@@ -62,21 +70,43 @@ final class ThemeStore: ObservableObject {
     @Published private(set) var customLink: PlatformColorType?
     @Published private(set) var customFence: PlatformColorType?
 
-    /// Fires after a *committed* theme change (selection or a custom-theme
-    /// edit) — never for hover. `DocumentHost` subscribes to this to
-    /// re-apply `committedTokens` to its real editor, which is what makes
-    /// every open document repaint when *any* of them commits a theme
-    /// change (R9). Kept separate from `objectWillChange` (which also
-    /// fires on hover, for the proxy/chrome to redraw) so a hover in one
-    /// window can never force every other open document to reparse —
-    /// that would just relocate the "heavy and jarring" bug T02 removed,
-    /// not fix it. Sent *after* the property write (unlike `@Published`,
-    /// which publishes before the value is actually stored) so subscribers
-    /// that read `committedTokens` synchronously always see the new value.
+    /// Hover restyles the Settings proxy only. Not a committed selection
+    /// and never persisted. Ticket 05 will move hover fully into the
+    /// Appearance view; until then the store still holds the preview
+    /// tokens so `displayedTokens` can feed the existing picker proxy.
+    private(set) var hoverTokens: ThemeTokens?
+
+    /// Fires after a *committed* theme change (selection, follow toggle,
+    /// or a custom-theme edit) — never for hover. `DocumentHost`
+    /// subscribes to this to re-apply `committedTokens` to its real
+    /// editor, which is what makes every open document repaint when
+    /// *any* of them commits a theme change (R9). Kept separate from
+    /// `objectWillChange` (which also fires on hover, for the
+    /// proxy/chrome to redraw) so a hover in one window can never force
+    /// every other open document to reparse — that would just relocate
+    /// the "heavy and jarring" bug T02 removed, not fix it. Sent *after*
+    /// the property write (unlike `@Published`, which publishes before
+    /// the value is actually stored) so subscribers that read
+    /// `committedTokens` synchronously always see the new value.
     let themeChanged = PassthroughSubject<Void, Never>()
 
     var persistedSelectionID: String? {
         defaults.string(forKey: Self.selectionKey)
+    }
+
+    var systemIsDark: Bool {
+        #if os(macOS)
+        NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        #else
+        UITraitCollection.current.userInterfaceStyle == .dark
+        #endif
+    }
+
+    var appliedVariant: ThemeVariant {
+        if followSystem {
+            return systemIsDark ? .dark : .light
+        }
+        return pinnedVariant
     }
 
     var committedTokens: ThemeTokens {
@@ -84,31 +114,46 @@ final class ThemeStore: ObservableObject {
     }
 
     var displayedTokens: ThemeTokens {
-        tokens(for: hoverSelection ?? selection)
+        hoverTokens ?? committedTokens
     }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.selection = ThemeSelection.parse(defaults.string(forKey: Self.selectionKey))
-        self.customBackground = Self.loadBackground(from: defaults) ?? NamedThemeCatalog.tokens(for: .daylight).background
+        let rawSelection = defaults.string(forKey: Self.selectionKey)
+        self.selection = ThemeSelection.parse(rawSelection)
+        self.pinnedVariant = Self.loadPinnedVariant(from: defaults, rawSelection: rawSelection)
+        self.followSystem = Self.loadFollowSystem(from: defaults, rawSelection: rawSelection)
+        self.customBackground = Self.loadBackground(from: defaults)
+            ?? NamedThemeCatalog.tokens(for: .nord, variant: .light).background
         if let raw = defaults.string(forKey: Self.customTextKey), let style = CustomTextStyle(rawValue: raw) {
             self.customTextStyle = style
         } else {
             self.customTextStyle = .auto
         }
-        if defaults.string(forKey: Self.selectionKey) == nil {
-            defaults.set(ThemeSelection.named(.daylight).persistenceID, forKey: Self.selectionKey)
-        }
+        self.hoverTokens = nil
         self.customHeading = Self.loadColor(from: defaults, key: Self.customHeadingKey)
         self.customBody = Self.loadColor(from: defaults, key: Self.customBodyKey)
         self.customLink = Self.loadColor(from: defaults, key: Self.customLinkKey)
         self.customFence = Self.loadColor(from: defaults, key: Self.customFenceKey)
+        Self.persistMigratedStateIfNeeded(
+            defaults: defaults,
+            rawSelection: rawSelection,
+            selection: selection,
+            followSystem: followSystem,
+            pinnedVariant: pinnedVariant
+        )
     }
 
     func tokens(for selection: ThemeSelection) -> ThemeTokens {
         switch selection {
-        case .named(let id):
-            return NamedThemeCatalog.tokens(for: id)
+        case .named(let family):
+            let variant: ThemeVariant
+            if followSystem {
+                variant = systemIsDark ? .dark : .light
+            } else {
+                variant = pinnedVariant
+            }
+            return NamedThemeCatalog.tokens(for: family, variant: variant)
         case .custom:
             var tokens = CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
             if let customHeading { tokens.heading = customHeading }
@@ -119,21 +164,49 @@ final class ThemeStore: ObservableObject {
         }
     }
 
+    func isShowing(family: ThemeFamily, variant: ThemeVariant) -> Bool {
+        guard case .named(let selected) = selection, selected == family else { return false }
+        return appliedVariant == variant
+    }
+
     func select(_ selection: ThemeSelection) {
         self.selection = selection
-        hoverSelection = nil
+        hoverTokens = nil
         defaults.set(selection.persistenceID, forKey: Self.selectionKey)
         objectWillChange.send()
         themeChanged.send(())
     }
 
-    func beginHover(_ selection: ThemeSelection) {
-        hoverSelection = selection
+    func selectNamed(_ family: ThemeFamily, variant: ThemeVariant) {
+        selection = .named(family)
+        if !followSystem {
+            pinnedVariant = variant
+            defaults.set(variant.rawValue, forKey: Self.pinnedVariantKey)
+        }
+        hoverTokens = nil
+        defaults.set(selection.persistenceID, forKey: Self.selectionKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
+    func setFollowSystem(_ enabled: Bool) {
+        if followSystem && !enabled {
+            pinnedVariant = systemIsDark ? .dark : .light
+            defaults.set(pinnedVariant.rawValue, forKey: Self.pinnedVariantKey)
+        }
+        followSystem = enabled
+        defaults.set(enabled, forKey: Self.followSystemKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
+    func beginHover(_ tokens: ThemeTokens) {
+        hoverTokens = tokens
         objectWillChange.send()
     }
 
     func endHover() {
-        hoverSelection = nil
+        hoverTokens = nil
         objectWillChange.send()
     }
 
@@ -177,6 +250,48 @@ final class ThemeStore: ObservableObject {
         defaults.set(Self.encodeColor(color), forKey: Self.customFenceKey)
         objectWillChange.send()
         themeChanged.send(())
+    }
+
+    private static func loadFollowSystem(from defaults: UserDefaults, rawSelection: String?) -> Bool {
+        if defaults.object(forKey: followSystemKey) != nil {
+            return defaults.bool(forKey: followSystemKey)
+        }
+        // New install: Follow on. v1.1 relaunch (selection already stored): pin the old choice.
+        return rawSelection == nil
+    }
+
+    private static func loadPinnedVariant(from defaults: UserDefaults, rawSelection: String?) -> ThemeVariant {
+        if let raw = defaults.string(forKey: pinnedVariantKey), let variant = ThemeVariant(rawValue: raw) {
+            return variant
+        }
+        if rawSelection == "lampblack" {
+            return .dark
+        }
+        return .light
+    }
+
+    private static func persistMigratedStateIfNeeded(
+        defaults: UserDefaults,
+        rawSelection: String?,
+        selection: ThemeSelection,
+        followSystem: Bool,
+        pinnedVariant: ThemeVariant
+    ) {
+        if rawSelection == nil {
+            defaults.set(selection.persistenceID, forKey: selectionKey)
+            defaults.set(followSystem, forKey: followSystemKey)
+            defaults.set(pinnedVariant.rawValue, forKey: pinnedVariantKey)
+            return
+        }
+        if ThemeFamily(rawValue: rawSelection ?? "") == nil, rawSelection != "custom" {
+            defaults.set(selection.persistenceID, forKey: selectionKey)
+        }
+        if defaults.object(forKey: followSystemKey) == nil {
+            defaults.set(followSystem, forKey: followSystemKey)
+        }
+        if defaults.object(forKey: pinnedVariantKey) == nil {
+            defaults.set(pinnedVariant.rawValue, forKey: pinnedVariantKey)
+        }
     }
 
     private static func encodeColor(_ color: PlatformColorType) -> [Double] {

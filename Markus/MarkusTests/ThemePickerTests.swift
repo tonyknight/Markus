@@ -17,6 +17,13 @@ struct ThemePickerTests {
         return ThemeStore(defaults: defaults)
     }
 
+    private func pinnedStore(family: ThemeFamily = .nord, variant: ThemeVariant = .light) -> ThemeStore {
+        let store = isolatedStore()
+        store.setFollowSystem(false)
+        store.selectNamed(family, variant: variant)
+        return store
+    }
+
     private func hostWithStore(_ store: ThemeStore) -> DocumentHost {
         DocumentHost(
             recents: RecentDocuments(defaults: UserDefaults(suiteName: "markus.theme.host.\(UUID().uuidString)")!),
@@ -31,21 +38,23 @@ struct ThemePickerTests {
         try Data(markdown.utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let store = isolatedStore()
+        let store = pinnedStore()
         let host = hostWithStore(store)
         host.openPicked(url)
-        #expect(store.selection == .named(.daylight))
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+        #expect(store.selection == .named(.nord))
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
 
-        ThemeChrome.select(.named(.harbor), on: host)
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
-        #expect(store.selection == .named(.harbor))
-        #expect(store.persistedSelectionID == "harbor")
+        ThemeChrome.selectNamed(.github, variant: .light, on: host)
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .github, variant: .light))
+        #expect(store.selection == .named(.github))
+        #expect(store.persistedSelectionID == "github")
         #expect(try String(contentsOf: url, encoding: .utf8) == markdown)
 
         let restored = ThemeStore(defaults: store.defaults)
-        #expect(restored.selection == .named(.harbor))
-        #expect(restored.displayedTokens == NamedThemeCatalog.tokens(for: .harbor))
+        #expect(restored.selection == .named(.github))
+        #expect(restored.followSystem == false)
+        #expect(restored.pinnedVariant == .light)
+        #expect(restored.displayedTokens == NamedThemeCatalog.tokens(for: .github, variant: .light))
     }
 
     @Test func customCardAppliesDerivedTokensAndPersistsCustomId() {
@@ -75,16 +84,16 @@ struct ThemePickerTests {
     /// Combine subscription, not two hosts independently reading the same
     /// stored value (N9).
     @Test func selectingOnOneHostBroadcastsToAnotherHostSharingTheSameStore() {
-        let store = isolatedStore()
+        let store = pinnedStore()
         let first = hostWithStore(store)
         let second = hostWithStore(store)
-        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
-        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
+        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
 
-        ThemeChrome.select(.named(.harbor), on: first)
+        ThemeChrome.selectNamed(.github, variant: .dark, on: first)
 
-        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
-        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .harbor))
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .github, variant: .dark))
+        #expect(second.session.editor.tokens == NamedThemeCatalog.tokens(for: .github, variant: .dark))
     }
 
     /// Confirms persistence still works now that `ThemeStore` is app-scoped
@@ -94,36 +103,38 @@ struct ThemePickerTests {
     /// `UserDefaults` suite — the same mechanism `ThemeStore.shared` would
     /// use against `.standard` across a real relaunch).
     @Test func selectionMadeWhileTwoWindowsShareTheStorePersistsAcrossSimulatedRelaunch() {
-        let store = isolatedStore()
+        let store = pinnedStore()
         let first = hostWithStore(store)
         let second = hostWithStore(store)
 
-        ThemeChrome.select(.named(.parchment), on: second)
-        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .parchment))
-        #expect(store.persistedSelectionID == "parchment")
+        ThemeChrome.selectNamed(.solarized, variant: .light, on: second)
+        #expect(first.session.editor.tokens == NamedThemeCatalog.tokens(for: .solarized, variant: .light))
+        #expect(store.persistedSelectionID == "solarized")
 
         // Simulated relaunch: a brand new ThemeStore, no DocumentHost
         // sharing memory with `store`, reading the same UserDefaults suite.
         let relaunched = ThemeStore(defaults: store.defaults)
-        #expect(relaunched.selection == .named(.parchment))
-        #expect(relaunched.displayedTokens == NamedThemeCatalog.tokens(for: .parchment))
-        #expect(relaunched.committedTokens == NamedThemeCatalog.tokens(for: .parchment))
+        #expect(relaunched.selection == .named(.solarized))
+        #expect(relaunched.followSystem == false)
+        #expect(relaunched.pinnedVariant == .light)
+        #expect(relaunched.displayedTokens == NamedThemeCatalog.tokens(for: .solarized, variant: .light))
+        #expect(relaunched.committedTokens == NamedThemeCatalog.tokens(for: .solarized, variant: .light))
     }
 
     @Test func setThemePaintsEditorCanvasWithTokenBackground() {
         let view = FoldingTextView()
-        let lampblack = NamedThemeCatalog.tokens(for: .lampblack)
-        view.setTheme(lampblack)
-        #expect(view.canvasBackground.isEqual(lampblack.background))
+        let dark = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
+        view.setTheme(dark)
+        #expect(view.canvasBackground.isEqual(dark.background))
         #if os(macOS)
-        #expect(view.layer?.backgroundColor == lampblack.background.cgColor)
+        #expect(view.layer?.backgroundColor == dark.background.cgColor)
         #else
-        #expect(view.backgroundColor?.isEqual(lampblack.background) == true)
+        #expect(view.backgroundColor?.isEqual(dark.background) == true)
         #endif
     }
 
     @Test func themeProxyViewIsReadOnlyAndNeverStealsHitsOrFirstResponder() {
-        let proxy = ThemeChrome.makeProxyView(tokens: NamedThemeCatalog.tokens(for: .daylight))
+        let proxy = ThemeChrome.makeProxyView(tokens: NamedThemeCatalog.tokens(for: .nord, variant: .light))
         #if os(macOS)
         proxy.frame = NSRect(x: 0, y: 0, width: 160, height: 88)
         #expect(proxy.hitTest(NSPoint(x: 80, y: 44)) == nil)
@@ -148,10 +159,10 @@ struct ThemePickerTests {
     @Test func clickOnCardSwatchDispatchesRealAppKitEventThatInvokesOnSelect() {
         var selected: ThemeSelection?
         let card = ThemeCard(
-            title: "Harbor",
-            tokens: NamedThemeCatalog.tokens(for: .harbor),
+            title: "GitHub Light",
+            tokens: NamedThemeCatalog.tokens(for: .github, variant: .light),
             isSelected: false,
-            onSelect: { selected = .named(.harbor) },
+            onSelect: { selected = .named(.github) },
             onHover: { _ in }
         )
         .frame(width: 180, height: 140)
@@ -183,7 +194,7 @@ struct ThemePickerTests {
         window.sendEvent(upEvent)
         window.orderOut(nil)
 
-        #expect(selected == .named(.harbor))
+        #expect(selected == .named(.github))
     }
 
     /// Hovering a card must preview into the proxy document only — the
@@ -193,28 +204,29 @@ struct ThemePickerTests {
     /// is what must change; `host.session.editor.tokens` (the real
     /// document) must stay pinned to the committed theme throughout.
     @Test func macHoverPreviewChangesOnlyTheProxysTokensNeverTheRealDocument() {
-        let store = isolatedStore()
+        let store = pinnedStore(family: .nord, variant: .light)
         let host = hostWithStore(store)
-        ThemeChrome.select(.named(.daylight), on: host)
-        #expect(store.persistedSelectionID == "daylight")
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
+        ThemeChrome.selectNamed(.nord, variant: .light, on: host)
+        #expect(store.persistedSelectionID == "nord")
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
 
-        ThemeChrome.preview(.named(.meadow), on: host)
-        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .meadow))
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
-        #expect(store.persistedSelectionID == "daylight")
-        #expect(store.selection == .named(.daylight))
+        let hovered = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
+        ThemeChrome.preview(hovered, on: host)
+        #expect(store.displayedTokens == hovered)
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
+        #expect(store.persistedSelectionID == "nord")
+        #expect(store.selection == .named(.nord))
 
         ThemeChrome.preview(nil, on: host)
-        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .daylight))
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
-        #expect(store.persistedSelectionID == "daylight")
+        #expect(store.displayedTokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
+        #expect(store.persistedSelectionID == "nord")
 
-        ThemeChrome.preview(.named(.fog), on: host)
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .daylight))
-        ThemeChrome.select(.named(.fog), on: host)
-        #expect(store.persistedSelectionID == "fog")
-        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .fog))
+        ThemeChrome.preview(NamedThemeCatalog.tokens(for: .monokai, variant: .dark), on: host)
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .nord, variant: .light))
+        ThemeChrome.selectNamed(.monokai, variant: .dark, on: host)
+        #expect(store.persistedSelectionID == "monokai")
+        #expect(host.session.editor.tokens == NamedThemeCatalog.tokens(for: .monokai, variant: .dark))
     }
     #endif
 }

@@ -115,14 +115,18 @@ final class DocumentHost: ObservableObject {
         themeStore.select(selection)
     }
 
+    func applyNamedTheme(_ family: ThemeFamily, variant: ThemeVariant) {
+        themeStore.selectNamed(family, variant: variant)
+    }
+
     /// Hovering a card previews that theme in the picker's proxy document
     /// only (`ThemeStore.displayedTokens`, read directly by
     /// `ThemePickerView`) — it must never touch the real open document's
     /// editor, which stays on the committed theme throughout hover (R8;
-    /// C.9).
-    func previewTheme(_ selection: ThemeSelection?) {
-        if let selection {
-            themeStore.beginHover(selection)
+    /// C.9). Hover tokens never go through `themeChanged` (N2).
+    func previewTheme(_ tokens: ThemeTokens?) {
+        if let tokens {
+            themeStore.beginHover(tokens)
         } else {
             themeStore.endHover()
         }

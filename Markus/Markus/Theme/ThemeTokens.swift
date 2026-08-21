@@ -19,7 +19,7 @@ struct ThemeTokens: Equatable {
     var footnote: PlatformColorType
 
     static var `default`: ThemeTokens {
-        NamedThemeCatalog.tokens(for: .daylight)
+        NamedThemeCatalog.tokens(for: .nord, variant: .light)
     }
 
     static func == (lhs: ThemeTokens, rhs: ThemeTokens) -> Bool {

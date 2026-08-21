@@ -27,8 +27,13 @@ enum ThemeChrome {
     }
 
     @MainActor
-    static func preview(_ selection: ThemeSelection?, on host: DocumentHost) {
-        host.previewTheme(selection)
+    static func selectNamed(_ family: ThemeFamily, variant: ThemeVariant, on host: DocumentHost) {
+        host.applyNamedTheme(family, variant: variant)
+    }
+
+    @MainActor
+    static func preview(_ tokens: ThemeTokens?, on host: DocumentHost) {
+        host.previewTheme(tokens)
     }
 
     /// Builds the single shared proxy document shown below the preset and
@@ -55,16 +60,21 @@ struct ThemePickerView: View {
                 Text("Themes")
                     .font(.headline)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
-                    ForEach(NamedThemeID.allCases, id: \.self) { id in
-                        ThemeCard(
-                            title: id.displayName,
-                            tokens: NamedThemeCatalog.tokens(for: id),
-                            isSelected: host.themeStore.selection == .named(id)
-                        ) {
-                            ThemeChrome.select(.named(id), on: host)
-                        } onHover: { hovering in
-                            guard ThemeChrome.showsHoverPreview else { return }
-                            ThemeChrome.preview(hovering ? .named(id) : nil, on: host)
+                    ForEach(ThemeFamily.allCases, id: \.self) { family in
+                        ForEach(ThemeVariant.allCases, id: \.self) { variant in
+                            ThemeCard(
+                                title: "\(family.displayName) \(variant.displayName)",
+                                tokens: NamedThemeCatalog.tokens(for: family, variant: variant),
+                                isSelected: host.themeStore.isShowing(family: family, variant: variant)
+                            ) {
+                                ThemeChrome.selectNamed(family, variant: variant, on: host)
+                            } onHover: { hovering in
+                                guard ThemeChrome.showsHoverPreview else { return }
+                                ThemeChrome.preview(
+                                    hovering ? NamedThemeCatalog.tokens(for: family, variant: variant) : nil,
+                                    on: host
+                                )
+                            }
                         }
                     }
                     ThemeCard(
@@ -75,7 +85,7 @@ struct ThemePickerView: View {
                         ThemeChrome.select(.custom, on: host)
                     } onHover: { hovering in
                         guard ThemeChrome.showsHoverPreview else { return }
-                        ThemeChrome.preview(hovering ? .custom : nil, on: host)
+                        ThemeChrome.preview(hovering ? host.themeStore.tokens(for: .custom) : nil, on: host)
                     }
                 }
                 if host.themeStore.selection == .custom {

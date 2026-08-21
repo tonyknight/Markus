@@ -89,7 +89,7 @@ struct PreviewSubstitutionTests {
         view.setMode(.preview)
         view.ensureLayout()
 
-        view.setTheme(NamedThemeCatalog.tokens(for: .lampblack))
+        view.setTheme(NamedThemeCatalog.tokens(for: .nord, variant: .dark))
         view.setZoomScale(1.5)
         view.applyFolds()
         view.ensureLayout()

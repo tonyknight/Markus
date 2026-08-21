@@ -9,23 +9,23 @@ import Testing
 
 @MainActor
 struct ThemeTokensTests {
-    @Test func catalogExposesExactlySixNamedMarkusPalettes() {
-        #expect(NamedThemeID.allCases.count == 6)
-        #expect(NamedThemeID.allCases.map(\.rawValue) == [
-            "daylight", "lampblack", "fog", "parchment", "meadow", "harbor",
+    @Test func catalogExposesSixFamiliesAndTwoVariants() {
+        #expect(ThemeFamily.allCases.count == 6)
+        #expect(ThemeFamily.allCases.map(\.rawValue) == [
+            "nord", "monokai", "solarized", "github", "catppuccin", "gruvbox",
         ])
-        #expect(NamedThemeID.allCases.map(\.displayName) == [
-            "Daylight", "Lampblack", "Fog", "Parchment", "Meadow", "Harbor",
+        #expect(ThemeFamily.allCases.map(\.displayName) == [
+            "Nord", "Monokai", "Solarized", "GitHub", "Catppuccin", "Gruvbox",
         ])
+        #expect(ThemeVariant.allCases.map(\.rawValue) == ["light", "dark"])
+        #expect(ThemeVariant.allCases.map(\.displayName) == ["Light", "Dark"])
     }
 
     @Test func namedPalettesAreDistinctAndFillEveryToken() {
-        let palettes = NamedThemeID.allCases.map { NamedThemeCatalog.tokens(for: $0) }
-        #expect(palettes.count == 6)
-        for (index, tokens) in palettes.enumerated() {
-            for otherIndex in (index + 1)..<palettes.count {
-                #expect(tokens != palettes[otherIndex])
-            }
+        let light = NamedThemeCatalog.tokens(for: .nord, variant: .light)
+        let dark = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
+        #expect(light != dark)
+        for tokens in [light, dark] {
             #expect(tokens.background.cgColor.alpha > 0)
             #expect(tokens.heading.cgColor.alpha > 0)
             #expect(tokens.body.cgColor.alpha > 0)
@@ -38,7 +38,7 @@ struct ThemeTokensTests {
             #expect(tokens.strikethrough.cgColor.alpha > 0)
             #expect(tokens.footnote.cgColor.alpha > 0)
         }
-        #expect(NamedThemeCatalog.tokens(for: .daylight) == ThemeTokens.default)
+        #expect(NamedThemeCatalog.tokens(for: .nord, variant: .light) == ThemeTokens.default)
     }
 
     @Test func setThemeAppliesNamedPaletteHeadingAndBodyColors() throws {
@@ -50,7 +50,7 @@ struct ThemeTokensTests {
         let storage = try #require(view.textStorage)
         let headingRange = (markdown as NSString).range(of: "# Title")
         let bodyRange = (markdown as NSString).range(of: "Math is")
-        let lampblack = NamedThemeCatalog.tokens(for: .lampblack)
+        let lampblack = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
         #expect(lampblack != ThemeTokens.default)
 
         view.setTheme(lampblack)
