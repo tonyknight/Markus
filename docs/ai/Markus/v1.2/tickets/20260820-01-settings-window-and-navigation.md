@@ -13,15 +13,15 @@ depends_on: []
 subtasks:
 - id: T1
   title: SwiftUI Settings scene with sidebar (Appearance, Editor, About placeholders)
-  status: todo
+  status: done
 - id: T2
   title: Wire gear, Markus → Settings…, and ⌘, to this window
   status: todo
 - id: T3
   title: Remove the stub Settings scene copy
-  status: todo
+  status: done
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -31,9 +31,9 @@ If `Settings` + `NavigationSplitView` cannot host the later Appearance inner spl
 
 ## Acceptance criteria
 
-- [ ] A Settings window exists with a left list of Appearance, Editor, and About, and a right detail pane (R1).
+- [x] A Settings window exists with a left list of Appearance, Editor, and About, and a right detail pane (R1).
 - [ ] Ribbon gear, **Markus → Settings…**, and ⌘, all open that same window (R2).
-- [ ] The stub `Settings { Text("Open a Markdown document to edit.") }` is gone (R2).
+- [x] The stub `Settings { Text("Open a Markdown document to edit.") }` is gone (R2).
 - [ ] macOS Debug build succeeds.
 
 ## Context
@@ -49,15 +49,15 @@ If `Settings` + `NavigationSplitView` cannot host the later Appearance inner spl
 
 ## Subtasks
 
-- [ ] Host the Warp-style split in the macOS `Settings` scene (or documented NSWindow fallback).
-- [ ] Sidebar: Appearance, Editor, About (placeholder detail is fine).
+- [x] Host the Warp-style split in the macOS `Settings` scene (or documented NSWindow fallback).
+- [x] Sidebar: Appearance, Editor, About (placeholder detail is fine).
 - [ ] Gear, app Settings menu, and ⌘, open this window.
-- [ ] Delete the stub Settings copy.
+- [x] Delete the stub Settings copy.
 
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Settings window view with sidebar
 
@@ -75,7 +75,7 @@ Replace `Settings { Text("Open a Markdown document to edit.") }` in `MarkusApp` 
 Files: `Markus/Markus/MarkusApp.swift`
 
 Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
-- [ ] todo
+- [x] done
 
 ### T03: Gear opens the Settings window
 

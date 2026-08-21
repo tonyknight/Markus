@@ -16,8 +16,9 @@ struct MarkusApp: App {
     var body: some Scene {
         #if os(macOS)
         Settings {
-            Text("Open a Markdown document to edit.")
+            SettingsWindowView()
         }
+        .defaultSize(width: 800, height: 560)
         .commands {
             MarkusCommands()
         }
