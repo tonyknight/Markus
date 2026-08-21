@@ -27,13 +27,27 @@ enum GitHubAlertType: String, Equatable, Sendable, CaseIterable {
     /// known alerts. `[!FOO]` and anything that is not exactly `[!TYPE]`
     /// return `nil`.
     static func parse(markerLine: String) -> GitHubAlertType? {
+        guard looksLikeAlertMarker(markerLine) else { return nil }
+        let inner = innerWord(of: markerLine)
+        return GitHubAlertType(rawValue: inner)
+    }
+
+    /// True when the first line is `[!WORD]` (optional inner whitespace).
+    /// Known types still need `parse`; unknown `[!FOO]` is a quote.
+    static func looksLikeAlertMarker(_ markerLine: String) -> Bool {
         let trimmed = markerLine.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("[!"), trimmed.hasSuffix("]"), trimmed.count >= 4 else {
-            return nil
+            return false
         }
-        let inner = trimmed.dropFirst(2).dropLast()
+        let inner = innerWord(of: markerLine)
+        return !inner.isEmpty && inner.allSatisfy(\.isLetter)
+    }
+
+    private static func innerWord(of markerLine: String) -> String {
+        let trimmed = markerLine.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("[!"), trimmed.hasSuffix("]") else { return "" }
+        return trimmed.dropFirst(2).dropLast()
             .trimmingCharacters(in: .whitespaces)
             .uppercased()
-        return GitHubAlertType(rawValue: inner)
     }
 }

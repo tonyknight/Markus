@@ -122,7 +122,11 @@ enum PreviewStructureCollector {
         let type = cmark_node_get_type(node)
 
         if type == CMARK_NODE_BLOCK_QUOTE {
-            if let alertType = githubAlertType(of: node) {
+            let markerLine = firstQuoteLineText(of: node)
+            // Known `[!NOTE]`…`[!CAUTION]` become one callout. Unknown
+            // `[!FOO]` and ordinary quotes fall through to the quote
+            // walk — never promote every `>` as a callout.
+            if let markerLine, let alertType = GitHubAlertType.parse(markerLine: markerLine) {
                 let startLine = Int(cmark_node_get_start_line(node))
                 let endLine = Int(cmark_node_get_end_line(node))
                 if startLine > 0, endLine >= startLine {
@@ -187,11 +191,10 @@ enum PreviewStructureCollector {
     }
 
     /// First paragraph of a blockquote, first line only, plain text.
-    /// Returns a known GitHub alert type or `nil` — unknown `[!FOO]`
-    /// and ordinary quotes must not match.
-    private static func githubAlertType(
+    /// `nil` when the line has inline markup (not a GitHub alert).
+    private static func firstQuoteLineText(
         of blockQuote: UnsafeMutablePointer<cmark_node>
-    ) -> GitHubAlertType? {
+    ) -> String? {
         guard let first = cmark_node_first_child(blockQuote) else { return nil }
         guard cmark_node_get_type(first) == CMARK_NODE_PARAGRAPH else { return nil }
 
@@ -206,7 +209,7 @@ enum PreviewStructureCollector {
             firstLine += literalText(n)
             child = cmark_node_next(n)
         }
-        return GitHubAlertType.parse(markerLine: firstLine)
+        return firstLine
     }
 
     private static func collectCalloutBody(
