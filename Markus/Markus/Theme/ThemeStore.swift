@@ -212,6 +212,9 @@ final class ThemeStore: ObservableObject {
             }
             return NamedThemeCatalog.tokens(for: family, variant: variant)
         case .custom:
+            if let snapshot = frozenCustomSnapshot {
+                return snapshot
+            }
             return applyCustomOverrides(
                 CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
             )
@@ -331,11 +334,13 @@ final class ThemeStore: ObservableObject {
         self.tokens(for: .custom) != tokens
     }
 
-    /// Copies every selector from `tokens` into the custom store, selects
-    /// Custom, and broadcasts once. Does not write `NamedThemeCatalog`.
+    /// Copies every selector from `tokens` into the custom store as an
+    /// sRGB snapshot, selects Custom, and broadcasts once. Does not write
+    /// `NamedThemeCatalog` — named recipes stay immutable (R7).
     func replaceCustom(with tokens: ThemeTokens) {
-        customBackground = tokens.background
-        defaults.set(Self.encodeColor(tokens.background), forKey: Self.customBackgroundKey)
+        let encodedBackground = Self.encodeColor(tokens.background)
+        customBackground = Self.color(fromEncoded: encodedBackground)
+        defaults.set(encodedBackground, forKey: Self.customBackgroundKey)
         customTextStyle = CustomTheme.resolvedTextStyle(background: tokens.background, textStyle: .auto)
         defaults.set(customTextStyle.rawValue, forKey: Self.customTextKey)
         writeCustomSlot(&customBody, tokens.body, key: Self.customBodyKey)
@@ -361,6 +366,56 @@ final class ThemeStore: ObservableObject {
         selection = .custom
         defaults.set(selection.persistenceID, forKey: Self.selectionKey)
         broadcastCommit()
+    }
+
+    /// When every custom selector is persisted, Custom is a frozen
+    /// snapshot: applied tokens come only from those keys, never from
+    /// `NamedThemeCatalog` or `CustomTheme` derivation. Later catalog
+    /// edits cannot rebase an existing Custom (R7).
+    private var frozenCustomSnapshot: ThemeTokens? {
+        guard
+            let customBody,
+            let customH1,
+            let customH2,
+            let customH3,
+            let customH4,
+            let customH5,
+            let customH6,
+            let customBold,
+            let customItalic,
+            let customBoldItalic,
+            let customLink,
+            let customList,
+            let customFence,
+            let customInlineCode,
+            let customCallout,
+            let customTable,
+            let customStrikethrough,
+            let customFootnote,
+            let customFoldMarker
+        else { return nil }
+        return ThemeTokens(
+            background: customBackground,
+            body: customBody,
+            h1: customH1,
+            h2: customH2,
+            h3: customH3,
+            h4: customH4,
+            h5: customH5,
+            h6: customH6,
+            bold: customBold,
+            italic: customItalic,
+            boldItalic: customBoldItalic,
+            link: customLink,
+            inlineCode: customInlineCode,
+            fence: customFence,
+            list: customList,
+            foldMarker: customFoldMarker,
+            table: customTable,
+            strikethrough: customStrikethrough,
+            footnote: customFootnote,
+            callout: customCallout
+        )
     }
 
     /// Per-level heading keys win; legacy `customHeading` fills any
@@ -395,8 +450,9 @@ final class ThemeStore: ObservableObject {
     }
 
     private func writeCustomSlot(_ slot: inout PlatformColorType?, _ color: PlatformColorType, key: String) {
-        slot = color
-        defaults.set(Self.encodeColor(color), forKey: key)
+        let encoded = Self.encodeColor(color)
+        defaults.set(encoded, forKey: key)
+        slot = Self.color(fromEncoded: encoded)
     }
 
     private func startObservingSystemAppearance() {
@@ -504,6 +560,11 @@ final class ThemeStore: ObservableObject {
         guard let values = defaults.array(forKey: key) as? [Double], values.count == 4 else {
             return nil
         }
+        return color(fromEncoded: values)
+    }
+
+    /// Detached sRGB copy so Custom never aliases a catalog `NSColor`/`UIColor`.
+    private static func color(fromEncoded values: [Double]) -> PlatformColorType {
         let red = CGFloat(values[0])
         let green = CGFloat(values[1])
         let blue = CGFloat(values[2])

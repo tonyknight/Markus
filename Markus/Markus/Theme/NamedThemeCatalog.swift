@@ -46,6 +46,8 @@ enum ThemeVariant: String, CaseIterable, Equatable, Hashable {
 enum NamedThemeCatalog {
     /// Twelve original sRGB recipes inspired by the public look of each
     /// family. Values are hand-authored, not copied from a vendor file.
+    /// Read-only at runtime: Use as Custom copies values into the custom
+    /// store and never mutates these recipes (R7).
     static func tokens(for family: ThemeFamily, variant: ThemeVariant) -> ThemeTokens {
         switch (family, variant) {
         case (.nord, .light): nordLight

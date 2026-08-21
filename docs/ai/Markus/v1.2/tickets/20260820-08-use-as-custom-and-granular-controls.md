@@ -22,9 +22,8 @@ subtasks:
   status: done
 - id: T3
   title: Custom is a frozen snapshot; catalog stays immutable
-  status: todo
-plan_status: in-progress
-current_task: T03
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -49,14 +48,14 @@ Custom becomes clone-then-refine. **Use as Custom** copies the chosen prebuilt v
 
 ## Subtasks
 
-- [ ] Use as Custom + replace confirmation.
-- [ ] Grouped wells bound to expanded tokens.
-- [ ] Persist the full custom snapshot.
+- [x] Use as Custom + replace confirmation.
+- [x] Grouped wells bound to expanded tokens.
+- [x] Persist the full custom snapshot.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Use as Custom snapshots a variant; confirm if replacing existing custom edits
 
@@ -90,7 +89,7 @@ Files: `Markus/Markus/Theme/ThemeStore.swift`
 
 Verify: same `xcodebuild` macOS Debug build as T01, from `Markus/`.
 - [ ] todo
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -100,3 +99,6 @@ T01: replaceCustom copies full token set, selects Custom, confirms if customDiff
 
 ### 2026-08-20
 T02: Grouped wells (Headings / Emphasis / Blocks / Other) plus background and body. H1 binds setCustomH1 only. macOS Debug BUILD SUCCEEDED.
+
+### 2026-08-20
+T03: Full custom snapshot is frozen from persisted keys; catalog is read-only. macOS Debug BUILD SUCCEEDED. Ticket left in-progress.
