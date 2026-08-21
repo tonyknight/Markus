@@ -24,10 +24,12 @@ enum LibraryChrome {
 /// A slim vertical rail pinned to the left of the document: a hamburger
 /// at the top toggles the library panel (the relocated folder tree from
 /// ticket 03), and a gear at the bottom opens the Settings window (same
-/// scene as **Markus → Settings…** and ⌘,). The in-window takeover remains
+/// scene as **Markus → Settings…** and ⌘,). Uses `@Environment(\.openSettings)`
+/// (macOS 14+) rather than a string selector. The in-window takeover remains
 /// until ticket 02; the gear prefers the window over `presentSettings()`.
 struct RibbonRailView: View {
     @ObservedObject var host: DocumentHost
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(spacing: 12) {
@@ -44,7 +46,7 @@ struct RibbonRailView: View {
             Spacer()
 
             Button {
-                SettingsWindowChrome.open()
+                SettingsWindowChrome.open(openSettings)
             } label: {
                 Image(systemName: "gearshape")
                     .imageScale(.large)

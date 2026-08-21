@@ -85,8 +85,27 @@ Files: `Markus/Markus/Document/RibbonRail.swift`, `Markus/Markus/Document/Settin
 Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
 - [x] done
 
+### T04: Open Settings via openSettings environment
+
+Review Important: `showSettingsWindow:` is not a valid AppKit selector on macOS 14+. Gear calls `@Environment(\.openSettings)` (and the live **Markus → Settings…** menu item as a fallback because the rail is inside `NSHostingController`). Drop the string selector. Sidebar selection uses accent fill + primary text so inactive-window contrast stays readable.
+
+Files: `Markus/Markus/Document/RibbonRail.swift`, `Markus/Markus/Document/SettingsWindow.swift`
+
+Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
+- [x] done
+
 ## Notes
 
 Append-only running log. Each entry dated.
 
 - 2026-08-20: Implemented R1/R2. T01 added `SettingsWindowView` (non-collapsing `HStack` split, Appearance / Editor / About placeholders — not `NavigationSplitView`, so the sidebar cannot collapse). T02 replaced the stub `Settings { Text(...) }` with that view; SwiftUI’s Settings scene still provides **Markus → Settings…** and ⌘,. T03 gear calls `SettingsWindowChrome.open()` (`showSettingsWindow:`) instead of `presentSettings()`. Left `ContentView` → `SettingsScene` takeover and `DocumentHost.presentSettings()` for ticket 02. macOS Debug build succeeded after each task. Did not run `xcodebuild test`. Did not launch the app for a visual pass from this session.
+- 2026-08-20: T04 review fix. Gear now calls `@Environment(\.openSettings)` (passed into `SettingsWindowChrome.open`), then the live **Markus → Settings…** menu item (⌘,) as a fallback because the rail is inside `NSHostingController`. Removed `showSettingsWindow:` string selector. Sidebar selection uses accent fill + primary text (inactive-window contrast). macOS Debug build succeeded. Ticket left in-progress.
+
+## Review
+
+**2026-08-20 — Important.** Do not mark done.
+
+- **Important:** Gear opener `SettingsWindowChrome.open()` sends `showSettingsWindow:` with `NSApp.sendAction`. That selector is not in the macOS 26 AppKit headers; Apple’s supported APIs since macOS 14 are `SettingsLink` and `@Environment(\.openSettings)`. The gear lives in an `NSHostingController` document window, so a silent no-op fails R2 for that entry point. **Markus → Settings…** and ⌘, from the `Settings` scene are unaffected. Replace the string-selector sendAction and confirm in a running app.
+- **Minor:** Sidebar selection uses `selectedContentBackgroundColor` plus `alternateSelectedControlTextColor`, which can paint light text on an inactive gray fill when Settings is not the key window.
+
+Controller may not mark done. Exposed usage: `SettingsWindowView` in the macOS `Settings` scene; `SettingsWindowChrome.open()` is the intended shared opener — do not reuse it until the Important finding is fixed.

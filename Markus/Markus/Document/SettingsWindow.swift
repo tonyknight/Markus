@@ -29,13 +29,28 @@ enum SettingsWindowCategory: String, CaseIterable, Identifiable {
     }
 }
 
-/// Shared opener so the ribbon gear hits the same SwiftUI `Settings`
-/// scene that **Markus → Settings…** and ⌘, already open. `showSettingsWindow:`
-/// is the action that scene installs on `NSApp`.
+/// Opens the SwiftUI `Settings` scene. Prefer `OpenSettingsAction` (the
+/// macOS 14+ API). The gear lives in an `NSHostingController` document
+/// window, so that environment value can be a no-op; in that case invoke
+/// the Settings menu item SwiftUI already installed (⌘,), which is the
+/// same path as **Markus → Settings…**. Do not send `showSettingsWindow:`
+/// — that selector is not a valid AppKit API on macOS 14+.
 enum SettingsWindowChrome {
     @MainActor
-    static func open() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    static func open(_ openSettings: OpenSettingsAction) {
+        openSettings()
+        performInstalledSettingsMenuItem()
+    }
+
+    /// The live **Markus → Settings…** item, not a hard-coded selector.
+    @MainActor
+    static func performInstalledSettingsMenuItem() {
+        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
+        let item = appMenu.items.first {
+            $0.keyEquivalent == "," && $0.keyEquivalentModifierMask.contains(.command)
+        }
+        guard let item, let action = item.action else { return }
+        NSApp.sendAction(action, to: item.target, from: item)
     }
 }
 
@@ -75,14 +90,10 @@ private extension SettingsWindowView {
             .buttonStyle(.plain)
             .listRowBackground(
                 selectedCategory == category
-                    ? Color(nsColor: .selectedContentBackgroundColor)
+                    ? Color.accentColor.opacity(0.18)
                     : Color.clear
             )
-            .foregroundStyle(
-                selectedCategory == category
-                    ? Color(nsColor: .alternateSelectedControlTextColor)
-                    : Color.primary
-            )
+            .foregroundStyle(Color.primary)
             .accessibilityIdentifier("settings.window.category." + category.rawValue)
         }
         .listStyle(.sidebar)
