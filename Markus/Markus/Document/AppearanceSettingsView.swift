@@ -2,22 +2,47 @@
 import AppKit
 import SwiftUI
 
-/// Appearance page inside the Settings window: Follow System plus a
-/// wrapping grid of one card per catalog variant and Custom. Click
-/// commits on `ThemeStore.shared` so every open document updates.
-/// Hover and the GFM proxy column land in ticket 05 T02.
+/// Appearance page inside the Settings window: Follow System, variant
+/// cards plus Custom, and a real Preview proxy. Hover is `@State` on this
+/// view — not `ThemeStore.hoverTokens` — so a second Settings window
+/// cannot inherit it, and close/apply clears it (R3, R12, N2).
 struct AppearanceSettingsView: View {
     @ObservedObject private var store = ThemeStore.shared
+    @State private var hoveredTokens: ThemeTokens?
+
+    private var proxyTokens: ThemeTokens {
+        hoveredTokens ?? store.committedTokens
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             followSystemControl
-            ScrollView {
-                cardGrid
+            GeometryReader { geo in
+                let stackVertically = geo.size.width < 540
+                if stackVertically {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ScrollView {
+                            cardGrid
+                        }
+                        proxyColumn
+                            .frame(minHeight: 240)
+                            .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 16) {
+                        ScrollView {
+                            cardGrid
+                        }
+                        proxyColumn
+                            .frame(minWidth: 260, idealWidth: 320, maxWidth: 360)
+                            .frame(maxHeight: .infinity)
+                    }
+                }
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onDisappear { hoveredTokens = nil }
         .accessibilityIdentifier("settings.appearance.view")
     }
 
@@ -50,13 +75,19 @@ struct AppearanceSettingsView: View {
         ) {
             ForEach(ThemeFamily.allCases, id: \.self) { family in
                 ForEach(ThemeVariant.allCases, id: \.self) { variant in
+                    let tokens = NamedThemeCatalog.tokens(for: family, variant: variant)
                     AppearanceThemeCard(
                         title: family.pickerTitle(variant: variant),
-                        tokens: NamedThemeCatalog.tokens(for: family, variant: variant),
-                        isSelected: store.isShowing(family: family, variant: variant)
-                    ) {
-                        store.selectNamed(family, variant: variant)
-                    }
+                        tokens: tokens,
+                        isSelected: store.isShowing(family: family, variant: variant),
+                        onSelect: {
+                            hoveredTokens = nil
+                            store.selectNamed(family, variant: variant)
+                        },
+                        onHover: { hovering in
+                            hoveredTokens = hovering ? tokens : nil
+                        }
+                    )
                     .accessibilityIdentifier(
                         "settings.appearance.card.\(family.rawValue).\(variant.rawValue)"
                     )
@@ -65,12 +96,33 @@ struct AppearanceSettingsView: View {
             AppearanceThemeCard(
                 title: "Custom",
                 tokens: store.tokens(for: .custom),
-                isSelected: store.selection == .custom
-            ) {
-                store.select(.custom)
-            }
+                isSelected: store.selection == .custom,
+                onSelect: {
+                    hoveredTokens = nil
+                    store.select(.custom)
+                },
+                onHover: { hovering in
+                    hoveredTokens = hovering ? store.tokens(for: .custom) : nil
+                }
+            )
             .accessibilityIdentifier("settings.appearance.card.custom")
         }
+    }
+
+    private var proxyColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Preview")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            AppearanceThemeProxy(tokens: proxyTokens)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                )
+        }
+        .accessibilityIdentifier("settings.appearance.proxy")
     }
 }
 
@@ -81,6 +133,7 @@ private struct AppearanceThemeCard: View {
     let tokens: ThemeTokens
     let isSelected: Bool
     let onSelect: () -> Void
+    let onHover: (Bool) -> Void
 
     var body: some View {
         Button(action: onSelect) {
@@ -118,6 +171,9 @@ private struct AppearanceThemeCard: View {
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            onHover(hovering)
+        }
     }
 
     private var snippet: some View {
@@ -126,7 +182,7 @@ private struct AppearanceThemeCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("# Title")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(colorFromPlatform(tokens.heading))
+                    .foregroundStyle(colorFromPlatform(tokens.h1))
                 Text("Body with a link")
                     .font(.system(size: 9))
                     .foregroundStyle(colorFromPlatform(tokens.body))
@@ -156,7 +212,7 @@ private struct AppearanceThemeCard: View {
     /// Current token fields only — ticket 06 owns H1–H6 / emphasis / callout.
     private var chipColors: [Color] {
         [
-            tokens.heading,
+            tokens.h1,
             tokens.body,
             tokens.link,
             tokens.inlineCode,
@@ -167,6 +223,21 @@ private struct AppearanceThemeCard: View {
 
     private func colorFromPlatform(_ color: PlatformColorType) -> Color {
         Color(nsColor: color)
+    }
+}
+
+/// Real Markus Preview of `ThemeChrome.sampleMarkdown`. Theme updates
+/// paint this view only; the open document stays on committed tokens.
+private struct AppearanceThemeProxy: NSViewRepresentable {
+    var tokens: ThemeTokens
+
+    func makeNSView(context: Context) -> FoldingTextView {
+        ThemeChrome.makeProxyView(tokens: tokens)
+    }
+
+    func updateNSView(_ nsView: FoldingTextView, context: Context) {
+        nsView.setTheme(tokens)
+        nsView.ensureLayout()
     }
 }
 #endif

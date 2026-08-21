@@ -19,12 +19,12 @@ subtasks:
   status: done
 - id: T2
   title: Rich GFM proxy column; hover local to the page
-  status: todo
+  status: done
 - id: T3
   title: Click applies globally; hover does not restyle open documents
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -53,13 +53,13 @@ Cards: short snippet, chip strip, name, selection check. Inner split (cards | pr
 
 - [x] Follow System control bound to the store.
 - [x] Variant + Custom cards; click commits.
-- [ ] Proxy sample: headings, paragraph, emphasis, link, inline code, fence, list, quote, table, strikethrough, footnote (callout when ticket 07 lands).
-- [ ] Hover state local to the page.
+- [x] Proxy sample: headings, paragraph, emphasis, link, inline code, fence, list, quote, table, strikethrough, footnote (callout when ticket 07 lands).
+- [x] Hover state local to the page.
 
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Follow System checkbox, variant cards, Custom card
 
@@ -83,7 +83,7 @@ Files: `Markus/Markus/Theme/ThemeChrome.swift`, `Markus/Markus/Document/Appearan
 
 Verify: same macOS Debug `xcodebuild … build` as T01, from `Markus/`.
 - [ ] todo
-- [ ] done
+- [x] done
 
 ### T03: Click applies globally; hover does not restyle open documents
 
@@ -104,3 +104,6 @@ Wrote implementation plan (T01 cards+Follow, T02 rich proxy + view-local hover, 
 
 ### 2026-08-20
 T01 done. AppearanceSettingsView: Follow System checkbox (disabled for Custom), 12 variant cards + Custom, click via ThemeStore.shared. Compat shim ThemeTokensCompatibility so 06's widened ThemeTokens still compiles. macOS Debug build succeeded.
+
+### 2026-08-20
+T02 done. Rich GFM sampleMarkdown; Appearance proxy is FoldingTextView Preview; hover is @State on the page (never ThemeStore.beginHover); inner split stacks below 540pt; onDisappear and click clear hover. macOS Debug build succeeded.

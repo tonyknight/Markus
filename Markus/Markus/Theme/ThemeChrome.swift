@@ -17,8 +17,33 @@ enum ThemeChrome {
     }
 
     static let sampleMarkdown = """
-    # Heading
-    Body with a [link](https://example.com) and `code`.
+    # Heading one
+
+    ## Heading two
+
+    ### Heading three
+
+    A paragraph with **bold**, *italic*, a [link](https://example.com), and `inline code`.
+
+    ```
+    fenced block
+    let answer = 42
+    ```
+
+    - List item one
+    - List item two
+
+    > A quoted line.
+
+    | Col | Val |
+    |-----|-----|
+    | a   | b   |
+
+    Strike ~~gone~~ text.
+
+    Footnote sample.[^1]
+
+    [^1]: Footnote body.
     """
 
     @MainActor
@@ -36,10 +61,8 @@ enum ThemeChrome {
         host.previewTheme(tokens)
     }
 
-    /// Builds the single shared proxy document shown below the preset and
-    /// custom cards. Hovering a card previews that card's theme in this
-    /// proxy only; the real open document is never touched by hover (R8;
-    /// C.9).
+    /// Builds the Settings/iOS picker proxy. Appearance hover restyles
+    /// this view from local `@State`, not `ThemeStore.hoverTokens` (R3, R12, N2).
     @MainActor
     static func makeProxyView(tokens: ThemeTokens) -> FoldingTextView {
         let view = FoldingTextView()
