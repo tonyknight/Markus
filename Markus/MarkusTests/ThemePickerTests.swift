@@ -159,7 +159,7 @@ struct ThemePickerTests {
     @Test func clickOnCardSwatchDispatchesRealAppKitEventThatInvokesOnSelect() {
         var selected: ThemeSelection?
         let card = ThemeCard(
-            title: "GitHub Light",
+            title: ThemeFamily.github.pickerTitle(variant: .light),
             tokens: NamedThemeCatalog.tokens(for: .github, variant: .light),
             isSelected: false,
             onSelect: { selected = .named(.github) },

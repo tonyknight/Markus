@@ -23,6 +23,12 @@ enum ThemeFamily: String, CaseIterable, Equatable, Hashable {
         case .gruvbox: "Gruvbox"
         }
     }
+
+    /// Picker-facing card title. v1.1 names (Daylight, Lampblack, Fog,
+    /// Parchment, Meadow, Harbor) are not part of this API.
+    func pickerTitle(variant: ThemeVariant) -> String {
+        "\(displayName) \(variant.displayName)"
+    }
 }
 
 enum ThemeVariant: String, CaseIterable, Equatable, Hashable {
@@ -227,7 +233,7 @@ enum NamedThemeCatalog {
         )
     }
 
-    // MARK: - Gruvbox (warm parchment / warm brown)
+    // MARK: - Gruvbox (warm paper / warm brown)
 
     private static var gruvboxLight: ThemeTokens {
         recipe(

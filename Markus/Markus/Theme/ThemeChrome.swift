@@ -63,7 +63,7 @@ struct ThemePickerView: View {
                     ForEach(ThemeFamily.allCases, id: \.self) { family in
                         ForEach(ThemeVariant.allCases, id: \.self) { variant in
                             ThemeCard(
-                                title: "\(family.displayName) \(variant.displayName)",
+                                title: family.pickerTitle(variant: variant),
                                 tokens: NamedThemeCatalog.tokens(for: family, variant: variant),
                                 isSelected: host.themeStore.isShowing(family: family, variant: variant)
                             ) {

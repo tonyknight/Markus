@@ -18,12 +18,12 @@ subtasks:
   status: done
 - id: T2
   title: Remove Daylight, Lampblack, Fog, Parchment, Meadow, Harbor from the picker
-  status: todo
+  status: done
 - id: T3
   title: Human contrast pass on body, links, fold markers
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -34,7 +34,7 @@ Contrast of body, links, and fold markers on the background is part of done. Tha
 ## Acceptance criteria
 
 - [x] Catalog is Nord, Monokai, Solarized, GitHub, Catppuccin, Gruvbox, each Light and Dark (R4).
-- [ ] Daylight, Lampblack, Fog, Parchment, Meadow, Harbor are not in the picker (R4).
+- [x] Daylight, Lampblack, Fog, Parchment, Meadow, Harbor are not in the picker (R4).
 - [ ] Body, links, and fold markers are readable on each background when viewed in the app (N1).
 - [ ] macOS Debug build succeeds; iOS/iPad simulator builds succeed if the catalog is compiled into those targets.
 
@@ -51,13 +51,13 @@ Contrast of body, links, and fold markers on the background is part of done. Tha
 ## Subtasks
 
 - [x] Replace `NamedThemeCatalog` with twelve family/variant recipes.
-- [ ] Drop the six v1.1 names from any picker-facing API.
+- [x] Drop the six v1.1 names from any picker-facing API.
 - [ ] Eye-check contrast in Light and Dark windows.
 
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Twelve Light/Dark recipes (Nord, Monokai, Solarized, GitHub, Catppuccin, Gruvbox)
 Replace `NamedThemeCatalog.tokens(for:variant:)` stand-ins (every family currently returns v1.1 Daylight or Lampblack) with twelve hand-authored sRGB `ThemeTokens` recipes. Switch on `ThemeFamily` × `ThemeVariant`. Each recipe fills background, heading, body, link, inlineCode, fence, list, foldMarker, table, strikethrough, footnote. Light vs dark of the same family must differ; families must differ from each other. Inspired by the public look of those themes; do not copy a vendor file. Update `ThemeTokensTests` if it still assumes shared stand-ins or the local `lampblack` name, so the test target compiles. No TDD; do not run `xcodebuild test`.
@@ -75,7 +75,7 @@ Picker-facing titles come only from `ThemeFamily.displayName` + `ThemeVariant.di
 Files: `Markus/Markus/Theme/NamedThemeCatalog.swift`, `Markus/Markus/Theme/ThemeChrome.swift`, `Markus/MarkusTests/ThemeTokensTests.swift`
 Verify: same two `xcodebuild … build` commands as T01, from `Markus/`.
 - [ ] todo
-
+- [x] done
 ### T03: Human contrast pass on body, links, fold markers
 Review all twelve recipes for readable body, link, and fold-marker contrast on each background (N1). Adjust sRGB values where a pair is too close; keep family identity. Window eye-check remains for the human; this task is the author-side pass so the catalog is not “polish later.”
 Files: `Markus/Markus/Theme/NamedThemeCatalog.swift`
@@ -88,3 +88,6 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-20
 T01: twelve original sRGB recipes (Nord/Monokai/Solarized/GitHub/Catppuccin/Gruvbox × Light/Dark). macOS + iPhone 17 Debug builds succeeded.
+
+### 2026-08-20
+T02: picker titles via ThemeFamily.pickerTitle; v1.1 names gone from picker API; persistence migration kept. macOS + iPhone 17 Debug builds succeeded.

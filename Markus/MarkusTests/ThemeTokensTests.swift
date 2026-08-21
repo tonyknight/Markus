@@ -17,6 +17,14 @@ struct ThemeTokensTests {
         #expect(ThemeFamily.allCases.map(\.displayName) == [
             "Nord", "Monokai", "Solarized", "GitHub", "Catppuccin", "Gruvbox",
         ])
+        #expect(ThemeFamily.allCases.map { $0.pickerTitle(variant: .light) } == [
+            "Nord Light", "Monokai Light", "Solarized Light",
+            "GitHub Light", "Catppuccin Light", "Gruvbox Light",
+        ])
+        #expect(ThemeFamily.allCases.map { $0.pickerTitle(variant: .dark) } == [
+            "Nord Dark", "Monokai Dark", "Solarized Dark",
+            "GitHub Dark", "Catppuccin Dark", "Gruvbox Dark",
+        ])
         #expect(ThemeVariant.allCases.map(\.rawValue) == ["light", "dark"])
         #expect(ThemeVariant.allCases.map(\.displayName) == ["Light", "Dark"])
     }
@@ -58,16 +66,16 @@ struct ThemeTokensTests {
         let storage = try #require(view.textStorage)
         let headingRange = (markdown as NSString).range(of: "# Title")
         let bodyRange = (markdown as NSString).range(of: "Math is")
-        let lampblack = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
-        #expect(lampblack != ThemeTokens.default)
+        let nordDark = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
+        #expect(nordDark != ThemeTokens.default)
 
-        view.setTheme(lampblack)
+        view.setTheme(nordDark)
 
         #expect((storage.attribute(.foregroundColor, at: headingRange.location, effectiveRange: nil) as? PlatformColorType)?
-            .isEqual(lampblack.heading) == true)
+            .isEqual(nordDark.heading) == true)
         #expect((storage.attribute(.foregroundColor, at: bodyRange.location, effectiveRange: nil) as? PlatformColorType)?
-            .isEqual(lampblack.body) == true)
-        #expect(view.tokens == lampblack)
+            .isEqual(nordDark.body) == true)
+        #expect(view.tokens == nordDark)
     }
 
     @Test func swappingATokenRecolorsTheMatchingPreviewRange() throws {
