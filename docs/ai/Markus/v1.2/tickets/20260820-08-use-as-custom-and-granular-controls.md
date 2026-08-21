@@ -3,10 +3,10 @@ id: 20260820-08-use-as-custom-and-granular-controls
 title: Use as Custom and granular controls
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-20
 updated: 2026-08-20
-closed:
+closed: 2026-08-20
 notes: 'model_tier: standard'
 parent:
 depends_on:

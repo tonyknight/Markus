@@ -3,10 +3,10 @@ id: 20260820-03-family-variant-store-and-follow-system
 title: Family variant store and Follow System
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-20
 updated: 2026-08-20
-closed:
+closed: 2026-08-20
 notes: 'model_tier: premium'
 parent:
 depends_on: []

@@ -3,10 +3,10 @@ id: 20260820-02-retire-in-document-settings-takeover
 title: Retire in-document settings takeover
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-20
 updated: 2026-08-20
-closed:
+closed: 2026-08-20
 notes: 'model_tier: standard'
 parent:
 depends_on:
@@ -79,3 +79,11 @@ T01: ContentView.body always hosts documentScene on macOS; SettingsScene swap re
 
 ### 2026-08-20
 T02: Deleted SettingsScene/SettingsCategory/SettingsChrome and SettingsSceneTests. Removed SessionEditorRepresentable first-responder reclaim (that recovered focus after the swap remounted the editor). Gear comments updated. iOS sheet and presentSettings() kept. macOS Debug BUILD SUCCEEDED. Ticket left in-progress.
+
+## Review
+
+2026-08-20 — **Minor.** Controller may mark done.
+
+R1/R12: `ContentView.body` always hosts `documentScene`. `SettingsScene` deleted. iOS sheet kept (`SettingsSheetModifier`). Gear still `SettingsWindowChrome.open`. Commits `eb7d8bb`, `80e94ff` match the plan.
+
+Minor: `presentSettings()` remains for iOS only, as specified.

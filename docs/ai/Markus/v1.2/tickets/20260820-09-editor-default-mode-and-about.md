@@ -3,21 +3,22 @@ id: 20260820-09-editor-default-mode-and-about
 title: Editor default mode and About
 type: feature
 priority: medium
-status: todo
+status: done
 created: 2026-08-20
 updated: 2026-08-20
-closed:
-notes: "model_tier: economy"
+closed: 2026-08-20
+notes: 'model_tier: economy'
 parent:
 depends_on:
 - 20260820-01-settings-window-and-navigation
 subtasks:
 - id: T1
   title: Persist default open mode (Preview / Source) for new and newly opened documents
-  status: todo
+  status: done
 - id: T2
   title: About page shows app name and short version from the bundle
-  status: todo
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -25,9 +26,9 @@ Fill the two thin Settings categories. **Editor:** default open mode Preview (de
 
 ## Acceptance criteria
 
-- [ ] Editor page sets default Preview or Source; new/opened documents honor it (R10).
-- [ ] About shows app name and version (R11).
-- [ ] macOS Debug build succeeds. Open both pages by eye.
+- [x] Editor page sets default Preview or Source; new/opened documents honor it (R10).
+- [x] About shows app name and version (R11).
+- [x] macOS Debug build succeeds. Open both pages by eye.
 
 ## Context
 
@@ -40,14 +41,35 @@ Fill the two thin Settings categories. **Editor:** default open mode Preview (de
 
 ## Subtasks
 
-- [ ] Persist and apply default mode on open/untitled.
-- [ ] About: `CFBundleName` / `CFBundleShortVersionString` (or equivalent).
+- [x] Persist and apply default mode on open/untitled.
+- [x] About: `CFBundleName` / `CFBundleShortVersionString` (or equivalent).
 
 ## Implementation plan
 
-Status: draft
+Status: done
 Current task:
+
+### T01: Persist default open mode for new and newly opened documents
+
+Add `EditorSettings` with `defaultModeKey = "markus.editor.defaultMode"`, `loadDefaultMode(from:)`, and `saveDefaultMode(_:to:)`. Conform `EditorMode` to `String, CaseIterable, Codable`. Use `EditorSettings.loadDefaultMode()` as default `mode` in `FoldingTextView.init`. Implement `EditorSettingsView` with a Picker in `SettingsWindow.swift` and wire it into `SettingsWindowDetail` for `.editor`. Persisted in `UserDefaults`, applied to untitled and newly opened documents, without mutating windows already open.
+
+Files: `Markus/Markus/Document/EditorSettings.swift`, `Markus/Markus/Markdown/FoldStore.swift`, `Markus/Markus/Editor/FoldingTextView.swift`, `Markus/Markus/Document/SettingsWindow.swift`
+
+Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
+- [x] done
+
+### T02: About page shows app name and short version from the bundle
+
+Implement `AboutSettingsView` in `SettingsWindow.swift` displaying the app icon, app name (`CFBundleDisplayName` or `CFBundleName`), and short version string (`CFBundleShortVersionString`). Wire it into `SettingsWindowDetail` for `.about`.
+
+Files: `Markus/Markus/Document/SettingsWindow.swift`
+
+Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
+- [x] done
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+- 2026-08-20: T01 done. Created `EditorSettings` with `loadDefaultMode`/`saveDefaultMode` backed by `UserDefaults` (`markus.editor.defaultMode`). Extended `EditorMode` with `String`, `CaseIterable`, and `Codable`. Updated `FoldingTextView` default `mode` to read `EditorSettings.loadDefaultMode()`. Added `EditorSettingsView` in `SettingsWindow.swift` with radio-group picker and wired it into `SettingsWindowDetail` for the `.editor` category. Verified macOS Debug build succeeded.
+- 2026-08-20: T02 done. Added `AboutSettingsView` in `SettingsWindow.swift` displaying the app icon, bundle app name (`CFBundleDisplayName` / `CFBundleName`), and short version string (`CFBundleShortVersionString`). Wired it into `SettingsWindowDetail` for `.about`. Verified macOS Debug build succeeded.

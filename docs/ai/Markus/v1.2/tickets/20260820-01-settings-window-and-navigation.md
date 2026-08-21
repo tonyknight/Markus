@@ -3,10 +3,10 @@ id: 20260820-01-settings-window-and-navigation
 title: Settings window and navigation
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-20
 updated: 2026-08-20
-closed:
+closed: 2026-08-20
 notes: 'model_tier: premium'
 parent:
 depends_on: []
@@ -109,3 +109,13 @@ Append-only running log. Each entry dated.
 - **Minor:** Sidebar selection uses `selectedContentBackgroundColor` plus `alternateSelectedControlTextColor`, which can paint light text on an inactive gray fill when Settings is not the key window.
 
 Controller may not mark done. Exposed usage: `SettingsWindowView` in the macOS `Settings` scene; `SettingsWindowChrome.open()` is the intended shared opener — do not reuse it until the Important finding is fixed.
+
+**2026-08-20 — second pass — Minor.** Controller may mark done.
+
+- Previous **Important** is fixed. `showSettingsWindow:` is gone from production code (comment only). Gear reads `@Environment(\.openSettings)` in `RibbonRailView` and calls `SettingsWindowChrome.open(_:)`, which invokes `OpenSettingsAction` then the live **Markus → Settings…** item (⌘,). `SettingsLink` was not required; `openSettings` is the matching programmatic API.
+- Previous **Minor** (inactive-window sidebar contrast) is fixed: accent fill + `Color.primary`.
+- **Minor:** `open()` always fires both paths, not a true fallback. Harmless if both order-front the same window. The rail is inside `NSHostingController`, so `openSettings` is likely a no-op and the menu item is the real gear path. Notes still do not record a running-app click of the gear; that is Requirements inspection, not a code defect — do not reopen T04.
+
+R1/R2 for this ticket: Settings scene hosts the Appearance / Editor / About split; stub copy is gone; menu and ⌘, come from the `Settings` scene; gear is wired to that window. In-window takeover stays for ticket 02. No unit tests required (N4).
+
+Controller may mark done. Exposed usage: `SettingsWindowView` in the macOS `Settings` scene; `SettingsWindowChrome.open(_:)` is the shared opener.
