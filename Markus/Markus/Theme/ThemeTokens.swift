@@ -25,8 +25,8 @@ struct ThemeTokens: Equatable {
     var table: PlatformColorType
     var strikethrough: PlatformColorType
     var footnote: PlatformColorType
-    /// Chrome color for GitHub-style alerts. Ticket 07 binds this; Preview
-    /// does not paint callouts yet.
+    /// Chrome color for GitHub-style alerts (background, border, label).
+    /// Types differ by keyword and SF Symbol, not extra wells.
     var callout: PlatformColorType
 
     static var `default`: ThemeTokens {

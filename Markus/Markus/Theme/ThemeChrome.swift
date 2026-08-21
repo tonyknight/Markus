@@ -35,6 +35,9 @@ enum ThemeChrome {
 
     > A quoted line.
 
+    > [!NOTE]
+    > A callout uses the callout chrome color.
+
     | Col | Val |
     |-----|-----|
     | a   | b   |
