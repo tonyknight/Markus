@@ -22,22 +22,30 @@ struct ThemeTokensTests {
     }
 
     @Test func namedPalettesAreDistinctAndFillEveryToken() {
-        let light = NamedThemeCatalog.tokens(for: .nord, variant: .light)
-        let dark = NamedThemeCatalog.tokens(for: .nord, variant: .dark)
-        #expect(light != dark)
-        for tokens in [light, dark] {
-            #expect(tokens.background.cgColor.alpha > 0)
-            #expect(tokens.heading.cgColor.alpha > 0)
-            #expect(tokens.body.cgColor.alpha > 0)
-            #expect(tokens.link.cgColor.alpha > 0)
-            #expect(tokens.inlineCode.cgColor.alpha > 0)
-            #expect(tokens.fence.cgColor.alpha > 0)
-            #expect(tokens.list.cgColor.alpha > 0)
-            #expect(tokens.foldMarker.cgColor.alpha > 0)
-            #expect(tokens.table.cgColor.alpha > 0)
-            #expect(tokens.strikethrough.cgColor.alpha > 0)
-            #expect(tokens.footnote.cgColor.alpha > 0)
+        var seen: [ThemeTokens] = []
+        for family in ThemeFamily.allCases {
+            let light = NamedThemeCatalog.tokens(for: family, variant: .light)
+            let dark = NamedThemeCatalog.tokens(for: family, variant: .dark)
+            #expect(light != dark)
+            for tokens in [light, dark] {
+                #expect(tokens.background.cgColor.alpha > 0)
+                #expect(tokens.heading.cgColor.alpha > 0)
+                #expect(tokens.body.cgColor.alpha > 0)
+                #expect(tokens.link.cgColor.alpha > 0)
+                #expect(tokens.inlineCode.cgColor.alpha > 0)
+                #expect(tokens.fence.cgColor.alpha > 0)
+                #expect(tokens.list.cgColor.alpha > 0)
+                #expect(tokens.foldMarker.cgColor.alpha > 0)
+                #expect(tokens.table.cgColor.alpha > 0)
+                #expect(tokens.strikethrough.cgColor.alpha > 0)
+                #expect(tokens.footnote.cgColor.alpha > 0)
+                for previous in seen {
+                    #expect(tokens != previous)
+                }
+                seen.append(tokens)
+            }
         }
+        #expect(seen.count == 12)
         #expect(NamedThemeCatalog.tokens(for: .nord, variant: .light) == ThemeTokens.default)
     }
 
