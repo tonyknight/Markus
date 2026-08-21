@@ -3,11 +3,11 @@ id: 20260820-08-use-as-custom-and-granular-controls
 title: Use as Custom and granular controls
 type: feature
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-20
 updated: 2026-08-20
 closed:
-notes: "model_tier: standard"
+notes: 'model_tier: standard'
 parent:
 depends_on:
 - 20260820-05-appearance-page-layout
@@ -16,13 +16,15 @@ depends_on:
 subtasks:
 - id: T1
   title: Use as Custom snapshots a variant; confirm if replacing existing custom edits
-  status: todo
+  status: done
 - id: T2
   title: Grouped color wells for the full selector set
   status: todo
 - id: T3
   title: Custom is a frozen snapshot; catalog stays immutable
   status: todo
+plan_status: in-progress
+current_task: T02
 ---
 ## Description
 
@@ -53,9 +55,45 @@ Custom becomes clone-then-refine. **Use as Custom** copies the chosen prebuilt v
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Use as Custom snapshots a variant; confirm if replacing existing custom edits
+
+Add `ThemeStore.replaceCustom(with:)` that copies a prebuilt variant’s **full** `ThemeTokens` into every custom persistence key (background, body, H1–H6, emphasis, link, list, fence, inline code, callout, table, strikethrough, footnote, fold marker), sets `selection` to `.custom`, and fires **one** `themeChanged`. Do not mutate `NamedThemeCatalog`. Add `customDiffers(from:)` via `ThemeTokens` equality against `tokens(for: .custom)`.
+
+On `AppearanceSettingsView`, track last-clicked named family+variant (`@State`, seeded on appear from the committed named selection + `appliedVariant`). **Use as Custom** copies that source (or the currently selected named card). If Custom already differs from that clone, show a replace confirmation; otherwise snapshot immediately. Leave Follow, cards, and proxy behavior unchanged. No color wells yet. No iOS picker rewrite.
+
+Files: `Markus/Markus/Theme/ThemeStore.swift`, `Markus/Markus/Document/AppearanceSettingsView.swift`
+
+Verify:
+```
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
+```
+from `Markus/`.
+- [ ] todo
+- [x] done
+### T02: Grouped color wells for the full selector set
+
+When Custom is selected, show grouped `DisclosureGroup`s under the card grid: **Headings** (H1–H6), **Emphasis** (bold, italic, bold-italic), **Blocks** (links, lists, fenced code, inline code, callouts, tables), **Other** (strikethrough, footnotes, fold markers). Always-visible wells for background and body above the groups. Each well binds to the matching `setCustom*` setter (H1 → `setCustomH1` only — changing H1 must not write H2). Defer ColorPicker writes with `DispatchQueue.main.async` like the existing iOS wells. Do not rewrite Follow/cards/proxy. Do not add these wells to `ThemePickerView` (R13).
+
+Files: `Markus/Markus/Document/AppearanceSettingsView.swift`
+
+Verify: same `xcodebuild` macOS Debug build as T01, from `Markus/`.
+- [ ] todo
+
+### T03: Custom is a frozen snapshot; catalog stays immutable
+
+After a clone, Custom must not re-read `NamedThemeCatalog` or re-derive from `CustomTheme.tokens` for unset fields. Build committed custom tokens from the persisted snapshot when every selector key is present. Well edits keep writing only custom keys and still `themeChanged`. Named recipes remain a read-only catalog (no write API, clone copies values). Later catalog edits cannot rebase an existing Custom.
+
+Files: `Markus/Markus/Theme/ThemeStore.swift`
+
+Verify: same `xcodebuild` macOS Debug build as T01, from `Markus/`.
+- [ ] todo
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-20
+T01: replaceCustom copies full token set, selects Custom, confirms if customDiffers. macOS Debug BUILD SUCCEEDED.

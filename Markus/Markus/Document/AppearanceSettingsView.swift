@@ -10,9 +10,22 @@ struct AppearanceSettingsView: View {
     @ObservedObject private var store = ThemeStore.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var hoveredTokens: ThemeTokens?
+    @State private var cloneFamily: ThemeFamily?
+    @State private var cloneVariant: ThemeVariant?
+    @State private var confirmReplaceCustom = false
 
     private var proxyTokens: ThemeTokens {
         hoveredTokens ?? store.committedTokens
+    }
+
+    private var cloneSourceTokens: ThemeTokens? {
+        guard let cloneFamily, let cloneVariant else { return nil }
+        return NamedThemeCatalog.tokens(for: cloneFamily, variant: cloneVariant)
+    }
+
+    private var cloneSourceTitle: String? {
+        guard let cloneFamily, let cloneVariant else { return nil }
+        return cloneFamily.pickerTitle(variant: cloneVariant)
     }
 
     var body: some View {
@@ -23,7 +36,10 @@ struct AppearanceSettingsView: View {
                 if stackVertically {
                     VStack(alignment: .leading, spacing: 16) {
                         ScrollView {
-                            cardGrid
+                            VStack(alignment: .leading, spacing: 16) {
+                                cardGrid
+                                useAsCustomControl
+                            }
                         }
                         proxyColumn
                             .frame(minHeight: 240)
@@ -32,7 +48,10 @@ struct AppearanceSettingsView: View {
                 } else {
                     HStack(alignment: .top, spacing: 16) {
                         ScrollView {
-                            cardGrid
+                            VStack(alignment: .leading, spacing: 16) {
+                                cardGrid
+                                useAsCustomControl
+                            }
                         }
                         proxyColumn
                             .frame(minWidth: 260, idealWidth: 320, maxWidth: 360)
@@ -43,11 +62,22 @@ struct AppearanceSettingsView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { seedCloneSourceIfNeeded() }
         .onDisappear { hoveredTokens = nil }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 hoveredTokens = nil
             }
+        }
+        .alert("Replace Custom Theme?", isPresented: $confirmReplaceCustom) {
+            Button("Replace", role: .destructive) {
+                applyClone()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Custom already has colors that differ from \(cloneSourceTitle ?? "this theme"). Replacing them cannot be undone."
+            )
         }
         .accessibilityIdentifier("settings.appearance.view")
     }
@@ -88,6 +118,7 @@ struct AppearanceSettingsView: View {
                         tokens: tokens,
                         isSelected: store.isShowing(family: family, variant: variant),
                         onSelect: {
+                            rememberCloneSource(family, variant: variant)
                             commitNamed(family, variant: variant)
                         },
                         onHover: { hovering in
@@ -130,6 +161,26 @@ struct AppearanceSettingsView: View {
         .accessibilityIdentifier("settings.appearance.proxy")
     }
 
+    private var useAsCustomControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button("Use as Custom") {
+                requestUseAsCustom()
+            }
+            .disabled(cloneSourceTokens == nil)
+            .accessibilityIdentifier("settings.appearance.useAsCustom")
+            if let cloneSourceTitle {
+                Text("Copies \(cloneSourceTitle) into Custom. Named themes stay unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Click a named theme first, then copy it into Custom.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 4)
+    }
+
     /// Commits through `ThemeStore.shared` so `themeChanged` repaints every
     /// open document. Clears local hover so apply does not leave a preview
     /// overlay (R3, N2).
@@ -141,6 +192,34 @@ struct AppearanceSettingsView: View {
     private func commitCustom() {
         hoveredTokens = nil
         store.select(.custom)
+    }
+
+    private func seedCloneSourceIfNeeded() {
+        guard cloneFamily == nil, cloneVariant == nil else { return }
+        if case .named(let family) = store.selection {
+            cloneFamily = family
+            cloneVariant = store.appliedVariant
+        }
+    }
+
+    private func rememberCloneSource(_ family: ThemeFamily, variant: ThemeVariant) {
+        cloneFamily = family
+        cloneVariant = variant
+    }
+
+    private func requestUseAsCustom() {
+        guard let cloneSourceTokens else { return }
+        if store.customDiffers(from: cloneSourceTokens) {
+            confirmReplaceCustom = true
+        } else {
+            applyClone()
+        }
+    }
+
+    private func applyClone() {
+        guard let cloneSourceTokens else { return }
+        hoveredTokens = nil
+        store.replaceCustom(with: cloneSourceTokens)
     }
 }
 

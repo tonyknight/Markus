@@ -325,6 +325,44 @@ final class ThemeStore: ObservableObject {
     func setCustomFootnote(_ color: PlatformColorType) { persistCustom(&customFootnote, color, key: Self.customFootnoteKey) }
     func setCustomFoldMarker(_ color: PlatformColorType) { persistCustom(&customFoldMarker, color, key: Self.customFoldMarkerKey) }
 
+    /// True when the live Custom snapshot is not equal to `tokens`.
+    /// Used to confirm replace before overwriting existing custom edits (R7).
+    func customDiffers(from tokens: ThemeTokens) -> Bool {
+        self.tokens(for: .custom) != tokens
+    }
+
+    /// Copies every selector from `tokens` into the custom store, selects
+    /// Custom, and broadcasts once. Does not write `NamedThemeCatalog`.
+    func replaceCustom(with tokens: ThemeTokens) {
+        customBackground = tokens.background
+        defaults.set(Self.encodeColor(tokens.background), forKey: Self.customBackgroundKey)
+        customTextStyle = CustomTheme.resolvedTextStyle(background: tokens.background, textStyle: .auto)
+        defaults.set(customTextStyle.rawValue, forKey: Self.customTextKey)
+        writeCustomSlot(&customBody, tokens.body, key: Self.customBodyKey)
+        writeCustomSlot(&customH1, tokens.h1, key: Self.customH1Key)
+        writeCustomSlot(&customH2, tokens.h2, key: Self.customH2Key)
+        writeCustomSlot(&customH3, tokens.h3, key: Self.customH3Key)
+        writeCustomSlot(&customH4, tokens.h4, key: Self.customH4Key)
+        writeCustomSlot(&customH5, tokens.h5, key: Self.customH5Key)
+        writeCustomSlot(&customH6, tokens.h6, key: Self.customH6Key)
+        writeCustomSlot(&customHeading, tokens.h1, key: Self.customHeadingKey)
+        writeCustomSlot(&customBold, tokens.bold, key: Self.customBoldKey)
+        writeCustomSlot(&customItalic, tokens.italic, key: Self.customItalicKey)
+        writeCustomSlot(&customBoldItalic, tokens.boldItalic, key: Self.customBoldItalicKey)
+        writeCustomSlot(&customLink, tokens.link, key: Self.customLinkKey)
+        writeCustomSlot(&customList, tokens.list, key: Self.customListKey)
+        writeCustomSlot(&customFence, tokens.fence, key: Self.customFenceKey)
+        writeCustomSlot(&customInlineCode, tokens.inlineCode, key: Self.customInlineCodeKey)
+        writeCustomSlot(&customCallout, tokens.callout, key: Self.customCalloutKey)
+        writeCustomSlot(&customTable, tokens.table, key: Self.customTableKey)
+        writeCustomSlot(&customStrikethrough, tokens.strikethrough, key: Self.customStrikethroughKey)
+        writeCustomSlot(&customFootnote, tokens.footnote, key: Self.customFootnoteKey)
+        writeCustomSlot(&customFoldMarker, tokens.foldMarker, key: Self.customFoldMarkerKey)
+        selection = .custom
+        defaults.set(selection.persistenceID, forKey: Self.selectionKey)
+        broadcastCommit()
+    }
+
     /// Per-level heading keys win; legacy `customHeading` fills any
     /// level that has not been set on its own (ticket 08 wells).
     private func applyCustomOverrides(_ base: ThemeTokens) -> ThemeTokens {
@@ -352,9 +390,13 @@ final class ThemeStore: ObservableObject {
     }
 
     private func persistCustom(_ slot: inout PlatformColorType?, _ color: PlatformColorType, key: String) {
+        writeCustomSlot(&slot, color, key: key)
+        broadcastCommit()
+    }
+
+    private func writeCustomSlot(_ slot: inout PlatformColorType?, _ color: PlatformColorType, key: String) {
         slot = color
         defaults.set(Self.encodeColor(color), forKey: key)
-        broadcastCommit()
     }
 
     private func startObservingSystemAppearance() {
