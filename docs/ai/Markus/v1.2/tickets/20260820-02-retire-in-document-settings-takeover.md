@@ -17,9 +17,8 @@ subtasks:
   status: done
 - id: T2
   title: Confirm the document editor stays mounted while Settings is open
-  status: todo
-plan_status: in-progress
-current_task: T02
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -28,8 +27,8 @@ v1.1 presents Settings by replacing the document viewport (`ContentView` → `Se
 ## Acceptance criteria
 
 - [x] Opening Settings does not replace the document viewport (R1, R12).
-- [ ] Closing Settings does not rebuild the document editor (R12).
-- [ ] macOS Debug build succeeds.
+- [x] Closing Settings does not rebuild the document editor (R12).
+- [x] macOS Debug build succeeds.
 
 ## Context
 
@@ -50,8 +49,8 @@ v1.1 presents Settings by replacing the document viewport (`ContentView` → `Se
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T02
+Status: done
+Current task: 
 
 ### T01: Stop swapping ContentView to SettingsScene on macOS
 
@@ -69,7 +68,7 @@ With `documentScene` always mounted, delete the unused in-window takeover (`Sett
 Files: `Markus/Markus/ContentView.swift`, `Markus/Markus/Document/SettingsScene.swift` (delete), `Markus/MarkusTests/SettingsSceneTests.swift` (delete), `Markus/Markus/Document/RibbonRail.swift`, `Markus/Markus/Document/SettingsWindow.swift`
 
 Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
-- [ ] todo
+- [x] done
 
 ## Notes
 
@@ -77,3 +76,6 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-20
 T01: ContentView.body always hosts documentScene on macOS; SettingsScene swap removed. iOS sheet and presentSettings() unchanged. Gear still uses SettingsWindowChrome.open. macOS Debug BUILD SUCCEEDED.
+
+### 2026-08-20
+T02: Deleted SettingsScene/SettingsCategory/SettingsChrome and SettingsSceneTests. Removed SessionEditorRepresentable first-responder reclaim (that recovered focus after the swap remounted the editor). Gear comments updated. iOS sheet and presentSettings() kept. macOS Debug BUILD SUCCEEDED. Ticket left in-progress.

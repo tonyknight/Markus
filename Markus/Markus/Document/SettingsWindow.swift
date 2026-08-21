@@ -2,9 +2,7 @@
 import AppKit
 import SwiftUI
 
-/// Categories in the Preferences window's left-hand list. Separate from
-/// `SettingsCategory` (the in-window takeover still uses Themes until
-/// ticket 02 retires that surface).
+/// Categories in the Preferences window's left-hand list.
 enum SettingsWindowCategory: String, CaseIterable, Identifiable {
     case appearance
     case editor

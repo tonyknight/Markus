@@ -325,33 +325,6 @@ struct SessionEditorRepresentable: NSViewRepresentable {
         if view.frame.size != newSize {
             view.setFrameSize(newSize)
         }
-        // `ContentView` swaps its entire body between `SettingsScene` and
-        // this document scene (never nests one inside the other, R7) —
-        // closing Settings removes and re-adds this representable's
-        // `NSScrollView`/`FoldingTextView` to the window, which drops
-        // whatever had first responder. `setMode` (`FoldingTextView
-        // .swift`) reclaims focus on an actual mode *switch*, but
-        // returning from Settings without changing mode never fires
-        // that. Reclaiming here only when nothing more specific already
-        // holds first responder (i.e. it fell back to the window itself)
-        // covers that gap without yanking focus away from something a
-        // person deliberately clicked into (Find, Go to Line, a Settings
-        // control) — `firstResponder` only ever falls back to the window
-        // when nothing else claimed it.
-        if view.mode == .source, scroll.window?.firstResponder === scroll.window {
-            // Deferred: `updateNSView` runs during SwiftUI's own update/
-            // layout pass, and `makeFirstResponder` can itself trigger
-            // AppKit layout work (focus ring geometry etc.) — doing that
-            // synchronously here risks exactly the kind of layout-
-            // during-layout recursion AppKit warns about
-            // (`_NSDetectedLayoutRecursion`). Next run-loop turn is soon
-            // enough for a focus recovery that only fires when nothing
-            // else already claimed first responder.
-            DispatchQueue.main.async { [weak scroll] in
-                guard let scroll, scroll.window?.firstResponder === scroll.window else { return }
-                scroll.window?.makeFirstResponder(view)
-            }
-        }
     }
 }
 #else

@@ -25,8 +25,8 @@ enum LibraryChrome {
 /// at the top toggles the library panel (the relocated folder tree from
 /// ticket 03), and a gear at the bottom opens the Settings window (same
 /// scene as **Markus → Settings…** and ⌘,). Uses `@Environment(\.openSettings)`
-/// (macOS 14+) rather than a string selector. The in-window takeover remains
-/// until ticket 02; the gear prefers the window over `presentSettings()`.
+/// (macOS 14+) rather than a string selector. Does not set
+/// `host.isSettingsPresented` (that flag is the iOS sheet only).
 struct RibbonRailView: View {
     @ObservedObject var host: DocumentHost
     @Environment(\.openSettings) private var openSettings
