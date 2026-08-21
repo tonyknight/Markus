@@ -5,19 +5,10 @@ struct ContentView: View {
     @ObservedObject var host: DocumentHost
 
     var body: some View {
-        #if os(macOS)
-        // The settings surface fills the entire viewport as a sibling of
-        // the document `NavigationStack`, never nested inside it (R7) —
-        // the old side panel's bug was a nested `NavigationStack`'s
-        // toolbar item getting hoisted into the window toolbar.
-        if host.isSettingsPresented {
-            SettingsScene(host: host)
-        } else {
-            documentScene
-        }
-        #else
+        // macOS Settings is a separate window (ticket 01). Always keep
+        // the document editor mounted — do not swap this body to
+        // `SettingsScene` when `host.isSettingsPresented` is true.
         documentScene
-        #endif
     }
 
     private var documentScene: some View {
@@ -392,13 +383,10 @@ struct SessionEditorRepresentable: UIViewRepresentable {
     AppRootView()
 }
 
-// iOS-only settings sheet. This is a pre-existing, already-functional
-// modal presentation (unrelated to the macOS side-panel bug this ticket
-// fixes — a `.sheet` owns its own presentation context, so its
-// `ToolbarItem` never gets hoisted into a window toolbar the way the old
-// macOS side panel's did). macOS gets the new full-viewport
-// `SettingsScene` instead (see `SettingsScene.swift`); per the "no new
-// iPhone/iPad chrome" non-goal, iOS keeps this sheet unchanged.
+// iOS-only settings sheet. macOS Settings is a separate window
+// (`SettingsWindowView`); per the "no new iPhone/iPad chrome" non-goal,
+// iOS keeps this sheet unchanged. A `.sheet` owns its own presentation
+// context, so its `ToolbarItem` is not hoisted into a window toolbar.
 private struct SettingsPane: View {
     @ObservedObject var host: DocumentHost
 
