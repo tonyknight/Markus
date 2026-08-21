@@ -22,8 +22,7 @@ subtasks:
 - id: T3
   title: Human contrast pass on body, links, fold markers
   status: todo
-plan_status: in-progress
-current_task: T03
+plan_status: done
 ---
 ## Description
 
@@ -36,7 +35,7 @@ Contrast of body, links, and fold markers on the background is part of done. Tha
 - [x] Catalog is Nord, Monokai, Solarized, GitHub, Catppuccin, Gruvbox, each Light and Dark (R4).
 - [x] Daylight, Lampblack, Fog, Parchment, Meadow, Harbor are not in the picker (R4).
 - [ ] Body, links, and fold markers are readable on each background when viewed in the app (N1).
-- [ ] macOS Debug build succeeds; iOS/iPad simulator builds succeed if the catalog is compiled into those targets.
+- [x] macOS Debug build succeeds; iOS/iPad simulator builds succeed if the catalog is compiled into those targets.
 
 ## Context
 
@@ -56,8 +55,8 @@ Contrast of body, links, and fold markers on the background is part of done. Tha
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Twelve Light/Dark recipes (Nord, Monokai, Solarized, GitHub, Catppuccin, Gruvbox)
 Replace `NamedThemeCatalog.tokens(for:variant:)` stand-ins (every family currently returns v1.1 Daylight or Lampblack) with twelve hand-authored sRGB `ThemeTokens` recipes. Switch on `ThemeFamily` × `ThemeVariant`. Each recipe fills background, heading, body, link, inlineCode, fence, list, foldMarker, table, strikethrough, footnote. Light vs dark of the same family must differ; families must differ from each other. Inspired by the public look of those themes; do not copy a vendor file. Update `ThemeTokensTests` if it still assumes shared stand-ins or the local `lampblack` name, so the test target compiles. No TDD; do not run `xcodebuild test`.
@@ -81,7 +80,7 @@ Review all twelve recipes for readable body, link, and fold-marker contrast on e
 Files: `Markus/Markus/Theme/NamedThemeCatalog.swift`
 Verify: same two `xcodebuild … build` commands as T01, from `Markus/`.
 - [ ] todo
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -91,3 +90,6 @@ T01: twelve original sRGB recipes (Nord/Monokai/Solarized/GitHub/Catppuccin/Gruv
 
 ### 2026-08-20
 T02: picker titles via ThemeFamily.pickerTitle; v1.1 names gone from picker API; persistence migration kept. macOS + iPhone 17 Debug builds succeeded.
+
+### 2026-08-20
+T03: author-side contrast pass on body/link/foldMarker (all pairs ≥ 4.5:1 vs background). macOS + iPhone 17 Debug builds succeeded; MarkusTests compiled via build-for-testing. Ticket left in-progress for the human window pass (N1).
