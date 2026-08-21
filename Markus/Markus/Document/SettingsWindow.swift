@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import SwiftUI
 
 /// Categories in the Preferences window's left-hand list. Separate from
@@ -25,6 +26,16 @@ enum SettingsWindowCategory: String, CaseIterable, Identifiable {
         case .editor: return "textformat"
         case .about: return "info.circle"
         }
+    }
+}
+
+/// Shared opener so the ribbon gear hits the same SwiftUI `Settings`
+/// scene that **Markus → Settings…** and ⌘, already open. `showSettingsWindow:`
+/// is the action that scene installs on `NSApp`.
+enum SettingsWindowChrome {
+    @MainActor
+    static func open() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 

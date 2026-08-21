@@ -16,12 +16,11 @@ subtasks:
   status: done
 - id: T2
   title: Wire gear, Markus → Settings…, and ⌘, to this window
-  status: todo
+  status: done
 - id: T3
   title: Remove the stub Settings scene copy
   status: done
-plan_status: in-progress
-current_task: T03
+plan_status: done
 ---
 ## Description
 
@@ -32,9 +31,9 @@ If `Settings` + `NavigationSplitView` cannot host the later Appearance inner spl
 ## Acceptance criteria
 
 - [x] A Settings window exists with a left list of Appearance, Editor, and About, and a right detail pane (R1).
-- [ ] Ribbon gear, **Markus → Settings…**, and ⌘, all open that same window (R2).
+- [x] Ribbon gear, **Markus → Settings…**, and ⌘, all open that same window (R2).
 - [x] The stub `Settings { Text("Open a Markdown document to edit.") }` is gone (R2).
-- [ ] macOS Debug build succeeds.
+- [x] macOS Debug build succeeds.
 
 ## Context
 
@@ -51,13 +50,13 @@ If `Settings` + `NavigationSplitView` cannot host the later Appearance inner spl
 
 - [x] Host the Warp-style split in the macOS `Settings` scene (or documented NSWindow fallback).
 - [x] Sidebar: Appearance, Editor, About (placeholder detail is fine).
-- [ ] Gear, app Settings menu, and ⌘, open this window.
+- [x] Gear, app Settings menu, and ⌘, open this window.
 - [x] Delete the stub Settings copy.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Settings window view with sidebar
 
@@ -84,8 +83,10 @@ Change the ribbon gear from `host.presentSettings()` (viewport swap) to `NSApp.s
 Files: `Markus/Markus/Document/RibbonRail.swift`, `Markus/Markus/Document/SettingsWindow.swift`
 
 Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
-- [ ] todo
+- [x] done
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+- 2026-08-20: Implemented R1/R2. T01 added `SettingsWindowView` (non-collapsing `HStack` split, Appearance / Editor / About placeholders — not `NavigationSplitView`, so the sidebar cannot collapse). T02 replaced the stub `Settings { Text(...) }` with that view; SwiftUI’s Settings scene still provides **Markus → Settings…** and ⌘,. T03 gear calls `SettingsWindowChrome.open()` (`showSettingsWindow:`) instead of `presentSettings()`. Left `ContentView` → `SettingsScene` takeover and `DocumentHost.presentSettings()` for ticket 02. macOS Debug build succeeded after each task. Did not run `xcodebuild test`. Did not launch the app for a visual pass from this session.
