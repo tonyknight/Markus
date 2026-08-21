@@ -3,11 +3,11 @@ id: 20260820-01-settings-window-and-navigation
 title: Settings window and navigation
 type: feature
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-20
 updated: 2026-08-20
 closed:
-notes: "model_tier: premium"
+notes: 'model_tier: premium'
 parent:
 depends_on: []
 subtasks:
@@ -20,6 +20,8 @@ subtasks:
 - id: T3
   title: Remove the stub Settings scene copy
   status: todo
+plan_status: in-progress
+current_task: T02
 ---
 ## Description
 
@@ -54,8 +56,35 @@ If `Settings` + `NavigationSplitView` cannot host the later Appearance inner spl
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Settings window view with sidebar
+
+Add a macOS-only SwiftUI root for the Preferences window: left list of Appearance, Editor, and About; right pane a placeholder for the selected category. Use a non-collapsing `HStack` + sidebar `List` (same split as today's in-window `SettingsScene`) inside the SwiftUI `Settings` scene rather than `NavigationSplitView`, because component 1 requires the sidebar not to collapse. Do not wire it yet — `MarkusApp` still hosts the stub so this commit is the view only.
+
+Files: `Markus/Markus/Document/SettingsWindow.swift`
+
+Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
+- [x] done
+
+### T02: Host the split in the Settings scene (delete stub)
+
+Replace `Settings { Text("Open a Markdown document to edit.") }` in `MarkusApp` with `SettingsWindowView`. SwiftUI's `Settings` scene already installs **Markus → Settings…** and ⌘,; those entry points now open this window. Give the scene a default size that can later hold the Appearance inner split. Leave `ContentView`'s `SettingsScene` takeover untouched.
+
+Files: `Markus/Markus/MarkusApp.swift`
+
+Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
+- [ ] todo
+
+### T03: Gear opens the Settings window
+
+Change the ribbon gear from `host.presentSettings()` (viewport swap) to `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)` so it opens the same Settings window as the menu and ⌘,. Do not remove `isSettingsPresented` / `ContentView` → `SettingsScene` (ticket 02). Leave `DocumentHost.presentSettings()` as the takeover API.
+
+Files: `Markus/Markus/Document/RibbonRail.swift`, `Markus/Markus/Document/SettingsWindow.swift`
+
+Verify: `xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build`
+- [ ] todo
 
 ## Notes
 
