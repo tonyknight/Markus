@@ -90,6 +90,10 @@ final class ThemeStore: ObservableObject {
     /// `committedTokens` synchronously always see the new value.
     let themeChanged = PassthroughSubject<Void, Never>()
 
+    private var appearanceObservation: NSKeyValueObservation?
+    private var appearanceObserver: NSObjectProtocol?
+    private var lastFollowedSystemIsDark: Bool?
+
     var persistedSelectionID: String? {
         defaults.string(forKey: Self.selectionKey)
     }
@@ -142,6 +146,13 @@ final class ThemeStore: ObservableObject {
             followSystem: followSystem,
             pinnedVariant: pinnedVariant
         )
+        startObservingSystemAppearance()
+    }
+
+    deinit {
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(appearanceObserver)
+        }
     }
 
     func tokens(for selection: ThemeSelection) -> ThemeTokens {
@@ -196,8 +207,15 @@ final class ThemeStore: ObservableObject {
         }
         followSystem = enabled
         defaults.set(enabled, forKey: Self.followSystemKey)
+        lastFollowedSystemIsDark = enabled ? systemIsDark : nil
         objectWillChange.send()
         themeChanged.send(())
+    }
+
+    /// SwiftUI `colorScheme` / iOS trait changes call this so Follow can
+    /// remap named families without a sticky hover (R5). No-op for Custom.
+    func noteSystemAppearance() {
+        handleSystemAppearanceChange()
     }
 
     func beginHover(_ tokens: ThemeTokens) {
@@ -248,6 +266,39 @@ final class ThemeStore: ObservableObject {
     func setCustomFence(_ color: PlatformColorType) {
         customFence = color
         defaults.set(Self.encodeColor(color), forKey: Self.customFenceKey)
+        objectWillChange.send()
+        themeChanged.send(())
+    }
+
+    private func startObservingSystemAppearance() {
+        lastFollowedSystemIsDark = systemIsDark
+        #if os(macOS)
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.handleSystemAppearanceChange()
+            }
+        }
+        #else
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleSystemAppearanceChange()
+            }
+        }
+        #endif
+    }
+
+    /// Remap named+follow tokens from the current system appearance and
+    /// broadcast so every open document repaints. Custom is unchanged.
+    /// Appearance flips are applies, not hover, so they use `themeChanged`.
+    private func handleSystemAppearanceChange() {
+        guard followSystem, case .named = selection else { return }
+        let isDark = systemIsDark
+        if lastFollowedSystemIsDark == isDark { return }
+        lastFollowedSystemIsDark = isDark
         objectWillChange.send()
         themeChanged.send(())
     }

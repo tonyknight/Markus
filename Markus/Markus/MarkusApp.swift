@@ -38,8 +38,15 @@ struct AppRootView: View {
         recents: RecentDocuments(),
         themeStore: ThemeStore.shared
     )
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ContentView(host: host)
+            .onAppear {
+                ThemeStore.shared.noteSystemAppearance()
+            }
+            .onChange(of: colorScheme) { _, _ in
+                ThemeStore.shared.noteSystemAppearance()
+            }
     }
 }

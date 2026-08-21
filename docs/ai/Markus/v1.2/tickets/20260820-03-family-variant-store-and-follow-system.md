@@ -21,7 +21,7 @@ subtasks:
   title: themeChanged on commit only, never on hover
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -56,7 +56,7 @@ This ticket is the store and persistence. The twelve recipes are ticket 04. The 
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Persist family, pinned variant, follow-system, named-vs-custom
 Replace `NamedThemeID` with `ThemeFamily` (nord, monokai, solarized, github, catppuccin, gruvbox) × `ThemeVariant` (light | dark) and `ThemeSelection` as `named(family) | custom`. Persist `selection`, `followSystem`, and `pinnedVariant` in `UserDefaults` (new keys for follow and pin; keep `markus.theme.selection` as family raw or `custom`). Migrate v1.1 IDs (`daylight`/`fog`/`parchment`/`meadow`/`harbor` → nord + light pin; `lampblack` → nord + dark pin). Applied tokens for this task: custom → custom snapshot; named + !follow → `catalog[family][pinnedVariant]`; named + follow → same formula using a live `systemIsDark` read (no observer yet). Stub `NamedThemeCatalog.tokens(for:variant:)` with daylight/lampblack stand-ins. Update `ThemePickerView`, `ThemeTokens.default`, `DocumentHost` apply/hover signatures, and MarkusTests call sites so the module still compiles. No Follow checkbox (ticket 05). No twelve palettes (ticket 04).
@@ -75,7 +75,7 @@ Observe `NSApp.effectiveAppearance` (macOS) and `UITraitCollection` / equivalent
 Files: `Markus/Markus/Theme/ThemeStore.swift`
 Verify: same three `xcodebuild … build` commands as T01, from `Markus/`.
 - [ ] todo
-
+- [x] done
 ### T03: themeChanged on commit only, never on hover
 Route selection, follow toggle, and custom edits through one private commit helper that sends `themeChanged` after the write. Hover (`beginHover`/`endHover` / `displayedTokens`) only sends `objectWillChange` so the proxy can redraw — never `themeChanged`, so open documents are not reparsed. Appearance-driven remap from T02 stays on the commit path (it is an apply, not hover).
 Files: `Markus/Markus/Theme/ThemeStore.swift`
@@ -88,3 +88,6 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-20
 T01: family×variant selection, follow/pin persistence, catalog stand-ins. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeeded.
+
+### 2026-08-20
+T02: NSApp.effectiveAppearance KVO (macOS) and colorScheme/didBecomeActive (iOS) remap named+follow; Custom skipped. Three Debug builds succeeded.
