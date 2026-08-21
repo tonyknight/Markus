@@ -106,7 +106,7 @@ private struct SettingsWindowDetail: View {
         case .appearance:
             placeholder(title: "Appearance", symbolName: "paintpalette")
         case .editor:
-            placeholder(title: "Editor", symbolName: "textformat")
+            EditorSettingsView()
         case .about:
             placeholder(title: "About", symbolName: "info.circle")
         }
@@ -119,6 +119,33 @@ private struct SettingsWindowDetail: View {
             Text("This page will be filled in a later ticket.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct EditorSettingsView: View {
+    @AppStorage(EditorSettings.defaultModeKey) private var defaultMode: EditorMode = .preview
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Default open mode:", selection: $defaultMode) {
+                    ForEach(EditorMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("settings.editor.defaultMode")
+            } header: {
+                Text("Document Defaults")
+            } footer: {
+                Text("Applied to untitled and newly opened documents. Open windows are not affected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("settings.editor.view")
     }
 }
 #endif

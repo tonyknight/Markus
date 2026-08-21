@@ -240,7 +240,11 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     private weak var textStorage: NSTextStorage?
     let contentStorageDelegate = PreviewContentStorageDelegate()
 
-    init(foldStore: FoldStore = FoldStore(), mode: EditorMode = .preview, tokens: ThemeTokens = .default) {
+    init(
+        foldStore: FoldStore = FoldStore(),
+        mode: EditorMode = EditorSettings.loadDefaultMode(),
+        tokens: ThemeTokens = .default
+    ) {
         self.foldStore = foldStore
         self.mode = mode
         self.tokens = tokens

@@ -5,9 +5,16 @@ import AppKit
 import UIKit
 #endif
 
-enum EditorMode: Equatable, Hashable, Sendable {
-    case source
+enum EditorMode: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case preview
+    case source
+
+    var displayName: String {
+        switch self {
+        case .preview: return "Preview"
+        case .source: return "Source"
+        }
+    }
 }
 
 final class FoldStore {
