@@ -21,7 +21,7 @@ struct CustomThemeTests {
         #expect(lightPaper.background.isEqual(paper))
         #expect(lightSlate.background.isEqual(slate))
         #expect(!lightPaper.body.isEqual(darkPaper.body))
-        #expect(!lightPaper.heading.isEqual(darkPaper.heading))
+        #expect(!lightPaper.h1.isEqual(darkPaper.h1))
         #expect(!lightPaper.link.isEqual(darkPaper.link))
     }
 

@@ -138,7 +138,7 @@ struct ThemePickerView: View {
             ColorPicker(
                 "Headings (# ##)",
                 selection: Binding(
-                    get: { colorFromPlatform(host.themeStore.tokens(for: .custom).heading) },
+                    get: { colorFromPlatform(host.themeStore.tokens(for: .custom).h1) },
                     set: { newValue in
                         let color = platformColor(from: newValue)
                         DispatchQueue.main.async { host.setCustomHeading(color) }
@@ -248,7 +248,7 @@ private struct ThemeSwatch: View {
             colorFromPlatform(tokens.background)
             VStack(alignment: .leading, spacing: 5) {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(colorFromPlatform(tokens.heading))
+                    .fill(colorFromPlatform(tokens.h1))
                     .frame(width: 64, height: 8)
                 RoundedRectangle(cornerRadius: 2)
                     .fill(colorFromPlatform(tokens.body))

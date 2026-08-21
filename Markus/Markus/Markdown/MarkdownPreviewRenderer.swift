@@ -40,7 +40,7 @@ enum MarkdownPreviewRenderer {
             switch span.kind {
             case .heading:
                 attributes[.font] = PlatformFont.heading(size: 22 * scale)
-                attributes[.foregroundColor] = tokens.heading
+                attributes[.foregroundColor] = tokens.h1
             case .table:
                 attributes[.foregroundColor] = tokens.table
             case .taskListItem:

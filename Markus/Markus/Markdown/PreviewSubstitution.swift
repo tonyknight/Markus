@@ -77,7 +77,7 @@ enum PreviewElementRenderer {
             switch block.kind {
             case .heading(let level, let inline):
                 let font = PlatformFont.heading(size: PreviewHeadingScale.pointSize(level: level, zoomScale: zoomScale))
-                let attributed = renderInline(inline, font: font, tokens: tokens, defaultColor: tokens.heading)
+                let attributed = renderInline(inline, font: font, tokens: tokens, defaultColor: tokens.h1)
                 return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
             case .paragraph(let inline, let quoted):
                 let font = PlatformFont.body(size: 16 * zoomScale)

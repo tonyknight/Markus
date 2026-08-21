@@ -165,7 +165,14 @@ final class ThemeStore: ObservableObject {
             return NamedThemeCatalog.tokens(for: family, variant: variant)
         case .custom:
             var tokens = CustomTheme.tokens(background: customBackground, textStyle: customTextStyle)
-            if let customHeading { tokens.heading = customHeading }
+            if let customHeading {
+                tokens.h1 = customHeading
+                tokens.h2 = customHeading
+                tokens.h3 = customHeading
+                tokens.h4 = customHeading
+                tokens.h5 = customHeading
+                tokens.h6 = customHeading
+            }
             if let customBody { tokens.body = customBody }
             if let customLink { tokens.link = customLink }
             if let customFence { tokens.fence = customFence }
