@@ -13,6 +13,10 @@ struct AppearanceSettingsView: View {
     @State private var cloneFamily: ThemeFamily?
     @State private var cloneVariant: ThemeVariant?
     @State private var confirmReplaceCustom = false
+    @State private var headingsExpanded = true
+    @State private var emphasisExpanded = false
+    @State private var blocksExpanded = false
+    @State private var otherExpanded = false
 
     private var proxyTokens: ThemeTokens {
         hoveredTokens ?? store.committedTokens
@@ -39,6 +43,9 @@ struct AppearanceSettingsView: View {
                             VStack(alignment: .leading, spacing: 16) {
                                 cardGrid
                                 useAsCustomControl
+                                if store.selection == .custom {
+                                    customTokenControls
+                                }
                             }
                         }
                         proxyColumn
@@ -51,6 +58,9 @@ struct AppearanceSettingsView: View {
                             VStack(alignment: .leading, spacing: 16) {
                                 cardGrid
                                 useAsCustomControl
+                                if store.selection == .custom {
+                                    customTokenControls
+                                }
                             }
                         }
                         proxyColumn
@@ -179,6 +189,63 @@ struct AppearanceSettingsView: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    private var customTokenControls: some View {
+        let tokens = store.tokens(for: .custom)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Custom colors")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            AppearanceTokenWell(title: "Background", color: tokens.background) {
+                store.setCustomBackground($0)
+            }
+            AppearanceTokenWell(title: "Body", color: tokens.body) {
+                store.setCustomBody($0)
+            }
+            DisclosureGroup("Headings", isExpanded: $headingsExpanded) {
+                wellStack {
+                    AppearanceTokenWell(title: "H1", color: tokens.h1) { store.setCustomH1($0) }
+                    AppearanceTokenWell(title: "H2", color: tokens.h2) { store.setCustomH2($0) }
+                    AppearanceTokenWell(title: "H3", color: tokens.h3) { store.setCustomH3($0) }
+                    AppearanceTokenWell(title: "H4", color: tokens.h4) { store.setCustomH4($0) }
+                    AppearanceTokenWell(title: "H5", color: tokens.h5) { store.setCustomH5($0) }
+                    AppearanceTokenWell(title: "H6", color: tokens.h6) { store.setCustomH6($0) }
+                }
+            }
+            DisclosureGroup("Emphasis", isExpanded: $emphasisExpanded) {
+                wellStack {
+                    AppearanceTokenWell(title: "Bold", color: tokens.bold) { store.setCustomBold($0) }
+                    AppearanceTokenWell(title: "Italic", color: tokens.italic) { store.setCustomItalic($0) }
+                    AppearanceTokenWell(title: "Bold-italic", color: tokens.boldItalic) { store.setCustomBoldItalic($0) }
+                }
+            }
+            DisclosureGroup("Blocks", isExpanded: $blocksExpanded) {
+                wellStack {
+                    AppearanceTokenWell(title: "Links", color: tokens.link) { store.setCustomLink($0) }
+                    AppearanceTokenWell(title: "Lists", color: tokens.list) { store.setCustomList($0) }
+                    AppearanceTokenWell(title: "Fenced code", color: tokens.fence) { store.setCustomFence($0) }
+                    AppearanceTokenWell(title: "Inline code", color: tokens.inlineCode) { store.setCustomInlineCode($0) }
+                    AppearanceTokenWell(title: "Callouts", color: tokens.callout) { store.setCustomCallout($0) }
+                    AppearanceTokenWell(title: "Tables", color: tokens.table) { store.setCustomTable($0) }
+                }
+            }
+            DisclosureGroup("Other", isExpanded: $otherExpanded) {
+                wellStack {
+                    AppearanceTokenWell(title: "Strikethrough", color: tokens.strikethrough) { store.setCustomStrikethrough($0) }
+                    AppearanceTokenWell(title: "Footnotes", color: tokens.footnote) { store.setCustomFootnote($0) }
+                    AppearanceTokenWell(title: "Fold markers", color: tokens.foldMarker) { store.setCustomFoldMarker($0) }
+                }
+            }
+        }
+        .accessibilityIdentifier("settings.appearance.customControls")
+    }
+
+    private func wellStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .padding(.top, 6)
     }
 
     /// Commits through `ThemeStore.shared` so `themeChanged` repaints every
@@ -335,6 +402,28 @@ private struct AppearanceThemeProxy: NSViewRepresentable {
     func updateNSView(_ nsView: FoldingTextView, context: Context) {
         nsView.setTheme(tokens)
         nsView.ensureLayout()
+    }
+}
+
+/// One custom selector. Writes are deferred so ColorPicker does not
+/// publish ThemeStore changes during a SwiftUI view update.
+private struct AppearanceTokenWell: View {
+    let title: String
+    let color: PlatformColorType
+    let onChange: (PlatformColorType) -> Void
+
+    var body: some View {
+        ColorPicker(
+            title,
+            selection: Binding(
+                get: { Color(nsColor: color) },
+                set: { newValue in
+                    let picked = NSColor(newValue)
+                    DispatchQueue.main.async { onChange(picked) }
+                }
+            )
+        )
+        .controlSize(.small)
     }
 }
 #endif

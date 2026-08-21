@@ -19,12 +19,12 @@ subtasks:
   status: done
 - id: T2
   title: Grouped color wells for the full selector set
-  status: todo
+  status: done
 - id: T3
   title: Custom is a frozen snapshot; catalog stays immutable
   status: todo
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -56,7 +56,7 @@ Custom becomes clone-then-refine. **Use as Custom** copies the chosen prebuilt v
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Use as Custom snapshots a variant; confirm if replacing existing custom edits
 
@@ -81,7 +81,7 @@ Files: `Markus/Markus/Document/AppearanceSettingsView.swift`
 
 Verify: same `xcodebuild` macOS Debug build as T01, from `Markus/`.
 - [ ] todo
-
+- [x] done
 ### T03: Custom is a frozen snapshot; catalog stays immutable
 
 After a clone, Custom must not re-read `NamedThemeCatalog` or re-derive from `CustomTheme.tokens` for unset fields. Build committed custom tokens from the persisted snapshot when every selector key is present. Well edits keep writing only custom keys and still `themeChanged`. Named recipes remain a read-only catalog (no write API, clone copies values). Later catalog edits cannot rebase an existing Custom.
@@ -97,3 +97,6 @@ Append-only running log. Each entry dated.
 
 ### 2026-08-20
 T01: replaceCustom copies full token set, selects Custom, confirms if customDiffers. macOS Debug BUILD SUCCEEDED.
+
+### 2026-08-20
+T02: Grouped wells (Headings / Emphasis / Blocks / Other) plus background and body. H1 binds setCustomH1 only. macOS Debug BUILD SUCCEEDED.
