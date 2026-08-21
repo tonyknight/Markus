@@ -119,11 +119,10 @@ final class DocumentHost: ObservableObject {
         themeStore.selectNamed(family, variant: variant)
     }
 
-    /// Hovering a card previews that theme in the picker's proxy document
-    /// only (`ThemeStore.displayedTokens`, read directly by
-    /// `ThemePickerView`) — it must never touch the real open document's
-    /// editor, which stays on the committed theme throughout hover (R8;
-    /// C.9). Hover tokens never go through `themeChanged` (N2).
+    /// iOS picker hover only (`ThemePickerView` → `displayedTokens`).
+    /// Must never touch the real editor; the editor stays on
+    /// `committedTokens` until `themeChanged` (N2). macOS Appearance
+    /// hover is `@State` on that page and must not call this.
     func previewTheme(_ tokens: ThemeTokens?) {
         if let tokens {
             themeStore.beginHover(tokens)

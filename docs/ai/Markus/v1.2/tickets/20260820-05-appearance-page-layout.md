@@ -22,9 +22,8 @@ subtasks:
   status: done
 - id: T3
   title: Click applies globally; hover does not restyle open documents
-  status: todo
-plan_status: in-progress
-current_task: T03
+  status: done
+plan_status: done
 ---
 ## Description
 
@@ -58,8 +57,8 @@ Cards: short snippet, chip strip, name, selection check. Inner split (cards | pr
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Follow System checkbox, variant cards, Custom card
 
@@ -93,7 +92,7 @@ Files: `Markus/Markus/Document/AppearanceSettingsView.swift`, `Markus/Markus/The
 
 Verify: same macOS Debug `xcodebuild … build` as T01, from `Markus/`.
 - [ ] todo
-- [ ] done
+- [x] done
 
 ## Notes
 
@@ -107,3 +106,6 @@ T01 done. AppearanceSettingsView: Follow System checkbox (disabled for Custom), 
 
 ### 2026-08-20
 T02 done. Rich GFM sampleMarkdown; Appearance proxy is FoldingTextView Preview; hover is @State on the page (never ThemeStore.beginHover); inner split stacks below 540pt; onDisappear and click clear hover. macOS Debug build succeeded.
+
+### 2026-08-20
+T03 done. Clicks commit via ThemeStore.shared (themeChanged → every DocumentHost). Hover is view-local @State; Follow/apply/onDisappear/scenePhase clear it. Store hoverTokens documented as iOS ThemePickerView leftover. Ticket left in-progress per execute instructions. macOS Debug build succeeded.

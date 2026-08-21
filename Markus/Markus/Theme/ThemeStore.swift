@@ -70,10 +70,10 @@ final class ThemeStore: ObservableObject {
     @Published private(set) var customLink: PlatformColorType?
     @Published private(set) var customFence: PlatformColorType?
 
-    /// Hover restyles the Settings proxy only. Not a committed selection
-    /// and never persisted. Ticket 05 will move hover fully into the
-    /// Appearance view; until then the store still holds the preview
-    /// tokens so `displayedTokens` can feed the existing picker proxy.
+    /// Leftover for the iOS `ThemePickerView` proxy (`displayedTokens`).
+    /// The macOS Appearance page does not read or write this — its hover
+    /// is `@State` on `AppearanceSettingsView`, so it cannot stick after
+    /// close or into a second Settings window (R12, N2). Never persisted.
     private(set) var hoverTokens: ThemeTokens?
 
     /// Fires after a *committed* theme change (selection, follow toggle,
@@ -218,13 +218,17 @@ final class ThemeStore: ObservableObject {
         handleSystemAppearanceChange()
     }
 
-    /// Proxy-only preview. Must never call `broadcastCommit` / `themeChanged` (N2).
+    /// iOS `ThemePickerView` proxy only. Must never call `broadcastCommit`
+    /// / `themeChanged` (N2). macOS Appearance hover is view-local and
+    /// must not call this.
     func beginHover(_ tokens: ThemeTokens) {
         hoverTokens = tokens
         objectWillChange.send()
     }
 
-    /// Proxy-only preview. Must never call `broadcastCommit` / `themeChanged` (N2).
+    /// iOS `ThemePickerView` proxy only. Must never call `broadcastCommit`
+    /// / `themeChanged` (N2). macOS Appearance hover is view-local and
+    /// must not call this.
     func endHover() {
         hoverTokens = nil
         objectWillChange.send()

@@ -8,6 +8,7 @@ import SwiftUI
 /// cannot inherit it, and close/apply clears it (R3, R12, N2).
 struct AppearanceSettingsView: View {
     @ObservedObject private var store = ThemeStore.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var hoveredTokens: ThemeTokens?
 
     private var proxyTokens: ThemeTokens {
@@ -43,6 +44,11 @@ struct AppearanceSettingsView: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onDisappear { hoveredTokens = nil }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                hoveredTokens = nil
+            }
+        }
         .accessibilityIdentifier("settings.appearance.view")
     }
 
@@ -52,6 +58,7 @@ struct AppearanceSettingsView: View {
             isOn: Binding(
                 get: { store.followSystem },
                 set: { newValue in
+                    hoveredTokens = nil
                     DispatchQueue.main.async {
                         store.setFollowSystem(newValue)
                     }
@@ -81,8 +88,7 @@ struct AppearanceSettingsView: View {
                         tokens: tokens,
                         isSelected: store.isShowing(family: family, variant: variant),
                         onSelect: {
-                            hoveredTokens = nil
-                            store.selectNamed(family, variant: variant)
+                            commitNamed(family, variant: variant)
                         },
                         onHover: { hovering in
                             hoveredTokens = hovering ? tokens : nil
@@ -98,8 +104,7 @@ struct AppearanceSettingsView: View {
                 tokens: store.tokens(for: .custom),
                 isSelected: store.selection == .custom,
                 onSelect: {
-                    hoveredTokens = nil
-                    store.select(.custom)
+                    commitCustom()
                 },
                 onHover: { hovering in
                     hoveredTokens = hovering ? store.tokens(for: .custom) : nil
@@ -123,6 +128,19 @@ struct AppearanceSettingsView: View {
                 )
         }
         .accessibilityIdentifier("settings.appearance.proxy")
+    }
+
+    /// Commits through `ThemeStore.shared` so `themeChanged` repaints every
+    /// open document. Clears local hover so apply does not leave a preview
+    /// overlay (R3, N2).
+    private func commitNamed(_ family: ThemeFamily, variant: ThemeVariant) {
+        hoveredTokens = nil
+        store.selectNamed(family, variant: variant)
+    }
+
+    private func commitCustom() {
+        hoveredTokens = nil
+        store.select(.custom)
     }
 }
 
