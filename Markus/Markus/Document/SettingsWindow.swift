@@ -108,7 +108,7 @@ private struct SettingsWindowDetail: View {
         case .editor:
             EditorSettingsView()
         case .about:
-            placeholder(title: "About", symbolName: "info.circle")
+            AboutSettingsView()
         }
     }
 
@@ -119,6 +119,43 @@ private struct SettingsWindowDetail: View {
             Text("This page will be filled in a later ticket.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct AboutSettingsView: View {
+    private var appName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? "Markus"
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "1.2"
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 80, height: 80)
+            }
+
+            VStack(spacing: 4) {
+                Text(appName)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .accessibilityIdentifier("settings.about.appName")
+
+                Text("Version \(appVersion)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings.about.version")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("settings.about.view")
     }
 }
 
