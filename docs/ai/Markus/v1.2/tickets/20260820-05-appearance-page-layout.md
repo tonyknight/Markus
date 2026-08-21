@@ -3,11 +3,11 @@ id: 20260820-05-appearance-page-layout
 title: Appearance page layout
 type: feature
 priority: high
-status: todo
+status: in-progress
 created: 2026-08-20
 updated: 2026-08-20
 closed:
-notes: "model_tier: premium"
+notes: 'model_tier: premium'
 parent:
 depends_on:
 - 20260820-01-settings-window-and-navigation
@@ -16,13 +16,15 @@ depends_on:
 subtasks:
 - id: T1
   title: Follow System checkbox, variant cards, Custom card
-  status: todo
+  status: done
 - id: T2
   title: Rich GFM proxy column; hover local to the page
   status: todo
 - id: T3
   title: Click applies globally; hover does not restyle open documents
   status: todo
+plan_status: in-progress
+current_task: T02
 ---
 ## Description
 
@@ -49,16 +51,56 @@ Cards: short snippet, chip strip, name, selection check. Inner split (cards | pr
 
 ## Subtasks
 
-- [ ] Follow System control bound to the store.
-- [ ] Variant + Custom cards; click commits.
+- [x] Follow System control bound to the store.
+- [x] Variant + Custom cards; click commits.
 - [ ] Proxy sample: headings, paragraph, emphasis, link, inline code, fence, list, quote, table, strikethrough, footnote (callout when ticket 07 lands).
 - [ ] Hover state local to the page.
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: Follow System checkbox, variant cards, Custom card
+
+Replace the Appearance placeholder with a macOS `AppearanceSettingsView` bound to `ThemeStore.shared`. Put a Follow System Appearance checkbox at the top (`setFollowSystem`); disable it when selection is Custom so Follow cannot invent a second Custom variant. Below it, a wrapping `LazyVGrid` of one card per catalog variant (6 families × Light/Dark) plus a Custom card. Each card: SwiftUI snippet (not an embedded `FoldingTextView`), chip strip from existing `ThemeTokens` fields only, `ThemeFamily.pickerTitle` (or “Custom”), and a selection check via `isShowing` / `selection == .custom`. Click commits with `selectNamed` / `select(.custom)`. Do not add color wells or Use as Custom. Leave `ThemePickerView` on the iOS sheet (R13). Do not expand `ThemeTokens`.
+
+Files: `Markus/Markus/Document/AppearanceSettingsView.swift`, `Markus/Markus/Document/SettingsWindow.swift`
+
+Verify:
+```
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
+```
+from `Markus/`.
+- [ ] todo
+- [x] done
+
+### T02: Rich GFM proxy column; hover local to the page
+
+Expand `ThemeChrome.sampleMarkdown` to a rich GFM sample: headings, paragraph, emphasis, link, inline code, fence, list, quote, table, strikethrough, footnote. Omit GitHub alert syntax (ticket 07). Lift `ThemeProxyRepresentable` to internal and show a real Preview-mode `FoldingTextView` in a column beside the card grid. Inner split (cards | preview) uses a width threshold so it stacks vertically when the Settings window is narrowed; the left category sidebar stays a fixed-width `HStack` and does not collapse. Hover restyles only this proxy via `@State` on the Appearance view — never `ThemeStore.beginHover` / `hoverTokens`. `onDisappear` and click-apply clear that local hover so a second Settings window cannot inherit it.
+
+Files: `Markus/Markus/Theme/ThemeChrome.swift`, `Markus/Markus/Document/AppearanceSettingsView.swift`
+
+Verify: same macOS Debug `xcodebuild … build` as T01, from `Markus/`.
+- [ ] todo
+- [ ] done
+
+### T03: Click applies globally; hover does not restyle open documents
+
+Confirm Appearance clicks go through `ThemeStore.shared` so `themeChanged` repaints every `DocumentHost` editor. Hover must not call `beginHover`/`endHover` and must not change `DocumentHost.session.editor` tokens. Document that store hover is leftover for the iOS `ThemePickerView` path only. Closing Appearance (`onDisappear`) or applying a card clears local hover. No ThemeTokens expansion.
+
+Files: `Markus/Markus/Document/AppearanceSettingsView.swift`, `Markus/Markus/Theme/ThemeStore.swift`, `Markus/Markus/Document/DocumentHost.swift`
+
+Verify: same macOS Debug `xcodebuild … build` as T01, from `Markus/`.
+- [ ] todo
+- [ ] done
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-20
+Wrote implementation plan (T01 cards+Follow, T02 rich proxy + view-local hover, T03 global apply / no store hover). Starting T01.
+
+### 2026-08-20
+T01 done. AppearanceSettingsView: Follow System checkbox (disabled for Custom), 12 variant cards + Custom, click via ThemeStore.shared. Compat shim ThemeTokensCompatibility so 06's widened ThemeTokens still compiles. macOS Debug build succeeded.

@@ -56,8 +56,7 @@ enum SettingsWindowChrome {
 /// right. Hosted by the macOS `Settings` scene so it is a separate window,
 /// not a swap of the document viewport. An `HStack` split is used instead
 /// of `NavigationSplitView` so the sidebar cannot collapse (Architecture
-/// component 1). Appearance / Editor / About details are placeholders
-/// until later tickets fill them.
+/// component 1).
 struct SettingsWindowView: View {
     @State private var selectedCategory: SettingsWindowCategory = .appearance
 
@@ -104,21 +103,12 @@ private struct SettingsWindowDetail: View {
     var body: some View {
         switch category {
         case .appearance:
-            placeholder(title: "Appearance", symbolName: "paintpalette")
+            AppearanceSettingsView()
         case .editor:
             EditorSettingsView()
         case .about:
             AboutSettingsView()
         }
-    }
-
-    private func placeholder(title: String, symbolName: String) -> some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbolName)
-        } description: {
-            Text("This page will be filled in a later ticket.")
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
