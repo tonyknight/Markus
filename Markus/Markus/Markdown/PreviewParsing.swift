@@ -40,6 +40,9 @@ struct ParsedPreviewBlock: Equatable {
     enum Kind: Equatable {
         case heading(level: Int, inline: [PreviewInlineNode])
         case paragraph(inline: [PreviewInlineNode], quoted: Bool)
+        /// GitHub alert (`> [!NOTE]` and the four siblings). Not a fold
+        /// type. Unknown `[!FOO]` stays `.paragraph(..., quoted: true)`.
+        case callout(type: GitHubAlertType, inline: [PreviewInlineNode])
         case thematicBreak
         /// One markup-only fence delimiter line (opening ``` /~~~, or
         /// the matching close) — collapses to zero height like any
@@ -119,6 +122,19 @@ enum PreviewStructureCollector {
         let type = cmark_node_get_type(node)
 
         if type == CMARK_NODE_BLOCK_QUOTE {
+            if let alertType = githubAlertType(of: node) {
+                let startLine = Int(cmark_node_get_start_line(node))
+                let endLine = Int(cmark_node_get_end_line(node))
+                if startLine > 0, endLine >= startLine {
+                    let body = collectCalloutBody(of: node)
+                    blocks.append(ParsedPreviewBlock(
+                        lines: startLine..<(endLine + 1),
+                        indentLevel: quoteDepth + listDepth,
+                        kind: .callout(type: alertType, inline: body)
+                    ))
+                }
+                return
+            }
             var child = cmark_node_first_child(node)
             while let n = child {
                 collectBlock(n, quoteDepth: quoteDepth + 1, listDepth: listDepth, into: &blocks)
@@ -168,6 +184,92 @@ enum PreviewStructureCollector {
         }
         // Images are handled inline within paragraph/heading/list-item
         // text by `collectInlineNode`'s `CMARK_NODE_IMAGE` case.
+    }
+
+    /// First paragraph of a blockquote, first line only, plain text.
+    /// Returns a known GitHub alert type or `nil` — unknown `[!FOO]`
+    /// and ordinary quotes must not match.
+    private static func githubAlertType(
+        of blockQuote: UnsafeMutablePointer<cmark_node>
+    ) -> GitHubAlertType? {
+        guard let first = cmark_node_first_child(blockQuote) else { return nil }
+        guard cmark_node_get_type(first) == CMARK_NODE_PARAGRAPH else { return nil }
+
+        var firstLine = ""
+        var child = cmark_node_first_child(first)
+        while let n = child {
+            let childType = cmark_node_get_type(n)
+            if childType == CMARK_NODE_SOFTBREAK || childType == CMARK_NODE_LINEBREAK {
+                break
+            }
+            guard childType == CMARK_NODE_TEXT else { return nil }
+            firstLine += literalText(n)
+            child = cmark_node_next(n)
+        }
+        return GitHubAlertType.parse(markerLine: firstLine)
+    }
+
+    private static func collectCalloutBody(
+        of blockQuote: UnsafeMutablePointer<cmark_node>
+    ) -> [PreviewInlineNode] {
+        var body: [PreviewInlineNode] = []
+        var isFirst = true
+        var child = cmark_node_first_child(blockQuote)
+        while let n = child {
+            if isFirst, cmark_node_get_type(n) == CMARK_NODE_PARAGRAPH {
+                let remainder = strippingAlertMarker(from: collectInlineChildren(of: n))
+                if !remainder.isEmpty {
+                    body.append(contentsOf: remainder)
+                }
+            } else {
+                appendCalloutBody(from: n, into: &body)
+            }
+            isFirst = false
+            child = cmark_node_next(n)
+        }
+        return body
+    }
+
+    /// Drops the leading `[!TYPE]` text node and a following soft break.
+    private static func strippingAlertMarker(from inlines: [PreviewInlineNode]) -> [PreviewInlineNode] {
+        guard let first = inlines.first, case .text = first else { return inlines }
+        var rest = Array(inlines.dropFirst())
+        if let head = rest.first, case .softBreak = head {
+            rest.removeFirst()
+        } else if let head = rest.first, case .text(let string) = head, string.hasPrefix(" ") {
+            rest[0] = .text(String(string.drop(while: { $0 == " " })))
+        }
+        return rest
+    }
+
+    private static func appendCalloutBody(
+        from node: UnsafeMutablePointer<cmark_node>,
+        into body: inout [PreviewInlineNode]
+    ) {
+        let type = cmark_node_get_type(node)
+        if type == CMARK_NODE_PARAGRAPH || type == CMARK_NODE_HEADING {
+            let inline = collectInlineChildren(of: node)
+            guard !inline.isEmpty else { return }
+            if !body.isEmpty { body.append(.text("\n")) }
+            body.append(contentsOf: inline)
+            return
+        }
+        if type == CMARK_NODE_BLOCK_QUOTE || type == CMARK_NODE_LIST || type == CMARK_NODE_ITEM {
+            var child = cmark_node_first_child(node)
+            while let n = child {
+                appendCalloutBody(from: n, into: &body)
+                child = cmark_node_next(n)
+            }
+            return
+        }
+        let typeName = String(cString: cmark_node_get_type_string(node))
+        if typeName == "tasklist" {
+            var child = cmark_node_first_child(node)
+            while let n = child {
+                appendCalloutBody(from: n, into: &body)
+                child = cmark_node_next(n)
+            }
+        }
     }
 
     private static func isFenced(_ node: UnsafeMutablePointer<cmark_node>?) -> Bool {

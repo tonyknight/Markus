@@ -89,6 +89,17 @@ enum PreviewElementRenderer {
                 let color = quoted ? tokens.list : tokens.body
                 let attributed = renderInline(inline, font: font, tokens: tokens, defaultColor: color)
                 return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
+            case .callout(let type, let inline):
+                // T01 stub: keyword + body so Preview compiles and is
+                // distinguishable from a quote. T02 paints chrome.
+                let font = PlatformFont.body(size: 16 * zoomScale)
+                let labelFont = PlatformFont.heading(size: 13 * zoomScale)
+                let attributed = NSMutableAttributedString(
+                    string: type.label + (inline.isEmpty ? "" : "\n"),
+                    attributes: [.font: labelFont, .foregroundColor: tokens.callout]
+                )
+                attributed.append(renderInline(inline, font: font, tokens: tokens, defaultColor: tokens.body))
+                return PreviewElement(lines: block.lines, rendered: applyIndent(attributed, level: block.indentLevel))
             case .thematicBreak:
                 let attachment = ThematicBreakAttachment(color: tokens.foldMarker)
                 let attributed = NSAttributedString(attachment: attachment)
