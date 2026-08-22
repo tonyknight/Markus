@@ -118,6 +118,30 @@ private struct DocumentToolbar: ToolbarContent {
         ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
             DocumentModePicker(host: host)
         }
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                ForEach(DocumentKind.waveA, id: \.self) { kind in
+                    Button {
+                        host.setKind(kind)
+                    } label: {
+                        if host.session.kind == kind {
+                            Label(kind.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(kind.displayName)
+                        }
+                    }
+                }
+                Divider()
+                Button("Pin Kind") { host.pinKind() }
+                    .disabled(host.session.fileURL == nil)
+                Button("Unpin Kind") { host.unpinKind() }
+                    .disabled(!host.session.isKindPinned)
+            } label: {
+                Text(host.session.kind.displayName)
+            }
+            .disabled(!host.showsEditor)
+            .accessibilityIdentifier(ToolbarChrome.Identifier.kind)
+        }
         ToolbarItemGroup(placement: .automatic) {
             Button("Open") { host.isImporterPresented = true }
                 .accessibilityIdentifier(ToolbarChrome.Identifier.open)
@@ -199,6 +223,7 @@ private struct DocumentToolbar: ToolbarContent {
 enum ToolbarChrome {
     enum Identifier {
         static let mode = "toolbar.mode"
+        static let kind = "toolbar.kind"
         static let open = "toolbar.open"
         static let openFolder = "toolbar.openFolder"
         static let save = "toolbar.save"
