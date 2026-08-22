@@ -280,8 +280,16 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         blocks = analysis.foldables
         cachedSourceMap = SourceMap(markdown: markdown)
         cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
-        parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)
-        parsedSpans = MarkdownParser().previewSpans(markdown)
+        // Markdown Preview substitution is cmark on the full buffer.
+        // JSON/HTML/other kinds must not pay that cost (N2) and must
+        // not feed GFM structure into a non-Markdown document.
+        if documentKind == .markdown {
+            parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)
+            parsedSpans = MarkdownParser().previewSpans(markdown)
+        } else {
+            parsedPreviewBlocks = []
+            parsedSpans = []
+        }
         let nonFenceAnchors = parsedPreviewBlocks.compactMap { block -> Int? in
             if case .fenceDelimiter = block.kind { return nil }
             return block.lines.lowerBound

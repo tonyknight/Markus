@@ -20,10 +20,10 @@ Dedicated JSON parser (not tree-sitter). Object `{…}` and array `[…]` folds 
 
 ## Acceptance criteria
 
-- [ ] `.json` folds objects/arrays; edits save as buffer text (R5, N6).
-- [ ] Invalid JSON does not crash; session has a diagnostic (R5, R9).
-- [ ] Preview control hidden for JSON.
-- [ ] macOS + iOS/iPad Debug builds (N2, N3).
+- [x] `.json` folds objects/arrays; edits save as buffer text (R5, N6).
+- [x] Invalid JSON does not crash; session has a diagnostic (R5, R9).
+- [x] Preview control hidden for JSON.
+- [x] macOS + iOS/iPad Debug builds (N2, N3).
 
 ## Context
 
@@ -95,6 +95,21 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 ```
 - [ ] todo
 - [x] done
+
+### T05: Skip Markdown preview parse on non-Markdown kinds
+
+`FoldingSession.reparse` currently always runs `PreviewStructureCollector.collect` and `MarkdownParser().previewSpans` on the full buffer. That unbounded cmark work runs for JSON on the main thread after the typing debounce, so N2 is not met even with `JSONScanBudget`. Skip both collectors when `documentKind != .markdown` (leave `parsedPreviewBlocks` / `parsedSpans` empty). Still build `SourceMap` / `UTF16LineOffsets` and union foldable start lines for the gutter. HTML/SVG Preview is WebView (ticket 05), not substitution, so they must skip this path too.
+
+Files: `Markus/Markus/Editor/FoldingTextView.swift`
+
+Verify:
+```
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
+```
+- [x] done
+
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -113,3 +128,18 @@ T03: DocumentKind.showsPreview hides Source/Preview picker and Toggle Mode for j
 
 ### 2026-08-22
 T04: JSONSyntaxProfile uses JSONScanBudget.default (2 MiB / 4096 foldables / 2048 outline / 4096 spans / 50 ms). Over budget: partial folds + warning diagnostic. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Ticket left in-progress (no visual open of a .json file; no xcodebuild test).
+
+## Review
+
+2026-08-22 — **Important.** Controller may not mark `done`. Fix N2 (or get an explicit human defer) before closing.
+
+Commits `3dd2c96`, `e28c4c7`, `3619d78`, `1cba070`. Messages match `{ticket-id} {task-id}: {title}`. Plan files match the diff (T03 also touched `ModeChrome.swift`, a real `setMode` entry point). R5/R9/N6 look met in code: dedicated scanner (not tree-sitter / `JSONSerialization` ranges), object/array folds, invalid input diagnoses without crashing, session `outlineItems`/`diagnostics` flow through, save remains `DocumentSave.writeUTF8`. Preview chrome hidden via `DocumentKind.showsPreview`. Notes claim macOS+iOS/iPad Debug builds; no visual open of a `.json` file.
+
+- Important: N2 is not met. `JSONScanBudget.default` bounds only `JSONScanner`; `FoldingSession.reparse` still runs `PreviewStructureCollector.collect` and `MarkdownParser().previewSpans` on the **full** buffer for JSON (`FoldingTextView.swift:278-284`). That work is unbounded, on the main thread, after the 120 ms debounce (`FoldingTextView.swift:2306-2333`). A multi-MB `.json` can still freeze typing/open. Skip markdown preview collection when `documentKind` is not markdown (or when `!showsPreview`).
+- Minor: `Engine.init` copies `Array(buffer.utf8)` before applying `maxBytes` (`JSONScanner.swift:65-68`).
+- Minor: Fold extent is `openerEnd..<closerEnd` at the closer token (`JSONScanner.swift:405-407`). Correct for `},` lines; a pretty-printed `}`-only closer leaves its trailing newline visible (blank line vs fence `toEndOfLine`).
+- Minor: Array outline rows are only emitted for nested `{`/`[` (`JSONScanner.swift:251-253`), not primitive elements. Compact JSON keys can share `sourceLine`, which the existing outline `ForEach` uses as `id` (`ContentView.swift:177`).
+- Minor: Object recovery that stops on `}` then `break`s reports "Unclosed object" and omits the fold (`JSONScanner.swift:171-178`, `233-234`). Invalid JSON, no crash; closed-but-invalid objects are dropped.
+
+### 2026-08-22
+Debug: N2 fail was not the JSON scanner. `FoldingSession.reparse` always ran `PreviewStructureCollector` + `MarkdownParser.previewSpans` on the full buffer, including JSON. Adding T05 to skip that path when `documentKind != .markdown`.
