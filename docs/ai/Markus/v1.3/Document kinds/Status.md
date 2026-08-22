@@ -8,8 +8,8 @@ Open JSON, HTML, and a short language list with Markus folding — not a CotEdit
 
 ## In progress (1)
 
-- **20260822-05-html-and-svg** HTML and SVG [high] — model_tier: premium · plan in-progress · T02/T04
-  - checkboxes: 1/12
+- **20260822-05-html-and-svg** HTML and SVG [high] — model_tier: premium · plan in-progress · T03/T04
+  - checkboxes: 2/13
 
 ## Blocked (2)
 

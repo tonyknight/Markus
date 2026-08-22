@@ -2,8 +2,8 @@ import Foundation
 
 /// Per-kind syntax analysis that feeds the same `FoldStore` / outline /
 /// (v1.4) diagnostics / inner-color spans. Markdown wraps today’s
-/// `BlockIndex`; JSON uses `JSONSyntaxProfile`. Other kinds stay empty
-/// until their ticket.
+/// `BlockIndex`; JSON uses `JSONSyntaxProfile`; HTML and SVG share
+/// `HTMLSyntaxProfile`. Other kinds stay empty until their ticket.
 protocol SyntaxProfile: Sendable {
     func analyze(_ buffer: String) -> SyntaxAnalysis
 }
@@ -64,6 +64,10 @@ enum SyntaxProfiles {
             MarkdownSyntaxProfile()
         case .json:
             JSONSyntaxProfile()
+        case .html:
+            HTMLSyntaxProfile.html
+        case .svg:
+            HTMLSyntaxProfile.svg
         default:
             EmptySyntaxProfile()
         }
