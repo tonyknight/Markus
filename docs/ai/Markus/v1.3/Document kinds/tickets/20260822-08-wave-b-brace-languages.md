@@ -3,10 +3,10 @@ id: 20260822-08-wave-b-brace-languages
 title: Wave B brace languages
 type: feature
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-22
 updated: 2026-08-22
-closed:
+closed: 2026-08-22
 notes: 'model_tier: premium'
 parent:
 depends_on:
