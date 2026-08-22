@@ -296,6 +296,27 @@ final class DocumentHost: ObservableObject {
         objectWillChange.send()
     }
 
+    func setKind(_ kind: DocumentKind) {
+        session.setKind(kind)
+        #if os(macOS)
+        macDocument?.fileType = kind.typeName
+        #endif
+        objectWillChange.send()
+    }
+
+    func pinKind() {
+        session.pinKind()
+        objectWillChange.send()
+    }
+
+    func unpinKind() {
+        session.unpinKind()
+        #if os(macOS)
+        macDocument?.fileType = session.kind.typeName
+        #endif
+        objectWillChange.send()
+    }
+
     var outlineItems: [OutlineItem] {
         session.outlineItems
     }

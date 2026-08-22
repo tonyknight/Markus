@@ -15,8 +15,10 @@ enum DocumentSessionError: Error, Equatable {
 @MainActor
 final class DocumentSession: ObservableObject {
     let editor: FoldingTextView
+    private let kindPins: KindPin
     private(set) var fileURL: URL?
-    /// Untitled documents (no URL) stay markdown. Open sets this from UTI/extension.
+    /// Untitled documents stay markdown until New-of-type or `setKind`.
+    /// Open uses pin ?? UTI/extension.
     private(set) var kind: DocumentKind = .markdown
     private var lastSavedText = ""
     private var scopedURL: URL?
@@ -44,8 +46,9 @@ final class DocumentSession: ObservableObject {
         editor.session.analysis.diagnostics
     }
 
-    init(editor: FoldingTextView = FoldingTextView()) {
+    init(editor: FoldingTextView = FoldingTextView(), kindPins: KindPin = KindPin()) {
         self.editor = editor
+        self.kindPins = kindPins
         self.editor.onTextDidChange = { [weak self] in
             self?.objectWillChange.send()
         }
@@ -59,7 +62,7 @@ final class DocumentSession: ObservableObject {
             isAccessing = accessing
             scopedURL = url
             fileURL = url
-            applyKind(DocumentKind.from(url: url))
+            applyKind(kindPins.resolvedKind(for: url))
             lastSavedText = markdown
             editor.loadMarkdown(markdown)
             editor.restoreFolds(for: url)
@@ -106,6 +109,36 @@ final class DocumentSession: ObservableObject {
     private func applyKind(_ kind: DocumentKind) {
         self.kind = kind
         editor.session.documentKind = kind
+        if kind != .markdown, editor.mode != .source {
+            editor.setMode(.source)
+        }
+    }
+
+    /// Session-only kind change. Does not write a pin.
+    func setKind(_ kind: DocumentKind) {
+        applyKind(kind)
+        editor.loadMarkdown(editor.string)
+        objectWillChange.send()
+    }
+
+    var isKindPinned: Bool {
+        guard let fileURL else { return false }
+        return kindPins.kind(for: fileURL) != nil
+    }
+
+    /// Persist the current kind for this file identity. No-op for untitled.
+    func pinKind() {
+        guard let fileURL else { return }
+        kindPins.set(kind, for: fileURL)
+        objectWillChange.send()
+    }
+
+    /// Drop the pin so the next open (and this session) follow extension/UTI.
+    func unpinKind() {
+        guard let fileURL else { return }
+        guard kindPins.kind(for: fileURL) != nil else { return }
+        kindPins.remove(for: fileURL)
+        setKind(DocumentKind.from(url: fileURL))
     }
 
     func revert() throws {

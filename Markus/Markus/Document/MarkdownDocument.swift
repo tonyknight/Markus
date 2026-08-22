@@ -27,7 +27,7 @@ final class MarkusDocumentController: NSDocumentController {
     }
 
     override func typeForContents(of url: URL) throws -> String {
-        DocumentKind.from(url: url).typeName
+        KindPin().resolvedKind(for: url).typeName
     }
 }
 
@@ -58,7 +58,7 @@ enum MacDocumentLaunch {
             existing.showWindows()
             return existing
         }
-        let type = (try? controller.typeForContents(of: url)) ?? DocumentKind.from(url: url).typeName
+        let type = (try? controller.typeForContents(of: url)) ?? KindPin().resolvedKind(for: url).typeName
         do {
             let document = try controller.makeDocument(withContentsOf: url, ofType: type)
             controller.addDocument(document)
