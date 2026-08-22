@@ -23,7 +23,16 @@ import SwiftUI
 /// exactly as the old `NSMenu`-based items did — no change to how the
 /// actions themselves are implemented or found.
 struct MarkusCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Settings\u{2026}") {
+                SettingsWindowChrome.open(openWindow)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New") {
                 NSApp.sendAction(#selector(NSDocumentController.newDocument(_:)), to: nil, from: nil)

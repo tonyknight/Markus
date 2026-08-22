@@ -10,6 +10,7 @@ struct AppearanceSettingsView: View {
     @ObservedObject private var store = ThemeStore.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var hoveredTokens: ThemeTokens?
+    @State private var variantFilter: ThemeVariant = .light
     @State private var cloneFamily: ThemeFamily?
     @State private var cloneVariant: ThemeVariant?
     @State private var confirmReplaceCustom = false
@@ -34,45 +35,32 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            followSystemControl
+            appearanceHeader
             GeometryReader { geo in
                 let stackVertically = geo.size.width < 540
                 if stackVertically {
                     VStack(alignment: .leading, spacing: 16) {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 16) {
-                                cardGrid
-                                useAsCustomControl
-                                if store.selection == .custom {
-                                    customTokenControls
-                                }
-                            }
-                        }
+                        catalogScroll
                         proxyColumn
                             .frame(minHeight: 240)
                             .frame(maxWidth: .infinity)
                     }
                 } else {
                     HStack(alignment: .top, spacing: 16) {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 16) {
-                                cardGrid
-                                useAsCustomControl
-                                if store.selection == .custom {
-                                    customTokenControls
-                                }
-                            }
-                        }
+                        catalogScroll
                         proxyColumn
-                            .frame(minWidth: 260, idealWidth: 320, maxWidth: 360)
-                            .frame(maxHeight: .infinity)
+                            .frame(minWidth: 260)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { seedCloneSourceIfNeeded() }
+        .onAppear {
+            variantFilter = store.appliedVariant
+            seedCloneSourceIfNeeded()
+        }
         .onDisappear { hoveredTokens = nil }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
@@ -90,6 +78,22 @@ struct AppearanceSettingsView: View {
             )
         }
         .accessibilityIdentifier("settings.appearance.view")
+    }
+
+    private var appearanceHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            followSystemControl
+            Spacer(minLength: 8)
+            Picker("Show", selection: $variantFilter) {
+                Text("Light").tag(ThemeVariant.light)
+                Text("Dark").tag(ThemeVariant.dark)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 160)
+            .help("Show Light or Dark catalog variants.")
+            .accessibilityIdentifier("settings.appearance.variantFilter")
+        }
     }
 
     private var followSystemControl: some View {
@@ -115,44 +119,66 @@ struct AppearanceSettingsView: View {
         .accessibilityIdentifier("settings.appearance.followSystem")
     }
 
-    private var cardGrid: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 168), spacing: 12)],
-            spacing: 12
-        ) {
-            ForEach(ThemeFamily.allCases, id: \.self) { family in
-                ForEach(ThemeVariant.allCases, id: \.self) { variant in
-                    let tokens = NamedThemeCatalog.tokens(for: family, variant: variant)
-                    AppearanceThemeCard(
-                        title: family.pickerTitle(variant: variant),
-                        tokens: tokens,
-                        isSelected: store.isShowing(family: family, variant: variant),
-                        onSelect: {
-                            rememberCloneSource(family, variant: variant)
-                            commitNamed(family, variant: variant)
-                        },
-                        onHover: { hovering in
-                            hoveredTokens = hovering ? tokens : nil
-                        }
-                    )
-                    .accessibilityIdentifier(
-                        "settings.appearance.card.\(family.rawValue).\(variant.rawValue)"
-                    )
+    /// Intrinsic-height stack, not a LazyVGrid. Lazy grids inside a
+    /// GeometryReader ScrollView take the proposed viewport height as
+    /// extra space after the first rows, which showed up as a black void
+    /// between Nord Dark and the next card.
+    private var catalogScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                cardList
+                useAsCustomControl
+                if store.selection == .custom {
+                    customTokenControls
                 }
             }
-            AppearanceThemeCard(
-                title: "Custom",
-                tokens: store.tokens(for: .custom),
-                isSelected: store.selection == .custom,
-                onSelect: {
-                    commitCustom()
-                },
-                onHover: { hovering in
-                    hoveredTokens = hovering ? store.tokens(for: .custom) : nil
-                }
-            )
-            .accessibilityIdentifier("settings.appearance.card.custom")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.trailing, 4)
         }
+    }
+
+    private var cardList: some View {
+        VStack(spacing: 12) {
+            ForEach(ThemeFamily.allCases, id: \.self) { family in
+                namedCard(family: family, variant: variantFilter)
+            }
+            customCard
+        }
+    }
+
+    private func namedCard(family: ThemeFamily, variant: ThemeVariant) -> some View {
+        let tokens = NamedThemeCatalog.tokens(for: family, variant: variant)
+        return AppearanceThemeCard(
+            title: family.displayName,
+            tokens: tokens,
+            isSelected: store.isShowing(family: family, variant: variant),
+            onSelect: {
+                rememberCloneSource(family, variant: variant)
+                commitNamed(family, variant: variant)
+            },
+            onHover: { hovering in
+                hoveredTokens = hovering ? tokens : nil
+            }
+        )
+        .accessibilityIdentifier(
+            "settings.appearance.card.\(family.rawValue).\(variant.rawValue)"
+        )
+    }
+
+    private var customCard: some View {
+        AppearanceThemeCard(
+            title: "Custom",
+            tokens: store.tokens(for: .custom),
+            isSelected: store.selection == .custom,
+            onSelect: {
+                commitCustom()
+            },
+            onHover: { hovering in
+                hoveredTokens = hovering ? store.tokens(for: .custom) : nil
+            }
+        )
+        .accessibilityIdentifier("settings.appearance.card.custom")
     }
 
     private var proxyColumn: some View {

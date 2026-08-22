@@ -27,35 +27,22 @@ enum SettingsWindowCategory: String, CaseIterable, Identifiable {
     }
 }
 
-/// Opens the SwiftUI `Settings` scene. Prefer `OpenSettingsAction` (the
-/// macOS 14+ API). The gear lives in an `NSHostingController` document
-/// window, so that environment value can be a no-op; in that case invoke
-/// the Settings menu item SwiftUI already installed (⌘,), which is the
-/// same path as **Markus → Settings…**. Do not send `showSettingsWindow:`
-/// — that selector is not a valid AppKit API on macOS 14+.
+/// Opens the Preferences window (gear, **Markus → Settings…**, ⌘,).
+/// Hosted as a SwiftUI `Window`, not a `Settings` scene — Settings is a
+/// non-resizable panel and never shows edge handles.
 enum SettingsWindowChrome {
-    @MainActor
-    static func open(_ openSettings: OpenSettingsAction) {
-        openSettings()
-        performInstalledSettingsMenuItem()
-    }
+    static let windowID = "markus-settings"
 
-    /// The live **Markus → Settings…** item, not a hard-coded selector.
     @MainActor
-    static func performInstalledSettingsMenuItem() {
-        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
-        let item = appMenu.items.first {
-            $0.keyEquivalent == "," && $0.keyEquivalentModifierMask.contains(.command)
-        }
-        guard let item, let action = item.action else { return }
-        NSApp.sendAction(action, to: item.target, from: item)
+    static func open(_ openWindow: OpenWindowAction) {
+        openWindow(id: windowID)
     }
 }
 
 /// Warp-style Preferences root: category list on the left, detail on the
-/// right. Hosted by the macOS `Settings` scene so it is a separate window,
-/// not a swap of the document viewport. An `HStack` split is used instead
-/// of `NavigationSplitView` so the sidebar cannot collapse (Architecture
+/// right. Hosted by a resizable `Window` so it is separate from the
+/// document viewport. An `HStack` split is used instead of
+/// `NavigationSplitView` so the sidebar cannot collapse (Architecture
 /// component 1).
 struct SettingsWindowView: View {
     @State private var selectedCategory: SettingsWindowCategory = .appearance
@@ -69,7 +56,9 @@ struct SettingsWindowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 720, minHeight: 480)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background(SettingsWindowResizeHook())
     }
 }
 
@@ -173,6 +162,45 @@ struct EditorSettingsView: View {
         .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityIdentifier("settings.editor.view")
+    }
+}
+
+/// SwiftUI can still pin a Window to its content size after the first
+/// layout. Re-assert `.resizable` on the real `NSWindow` so edge handles
+/// and Zoom stay available.
+private struct SettingsWindowResizeHook: NSViewRepresentable {
+    func makeNSView(context: Context) -> SettingsWindowResizeHookView {
+        SettingsWindowResizeHookView()
+    }
+
+    func updateNSView(_ nsView: SettingsWindowResizeHookView, context: Context) {
+        nsView.enableResize()
+    }
+}
+
+private final class SettingsWindowResizeHookView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        enableResize()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        enableResize()
+    }
+
+    func enableResize() {
+        guard let window else { return }
+        if !window.styleMask.contains(.resizable) {
+            window.styleMask.insert(.resizable)
+        }
+        let minimum = NSSize(width: 720, height: 480)
+        let maximum = NSSize(width: 10_000, height: 10_000)
+        window.minSize = minimum
+        window.maxSize = maximum
+        window.contentMinSize = minimum
+        window.contentMaxSize = maximum
+        window.standardWindowButton(.zoomButton)?.isEnabled = true
     }
 }
 #endif

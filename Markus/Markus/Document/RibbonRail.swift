@@ -24,12 +24,12 @@ enum LibraryChrome {
 /// A slim vertical rail pinned to the left of the document: a hamburger
 /// at the top toggles the library panel (the relocated folder tree from
 /// ticket 03), and a gear at the bottom opens the Settings window (same
-/// scene as **Markus → Settings…** and ⌘,). Uses `@Environment(\.openSettings)`
-/// (macOS 14+) rather than a string selector. Does not set
-/// `host.isSettingsPresented` (that flag is the iOS sheet only).
+/// scene as **Markus → Settings…** and ⌘,). Uses `@Environment(\.openWindow)`
+/// so the gear works from an `NSHostingController` document window.
+/// Does not set `host.isSettingsPresented` (that flag is the iOS sheet only).
 struct RibbonRailView: View {
     @ObservedObject var host: DocumentHost
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 12) {
@@ -46,7 +46,7 @@ struct RibbonRailView: View {
             Spacer()
 
             Button {
-                SettingsWindowChrome.open(openSettings)
+                SettingsWindowChrome.open(openWindow)
             } label: {
                 Image(systemName: "gearshape")
                     .imageScale(.large)

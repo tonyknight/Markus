@@ -242,7 +242,7 @@ final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
 
     // The File/Edit menu content lives in `MarkusCommands` (SwiftUI
     // `Commands`, attached via `.commands { }` on `MarkusApp`'s Settings
-    // scene), not here. An earlier version of this delegate imperatively
+    // window scene), not here. An earlier version of this delegate imperatively
     // assigned `NSApp.mainMenu = MacMainMenu.build()` — that lost a race
     // against SwiftUI's own Scene/Commands machinery, which reinstalls
     // its own default menu at multiple points during and after launch,

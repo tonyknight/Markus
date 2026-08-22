@@ -15,10 +15,14 @@ struct MarkusApp: App {
 
     var body: some Scene {
         #if os(macOS)
-        Settings {
+        // A real `Window`, not `Settings`. SwiftUI's Settings scene is a
+        // non-resizable panel; `windowResizability` does not give it
+        // edge handles. Gear, Markus → Settings…, and ⌘, open this id.
+        Window("Settings", id: SettingsWindowChrome.windowID) {
             SettingsWindowView()
         }
         .defaultSize(width: 800, height: 560)
+        .windowResizability(.contentMinSize)
         .commands {
             MarkusCommands()
         }
