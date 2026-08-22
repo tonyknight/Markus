@@ -90,8 +90,7 @@ struct ContentView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    SessionEditorRepresentable(session: host.session)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    editorSurface
                     #if os(macOS)
                     if MacOnlyChrome.hasMinimapInChrome {
                         MacMinimapRepresentable(editor: host.session.editor)
@@ -100,6 +99,31 @@ struct ContentView: View {
                     #endif
                 }
                 EditorStatusBar(host: host)
+            }
+        }
+    }
+
+    /// Keep `SessionEditorRepresentable` mounted (v1.1 Settings lesson).
+    /// HTML/SVG Preview is a WKWebView overlay — not a branch that
+    /// destroys the NSView/UIView. Markdown Preview stays inside
+    /// FoldingTextView substitution.
+    private var showsLockedWebPreview: Bool {
+        host.session.kind.usesLockedWebPreview && host.session.mode == .preview
+    }
+
+    @ViewBuilder
+    private var editorSurface: some View {
+        ZStack {
+            SessionEditorRepresentable(session: host.session)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(showsLockedWebPreview ? 0 : 1)
+                .allowsHitTesting(!showsLockedWebPreview)
+            if showsLockedWebPreview {
+                LockedHTMLPreviewRepresentable(
+                    buffer: host.session.editor.string,
+                    kind: host.session.kind
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }

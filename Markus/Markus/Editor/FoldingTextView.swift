@@ -829,8 +829,12 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// paragraphs and re-query this delegate, which is the desired
     /// refresh on every mode/theme/zoom/fold change.
     private func rebuildSubstitutionIndex(textStorage: NSTextStorage) {
-        contentStorageDelegate.isPreviewMode = (mode == .preview)
-        guard mode == .preview else {
+        // HTML/SVG Preview is a WKWebView overlay (ticket 05), not GFM
+        // substitution. Keep substitution Markdown-only so flipping
+        // those kinds to Preview cannot treat tags as fences.
+        let markdownPreview = mode == .preview && documentKind == .markdown
+        contentStorageDelegate.isPreviewMode = markdownPreview
+        guard markdownPreview else {
             contentStorageDelegate.index = nil
             return
         }

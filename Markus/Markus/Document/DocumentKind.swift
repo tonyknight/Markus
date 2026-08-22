@@ -68,6 +68,11 @@ enum DocumentKind: String, CaseIterable, Hashable, Sendable {
         }
     }
 
+    /// HTML/SVG Preview is a locked WKWebView, not Markdown substitution.
+    var usesLockedWebPreview: Bool {
+        self == .html || self == .svg
+    }
+
     var filenameExtensions: [String] {
         switch self {
         case .markdown: ["md", "markdown", "mdown", "mkd"]
