@@ -36,6 +36,75 @@ enum LockedHTMLPreviewPolicy {
     }
 }
 
+/// Compiles once and attaches to the `WKUserContentController` that was
+/// passed into `WKWebView(frame:configuration:)` — not to
+/// `webView.configuration`, which is a copy (N5).
+enum LockedHTMLPreviewNetworkBlocker {
+    static let identifier = "markus.locked-html-preview"
+
+    /// Blanket block of every subresource URL. Main-frame `loadHTMLString`
+    /// is not a URL fetch; document navigations stay on the delegate.
+    static let encodedRules = """
+    [{"trigger":{"url-filter":".*","resource-type":["image","style-sheet","script","font","raw","svg-document","media","popup","ping","fetch","websocket"]},"action":{"type":"block"}}]
+    """
+
+    /// Fallback if a WebKit build rejects a resource-type token.
+    static let encodedRulesFallback = """
+    [{"trigger":{"url-filter":".*"},"action":{"type":"block"}}]
+    """
+
+    private static var cached: WKContentRuleList?
+    private static var compiling = false
+    private static var waiters: [(WKContentRuleList?) -> Void] = []
+
+    static func prepare(_ completion: @escaping (WKContentRuleList?) -> Void) {
+        if let cached {
+            completion(cached)
+            return
+        }
+        waiters.append(completion)
+        guard !compiling else { return }
+        compiling = true
+        guard let store = WKContentRuleListStore.default() else {
+            finish(nil)
+            return
+        }
+        store.lookUpContentRuleList(forIdentifier: identifier) { list, _ in
+            if let list {
+                finish(list)
+                return
+            }
+            store.compileContentRuleList(
+                forIdentifier: identifier,
+                encodedContentRuleList: encodedRules
+            ) { list, _ in
+                if let list {
+                    finish(list)
+                    return
+                }
+                store.compileContentRuleList(
+                    forIdentifier: identifier + ".fallback",
+                    encodedContentRuleList: encodedRulesFallback
+                ) { list, _ in
+                    finish(list)
+                }
+            }
+        }
+    }
+
+    private static func finish(_ list: WKContentRuleList?) {
+        cached = list
+        compiling = false
+        let pending = waiters
+        waiters = []
+        DispatchQueue.main.async {
+            for waiter in pending {
+                waiter(list)
+            }
+        }
+    }
+}
+
 /// WKWebView of the current buffer. Navigation and script are locked.
 /// The representable must not replace `SessionEditorRepresentable`.
 #if os(macOS)
@@ -49,14 +118,12 @@ struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = makeLockedWebView(coordinator: context.coordinator)
-        context.coordinator.load(buffer, kind: kind, into: webView, immediate: true)
-        return webView
+        makeLockedWebView(coordinator: context.coordinator)
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         webView.isHidden = !isVisible
-        context.coordinator.load(buffer, kind: kind, into: webView, immediate: false)
+        context.coordinator.load(buffer, kind: kind, into: webView, isVisible: isVisible)
     }
 }
 #else
@@ -70,14 +137,12 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = makeLockedWebView(coordinator: context.coordinator)
-        context.coordinator.load(buffer, kind: kind, into: webView, immediate: true)
-        return webView
+        makeLockedWebView(coordinator: context.coordinator)
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         webView.isHidden = !isVisible
-        context.coordinator.load(buffer, kind: kind, into: webView, immediate: false)
+        context.coordinator.load(buffer, kind: kind, into: webView, isVisible: isVisible)
     }
 }
 #endif
@@ -87,33 +152,45 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
     private var lastLoaded: String?
     private var pendingHTML: String?
     private var debounceTimer: Timer?
+    private var rulesReady = false
+    private var isVisible = false
+    private weak var webView: WKWebView?
     private static let debounceInterval: TimeInterval = 0.12
 
-    func load(_ buffer: String, kind: DocumentKind, into webView: WKWebView, immediate: Bool) {
-        let html = LockedHTMLPreviewPolicy.documentHTML(buffer: buffer, kind: kind)
-        guard html != lastLoaded else { return }
-        if immediate || lastLoaded == nil {
-            debounceTimer?.invalidate()
-            debounceTimer = nil
-            pendingHTML = nil
-            lastLoaded = html
-            webView.loadHTMLString(html, baseURL: nil)
-            return
-        }
-        pendingHTML = html
-        debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.debounceInterval, repeats: false) { [weak self, weak webView] _ in
-            DispatchQueue.main.async {
-                self?.flush(into: webView)
-            }
+    func attach(webView: WKWebView, contentController: WKUserContentController) {
+        self.webView = webView
+        LockedHTMLPreviewNetworkBlocker.prepare { [weak self, weak contentController] list in
+            guard let self, let contentController, let list else { return }
+            contentController.add(list)
+            self.rulesReady = true
+            self.flushIfNeeded()
         }
     }
 
-    private func flush(into webView: WKWebView?) {
-        debounceTimer = nil
-        guard let webView, let html = pendingHTML else { return }
-        pendingHTML = nil
+    func load(_ buffer: String, kind: DocumentKind, into webView: WKWebView, isVisible: Bool) {
+        self.webView = webView
+        self.isVisible = isVisible
+        let html = LockedHTMLPreviewPolicy.documentHTML(buffer: buffer, kind: kind)
+        pendingHTML = html
+        if isVisible {
+            debounceTimer?.invalidate()
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.debounceInterval, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.flushIfNeeded()
+                }
+            }
+        } else {
+            debounceTimer?.invalidate()
+            debounceTimer = nil
+        }
+        flushIfNeeded()
+    }
+
+    private func flushIfNeeded() {
+        guard rulesReady, isVisible, let webView, let html = pendingHTML else { return }
         guard html != lastLoaded else { return }
+        debounceTimer?.invalidate()
+        debounceTimer = nil
         lastLoaded = html
         webView.loadHTMLString(html, baseURL: nil)
     }
@@ -164,39 +241,18 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
     }
 }
 
-#if os(macOS)
 private func makeLockedWebView(coordinator: LockedHTMLPreviewCoordinator) -> WKWebView {
-    let webView = WKWebView(frame: .zero, configuration: LockedHTMLPreviewPolicy.makeConfiguration())
+    let configuration = LockedHTMLPreviewPolicy.makeConfiguration()
+    let contentController = configuration.userContentController
+    let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = coordinator
     webView.uiDelegate = coordinator
+    webView.allowsBackForwardNavigationGestures = false
+    #if os(macOS)
     webView.allowsMagnification = true
-    webView.allowsBackForwardNavigationGestures = false
-    installNetworkBlocker(on: webView)
-    return webView
-}
-#else
-private func makeLockedWebView(coordinator: LockedHTMLPreviewCoordinator) -> WKWebView {
-    let webView = WKWebView(frame: .zero, configuration: LockedHTMLPreviewPolicy.makeConfiguration())
-    webView.navigationDelegate = coordinator
-    webView.uiDelegate = coordinator
-    webView.allowsBackForwardNavigationGestures = false
+    #else
     webView.isOpaque = true
-    installNetworkBlocker(on: webView)
+    #endif
+    coordinator.attach(webView: webView, contentController: contentController)
     return webView
-}
-#endif
-
-/// Extra belt for `<img src="https://…">` subresources that may not
-/// go through `decidePolicyFor` as a main-frame navigation.
-private func installNetworkBlocker(on webView: WKWebView) {
-    let rules = """
-    [{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^file://"},"action":{"type":"block"}}]
-    """
-    WKContentRuleListStore.default().compileContentRuleList(
-        forIdentifier: "markus.locked-html-preview",
-        encodedContentRuleList: rules
-    ) { list, _ in
-        guard let list else { return }
-        webView.configuration.userContentController.add(list)
-    }
 }
