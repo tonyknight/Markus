@@ -34,16 +34,24 @@ final class MarkusDocumentController: NSDocumentController {
 enum MacDocumentLaunch {
     @MainActor
     static func openUntitledDocument() throws -> NSDocument {
+        try openUntitledDocument(ofType: nil)
+    }
+
+    @MainActor
+    static func openUntitledDocument(ofType typeName: String?) throws -> NSDocument {
         let controller = NSDocumentController.shared
+        let type = typeName ?? controller.defaultType ?? DocumentKind.markdown.typeName
+        let kind = DocumentKind.from(typeName: type)
         do {
-            let type = controller.defaultType ?? DocumentKind.markdown.typeName
             let document = try controller.makeUntitledDocument(ofType: type)
             controller.addDocument(document)
+            (document as? MarkdownDocument)?.applyUntitledKind(kind)
             document.makeWindowControllers()
             document.showWindows()
             return document
         } catch {
             let document = MarkdownDocument()
+            document.applyUntitledKind(kind)
             document.makeWindowControllers()
             controller.addDocument(document)
             document.showWindows()
@@ -263,6 +271,27 @@ final class MarkdownDocument: NSDocument {
             session.editor.loadMarkdown(markdown)
             host.objectWillChange.send()
         }
+    }
+
+    @MainActor
+    func applyUntitledKind(_ kind: DocumentKind) {
+        fileType = kind.typeName
+        session.setKind(kind)
+    }
+
+    nonisolated override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] {
+        MainActor.assumeIsolated {
+            let current = fileType ?? session.kind.typeName
+            let all = DocumentKind.waveA.map(\.typeName)
+            return [current] + all.filter { $0 != current }
+        }
+    }
+
+    nonisolated override func fileNameExtension(
+        forType typeName: String,
+        saveOperation: NSDocument.SaveOperationType
+    ) -> String? {
+        DocumentKind.from(typeName: typeName).defaultExtension
     }
 }
 

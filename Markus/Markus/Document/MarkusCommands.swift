@@ -39,6 +39,19 @@ struct MarkusCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: .command)
 
+            Button("New JSON") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.json.typeName)
+            }
+            Button("New HTML") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.html.typeName)
+            }
+            Button("New SVG") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.svg.typeName)
+            }
+            Button("New TOML") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.toml.typeName)
+            }
+
             Button("Open\u{2026}") {
                 NSApp.sendAction(#selector(NSDocumentController.openDocument(_:)), to: nil, from: nil)
             }
