@@ -60,7 +60,7 @@ enum SyntaxProfiles {
     static func profile(for kind: DocumentKind) -> any SyntaxProfile {
         switch kind {
         case .markdown:
-            EmptySyntaxProfile()
+            MarkdownSyntaxProfile()
         default:
             EmptySyntaxProfile()
         }
