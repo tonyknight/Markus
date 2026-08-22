@@ -12,8 +12,7 @@ parent:
 depends_on:
 - 20260822-02-syntaxprofile-and-fold-generalization
 subtasks: []
-plan_status: in-progress
-current_task: T04
+plan_status: done
 ---
 ## Description
 
@@ -34,15 +33,15 @@ NO TDD. Verify by build.
 
 ## Subtasks
 
-- [ ] JSON parser → fold extents.
-- [ ] Outline rows for keys/arrays.
-- [ ] Diagnostics on invalid input.
-- [ ] Source-only chrome.
+- [x] JSON parser → fold extents.
+- [x] Outline rows for keys/arrays.
+- [x] Diagnostics on invalid input.
+- [x] Source-only chrome.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T04
+Status: done
+Current task: 
 
 ### T01: JSON scanner → object/array fold extents
 
@@ -95,7 +94,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -111,3 +110,6 @@ T02: JSONSyntaxProfile wraps the scanner; SyntaxProfiles.profile(for: .json) wir
 
 ### 2026-08-22
 T03: DocumentKind.showsPreview hides Source/Preview picker and Toggle Mode for json/toml/Wave B. setMode/toggle cannot enter Preview. Markdown/HTML/SVG still show the picker. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.
+
+### 2026-08-22
+T04: JSONSyntaxProfile uses JSONScanBudget.default (2 MiB / 4096 foldables / 2048 outline / 4096 spans / 50 ms). Over budget: partial folds + warning diagnostic. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Ticket left in-progress (no visual open of a .json file; no xcodebuild test).

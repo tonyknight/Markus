@@ -1,7 +1,7 @@
 import Foundation
 
 /// Bounds for a JSON scan so a multi-MB buffer cannot freeze typing (N2).
-/// T01 ships unbounded; T04 applies `default` in the JSON profile.
+/// The JSON profile uses `default`; callers that need a full pass pass `unbounded`.
 struct JSONScanBudget: Sendable {
     var maxBytes: Int
     var maxFoldables: Int
