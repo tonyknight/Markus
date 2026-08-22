@@ -19,7 +19,7 @@ enum MacWindowGeometry {
 
 final class MarkusDocumentController: NSDocumentController {
     override var defaultType: String? {
-        "net.daringfireball.markdown"
+        DocumentKind.markdown.typeName
     }
 
     override func documentClass(forType typeName: String) -> AnyClass? {
@@ -27,7 +27,7 @@ final class MarkusDocumentController: NSDocumentController {
     }
 
     override func typeForContents(of url: URL) throws -> String {
-        "net.daringfireball.markdown"
+        DocumentKind.from(url: url).typeName
     }
 }
 
@@ -36,7 +36,7 @@ enum MacDocumentLaunch {
     static func openUntitledDocument() throws -> NSDocument {
         let controller = NSDocumentController.shared
         do {
-            let type = controller.defaultType ?? "net.daringfireball.markdown"
+            let type = controller.defaultType ?? DocumentKind.markdown.typeName
             let document = try controller.makeUntitledDocument(ofType: type)
             controller.addDocument(document)
             document.makeWindowControllers()
@@ -58,7 +58,7 @@ enum MacDocumentLaunch {
             existing.showWindows()
             return existing
         }
-        let type = controller.defaultType ?? "net.daringfireball.markdown"
+        let type = (try? controller.typeForContents(of: url)) ?? DocumentKind.from(url: url).typeName
         do {
             let document = try controller.makeDocument(withContentsOf: url, ofType: type)
             controller.addDocument(document)
@@ -69,6 +69,7 @@ enum MacDocumentLaunch {
             let document = MarkdownDocument()
             try document.read(from: url, ofType: type)
             document.fileURL = url
+            document.fileType = type
             document.makeWindowControllers()
             controller.addDocument(document)
             document.showWindows()
@@ -231,7 +232,7 @@ final class MarkdownDocument: NSDocument {
         }
         MainActor.assumeIsolated {
             session.editor.loadMarkdown(markdown)
-            session.markLoaded(markdown)
+            session.markLoaded(markdown, kind: DocumentKind.from(typeName: typeName))
             host.objectWillChange.send()
         }
     }

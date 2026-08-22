@@ -16,6 +16,8 @@ enum DocumentSessionError: Error, Equatable {
 final class DocumentSession: ObservableObject {
     let editor: FoldingTextView
     private(set) var fileURL: URL?
+    /// Untitled documents (no URL) stay markdown. Open sets this from UTI/extension.
+    private(set) var kind: DocumentKind = .markdown
     private var lastSavedText = ""
     private var scopedURL: URL?
     private var isAccessing = false
@@ -47,6 +49,7 @@ final class DocumentSession: ObservableObject {
             isAccessing = accessing
             scopedURL = url
             fileURL = url
+            kind = DocumentKind.from(url: url)
             lastSavedText = markdown
             editor.loadMarkdown(markdown)
             editor.restoreFolds(for: url)
@@ -82,8 +85,9 @@ final class DocumentSession: ObservableObject {
         objectWillChange.send()
     }
 
-    func markLoaded(_ markdown: String) {
+    func markLoaded(_ markdown: String, kind: DocumentKind = .markdown) {
         lastSavedText = markdown
+        self.kind = kind
         objectWillChange.send()
     }
 

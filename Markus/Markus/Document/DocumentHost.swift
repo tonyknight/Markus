@@ -256,7 +256,7 @@ final class DocumentHost: ObservableObject {
         if let macDocument {
             if let url = macDocument.fileURL ?? session.fileURL {
                 do {
-                    try macDocument.write(to: url, ofType: macDocument.fileType ?? "net.daringfireball.markdown")
+                    try macDocument.write(to: url, ofType: macDocument.fileType ?? session.kind.typeName)
                     errorMessage = nil
                     objectWillChange.send()
                 } catch {
