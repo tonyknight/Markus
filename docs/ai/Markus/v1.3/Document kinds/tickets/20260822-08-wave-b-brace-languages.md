@@ -15,7 +15,7 @@ depends_on:
 - 20260822-06-toml-profile
 subtasks: []
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -40,7 +40,7 @@ NO TDD. Verify by build.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: Shared brace/block scanner + budget
 
@@ -69,6 +69,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
+- [x] done
 ### T03: Info.plist UTIs, importer, New items, kind menus
 
 Info.plist document types + imported UTIs for css/js/ts/swift (same `NSDocumentClass` as Wave A). `DocumentKind.shipped` = `waveA` + css/javascript/typescript/swift so Wave A list stays intact. File importer uses `shipped`. File → New CSS / JavaScript / TypeScript / Swift next to New TOML. Mac Format Document Kind + iOS compact menu iterate `shipped`. Selectors + `writableTypes` include the new kinds.
@@ -95,3 +96,6 @@ Wrote implementation plan T01–T03 (shared brace scanner + budget; CSS/JS/TS/Sw
 
 ### 2026-08-22
 T01: BraceScanner walks UTF-8 offsets; FoldID.Kind.brace; fold extent after opener line through matching closer; MarkdownBlockKind.other; BraceScanBudget 2 MiB / 50 ms; dialects css/javascript/swift. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
+
+### 2026-08-22
+T02: BraceSyntaxProfile wraps the scanner with BraceScanBudget.default; profile(for:) maps css, javascript, typescript (JS dialect), swift. PHP/Shell stay EmptySyntaxProfile. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
