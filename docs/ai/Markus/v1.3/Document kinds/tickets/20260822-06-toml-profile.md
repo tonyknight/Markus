@@ -12,8 +12,7 @@ parent:
 depends_on:
 - 20260822-02-syntaxprofile-and-fold-generalization
 subtasks: []
-plan_status: in-progress
-current_task: T02
+plan_status: done
 ---
 ## Description
 
@@ -38,8 +37,8 @@ NO TDD. Verify by build.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T02
+Status: done
+Current task: 
 
 ### T01: TOML scanner → table / array-of-tables fold extents + outline + diagnostics + budget
 
@@ -68,7 +67,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
-- [ ] done
+- [x] done
 
 ## Notes
 
@@ -79,3 +78,6 @@ Wrote implementation plan T01–T02 (scanner folds + budget; TOMLSyntaxProfile +
 
 ### 2026-08-22
 T01: TOMLScanner walks UTF-8 offsets; FoldID.Kind table/arrayTable; fold extent after header line through next table header; MarkdownBlockKind.other; TOMLScanBudget 2 MiB / 50 ms. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
+
+### 2026-08-22
+T02: TOMLSyntaxProfile wraps the scanner with TOMLScanBudget.default; profile(for: .toml) returns it. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Ticket left in-progress (no visual open of a .toml file; no xcodebuild test).
