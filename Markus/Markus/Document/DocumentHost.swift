@@ -297,7 +297,12 @@ final class DocumentHost: ObservableObject {
     }
 
     var outlineItems: [OutlineItem] {
-        OutlineJump.items(from: session.editor.blocks, markdown: session.editor.string)
+        session.outlineItems
+    }
+
+    /// Parse diagnostics from the active profile (v1.4 data hook; no inspector UI).
+    var diagnostics: [ParseDiagnostic] {
+        session.diagnostics
     }
 
     func jumpToOutlineItem(_ item: OutlineItem) {

@@ -1405,6 +1405,12 @@ final class FoldingTextView: PlatformView {
     #endif
 
     var foldStore: FoldStore { session.foldStore }
+    var documentKind: DocumentKind {
+        get { session.documentKind }
+        set { session.documentKind = newValue }
+    }
+    var outlineItems: [OutlineItem] { session.analysis.outlineRows }
+    var diagnostics: [ParseDiagnostic] { session.analysis.diagnostics }
     var blocks: [Block] { session.blocks }
     var layoutHeight: CGFloat { session.layoutHeight }
     var collapsedFragmentCount: Int { session.collapsedFragmentCount }

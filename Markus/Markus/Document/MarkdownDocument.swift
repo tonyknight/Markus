@@ -231,8 +231,8 @@ final class MarkdownDocument: NSDocument {
             throw DocumentSessionError.unreadable
         }
         MainActor.assumeIsolated {
-            session.editor.loadMarkdown(markdown)
             session.markLoaded(markdown, kind: DocumentKind.from(typeName: typeName))
+            session.editor.loadMarkdown(markdown)
             host.objectWillChange.send()
         }
     }

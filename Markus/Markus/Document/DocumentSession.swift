@@ -34,6 +34,16 @@ final class DocumentSession: ObservableObject {
         editor.mode
     }
 
+    /// Outline rows from the active `SyntaxProfile` (v1.4 data hook).
+    var outlineItems: [OutlineItem] {
+        editor.session.analysis.outlineRows
+    }
+
+    /// Parse diagnostics from the active `SyntaxProfile` (v1.4 data hook).
+    var diagnostics: [ParseDiagnostic] {
+        editor.session.analysis.diagnostics
+    }
+
     init(editor: FoldingTextView = FoldingTextView()) {
         self.editor = editor
         self.editor.onTextDidChange = { [weak self] in
@@ -49,7 +59,7 @@ final class DocumentSession: ObservableObject {
             isAccessing = accessing
             scopedURL = url
             fileURL = url
-            kind = DocumentKind.from(url: url)
+            applyKind(DocumentKind.from(url: url))
             lastSavedText = markdown
             editor.loadMarkdown(markdown)
             editor.restoreFolds(for: url)
@@ -87,8 +97,15 @@ final class DocumentSession: ObservableObject {
 
     func markLoaded(_ markdown: String, kind: DocumentKind = .markdown) {
         lastSavedText = markdown
-        self.kind = kind
+        applyKind(kind)
         objectWillChange.send()
+    }
+
+    /// Kind must be set on the editor *before* `loadMarkdown` / reparse
+    /// so the active profile builds the matching foldables.
+    private func applyKind(_ kind: DocumentKind) {
+        self.kind = kind
+        editor.session.documentKind = kind
     }
 
     func revert() throws {
