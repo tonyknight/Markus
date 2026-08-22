@@ -9,3 +9,4 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.worktrees/
