@@ -55,6 +55,19 @@ enum DocumentKind: String, CaseIterable, Hashable, Sendable {
         filenameExtensions[0]
     }
 
+    /// Source/Preview chrome. Markdown keeps GFM Preview. HTML/SVG keep
+    /// the picker for ticket 05's WebView. JSON, TOML, and Wave B are
+    /// Source-only — Preview is hidden and must not honor Markdown's
+    /// Editor default Preview.
+    var showsPreview: Bool {
+        switch self {
+        case .markdown, .html, .svg:
+            true
+        case .json, .toml, .css, .javascript, .typescript, .swift, .php, .shell:
+            false
+        }
+    }
+
     var filenameExtensions: [String] {
         switch self {
         case .markdown: ["md", "markdown", "mdown", "mkd"]

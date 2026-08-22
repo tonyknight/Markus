@@ -110,13 +110,17 @@ private struct DocumentToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         #if os(macOS)
-        ToolbarItem(placement: ModeChrome.macToolbarPlacement) {
-            DocumentModePicker(host: host)
+        if host.session.kind.showsPreview {
+            ToolbarItem(placement: ModeChrome.macToolbarPlacement) {
+                DocumentModePicker(host: host)
+            }
         }
         #endif
         #if os(iOS)
-        ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
-            DocumentModePicker(host: host)
+        if host.session.kind.showsPreview {
+            ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
+                DocumentModePicker(host: host)
+            }
         }
         ToolbarItem(placement: .automatic) {
             Menu {
@@ -180,11 +184,13 @@ private struct DocumentToolbar: ToolbarContent {
             .keyboardShortcut("o", modifiers: [.command, .shift])
             .accessibilityIdentifier(ToolbarChrome.Identifier.outline)
         }
-        ToolbarItem(placement: .automatic) {
-            Button("Toggle Mode") { EditorCommands.toggleSourcePreview(on: host) }
-                .keyboardShortcut("e", modifiers: [.command])
-                .accessibilityLabel("Toggle Source Preview")
-                .accessibilityIdentifier(ToolbarChrome.Identifier.toggleMode)
+        if host.session.kind.showsPreview {
+            ToolbarItem(placement: .automatic) {
+                Button("Toggle Mode") { EditorCommands.toggleSourcePreview(on: host) }
+                    .keyboardShortcut("e", modifiers: [.command])
+                    .accessibilityLabel("Toggle Source Preview")
+                    .accessibilityIdentifier(ToolbarChrome.Identifier.toggleMode)
+            }
         }
         ToolbarItemGroup(placement: .automatic) {
             Button("Find") { EditorCommands.presentFind(on: host) }

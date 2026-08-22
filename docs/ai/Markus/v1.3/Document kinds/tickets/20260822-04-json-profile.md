@@ -13,7 +13,7 @@ depends_on:
 - 20260822-02-syntaxprofile-and-fold-generalization
 subtasks: []
 plan_status: in-progress
-current_task: T03
+current_task: T04
 ---
 ## Description
 
@@ -42,7 +42,7 @@ NO TDD. Verify by build.
 ## Implementation plan
 
 Status: in-progress
-Current task: T03
+Current task: T04
 
 ### T01: JSON scanner → object/array fold extents
 
@@ -81,7 +81,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
-
+- [x] done
 ### T04: Bound large-file scan (N2)
 
 Wire `JSONScanBudget.default` in `JSONSyntaxProfile` (max bytes, max foldables, max outline rows, max highlight spans, time limit). Over budget: stop, keep partial folds, emit a diagnostic rather than scanning the rest. Same spirit as v1.1 span budgets.
@@ -108,3 +108,6 @@ T01: JSONScanner walks UTF-8 offsets; FoldID.Kind object/array; fold extent afte
 
 ### 2026-08-22
 T02: JSONSyntaxProfile wraps the scanner; SyntaxProfiles.profile(for: .json) wired. Other non-markdown kinds stay empty. macOS Debug BUILD SUCCEEDED.
+
+### 2026-08-22
+T03: DocumentKind.showsPreview hides Source/Preview picker and Toggle Mode for json/toml/Wave B. setMode/toggle cannot enter Preview. Markdown/HTML/SVG still show the picker. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.

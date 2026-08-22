@@ -152,7 +152,8 @@ final class DocumentSession: ObservableObject {
     }
 
     func setMode(_ mode: EditorMode) {
-        editor.setMode(mode)
+        let resolved = kind.showsPreview ? mode : .source
+        editor.setMode(resolved)
         objectWillChange.send()
     }
 

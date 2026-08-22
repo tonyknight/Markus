@@ -48,6 +48,7 @@ enum ModeChrome {
 
     @MainActor
     static func select(_ mode: EditorMode, on host: DocumentHost) {
+        guard host.session.kind.showsPreview || mode == .source else { return }
         host.setMode(mode)
     }
 }

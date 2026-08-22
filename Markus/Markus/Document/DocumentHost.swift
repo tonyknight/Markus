@@ -384,6 +384,7 @@ final class DocumentHost: ObservableObject {
     }
 
     func toggleSourcePreview() {
+        guard session.kind.showsPreview else { return }
         setMode(mode == .source ? .preview : .source)
     }
 
