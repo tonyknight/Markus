@@ -13,7 +13,7 @@ depends_on:
 - 20260822-02-syntaxprofile-and-fold-generalization
 subtasks: []
 plan_status: in-progress
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -42,7 +42,7 @@ NO TDD. Verify by build.
 ## Implementation plan
 
 Status: in-progress
-Current task: T02
+Current task: T03
 
 ### T01: JSON scanner → object/array fold extents
 
@@ -67,7 +67,7 @@ Verify:
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
 ```
 - [ ] todo
-
+- [x] done
 ### T03: Hide Preview chrome for Source-only kinds
 
 `DocumentKind.showsPreview`: true for markdown, html, svg (HTML/SVG WebView is ticket 05); false for json, toml, and Wave B. Hide `DocumentModePicker` when the session kind does not show Preview. Guard `setMode` / toggle so Source-only kinds cannot enter Preview (Markdown Editor default Preview must not apply). `applyKind` already forces Source.
@@ -105,3 +105,6 @@ Wrote implementation plan T01–T04 (scanner folds; JSONSyntaxProfile+factory; h
 
 ### 2026-08-22
 T01: JSONScanner walks UTF-8 offsets; FoldID.Kind object/array; fold extent after opener line; MarkdownBlockKind.other. macOS Debug BUILD SUCCEEDED. Did not run xcodebuild test.
+
+### 2026-08-22
+T02: JSONSyntaxProfile wraps the scanner; SyntaxProfiles.profile(for: .json) wired. Other non-markdown kinds stay empty. macOS Debug BUILD SUCCEEDED.

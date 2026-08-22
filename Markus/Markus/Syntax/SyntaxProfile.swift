@@ -2,7 +2,8 @@ import Foundation
 
 /// Per-kind syntax analysis that feeds the same `FoldStore` / outline /
 /// (v1.4) diagnostics / inner-color spans. Markdown wraps today’s
-/// `BlockIndex`; other kinds start as an empty stub until their ticket.
+/// `BlockIndex`; JSON uses `JSONSyntaxProfile`. Other kinds stay empty
+/// until their ticket.
 protocol SyntaxProfile: Sendable {
     func analyze(_ buffer: String) -> SyntaxAnalysis
 }
@@ -61,6 +62,8 @@ enum SyntaxProfiles {
         switch kind {
         case .markdown:
             MarkdownSyntaxProfile()
+        case .json:
+            JSONSyntaxProfile()
         default:
             EmptySyntaxProfile()
         }
