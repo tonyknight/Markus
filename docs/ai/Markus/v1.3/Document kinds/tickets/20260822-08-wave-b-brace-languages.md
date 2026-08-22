@@ -22,8 +22,8 @@ CSS, JavaScript, TypeScript, Swift: brace/block folds, UTIs, New items. `.tsx` i
 
 ## Acceptance criteria
 
-- [ ] CSS / JS / TS / Swift files fold blocks and open with the right kind (R13), **or** the ticket is explicitly slipped in Notes.
-- [ ] macOS + iOS/iPad Debug builds if implemented (N3).
+- [x] CSS / JS / TS / Swift files fold blocks and open with the right kind (R13), **or** the ticket is explicitly slipped in Notes.
+- [x] macOS + iOS/iPad Debug builds if implemented (N3).
 
 ## Context
 
@@ -83,6 +83,21 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 ```
 - [ ] todo
 - [x] done
+
+### T04: Skip JS/TS/Swift slash-regex so `{`/`}` inside `/…/` are not folds
+
+`/` that is not `//` or `/*` currently falls through to code, so `/{/` and `/}/` steal block delimiters and break R13 function/class folds. Heuristic: start a regex when the previous significant token is not an ident/number/`)`/`]`, or when it was a prefix keyword (`return`, `typeof`, …). Skip character classes and escapes until the closing `/` plus flags. CSS is unchanged.
+
+Files: `Markus/Markus/Syntax/BraceScanner.swift`
+
+Verify:
+```
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
+```
+- [x] done
+
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -101,3 +116,21 @@ T02: BraceSyntaxProfile wraps the scanner with BraceScanBudget.default; profile(
 
 ### 2026-08-22
 T03: Info.plist document types + imported UTIs for css/js/ts/swift; DocumentKind.shipped = waveA + brace kinds; importer, New CSS/JS/TS/Swift, Mac Format + iOS kind menus, writableTypes. Ticket left in-progress (no visual open of a .css/.js/.ts/.swift file; no xcodebuild test). macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.
+
+## Review
+
+2026-08-22 — **Important.** Controller may not mark `done`. Do not start ticket 09. Fix JS/TS (and Swift) regex `/…/` so `{`/`}` inside a regex cannot steal block folds.
+
+Commits `0af83c2` T01, `afd31f1` T02, `7863756` T03. Messages match `{ticket-id} {task-id}: {title}`. Plan files match the diff. Brace matcher (not tree-sitter). `.tsx` → `DocumentKind.typescript`. JSX tags are not fold units (braces only). `shipped` = Wave A + css/javascript/typescript/swift; PHP/Shell stay empty. Notes claim macOS+iOS/iPad Debug builds.
+
+- **Important** — JavaScript/TypeScript (and Swift `/…/` literals) do not skip regex. After `/` that is not `//` or `/*`, the next `{` or `}` is treated as a block delimiter (`BraceScanner.swift` `scanCode` `/` branch, `openBrace`, `closeBraceOrInterpolation`). `function outer() { const re = /{/; … }` opens a fake brace at `/{/`; the function’s closer then pairs with that, and the real function is left unclosed (`Unclosed block`). `replace(/}/g, …)` closes the enclosing fold early. The plan skipped strings, comments, and template `${}`; regex is the remaining JS delimiter class and it breaks R13 function/class/block folds on ordinary files. A slash-regex skip (not tree-sitter) is enough.
+- **Minor** — Ticket AC still unchecked; T03 notes no on-screen open of a `.css`/`.js`/`.ts`/`.swift` file. Residual: human glance after the regex fix, not a substitute for that fix.
+- **Minor** — `UTImportedTypeDeclarations` re-declares system UTIs `public.css`, `com.netscape.javascript-source`, and `public.swift-source` (`Info.plist`). Wave A listed `public.json` / `public.html` only under `CFBundleDocumentTypes`. TypeScript’s imported UTI is appropriate; the three system re-imports are redundant and can confuse Launch Services.
+- **Minor** — `Engine.init` copies `Array(buffer.utf8)` before applying `maxBytes` (`BraceScanner.swift` 103–107), same as JSON.
+
+### 2026-08-22
+Debug: JS/TS `/` that was not a comment was treated as code, so `/{/` stole braces. T04 skips slash-regex (and Swift `/…/` literals) using a previous-token heuristic plus prefix keywords (`return`, `typeof`, …). CSS unchanged.
+
+## Review (T04)
+
+2026-08-22 — **Minor.** Controller may mark done. Slash-regex skip lands before any `load` of `{`/`}` inside `/…/`. Remaining items stay Minor.

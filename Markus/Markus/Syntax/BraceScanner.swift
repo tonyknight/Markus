@@ -99,6 +99,10 @@ private struct Engine {
     var outlineRows: [OutlineItem] = []
     var diagnostics: [ParseDiagnostic] = []
     var highlightSpans: [HighlightSpan] = []
+    /// Last non-whitespace, non-comment code byte. Used to tell `/regex/` from division.
+    var lastSignificant: UInt8?
+    /// `return /foo/` must start a regex even though the previous token is an ident.
+    var lastWasRegexPrefixKeyword = false
 
     init(buffer: String, dialect: BraceDialect, budget: BraceScanBudget) {
         bytes = Array(buffer.utf8)
@@ -141,33 +145,46 @@ private struct Engine {
                     skipBlockComment()
                 } else if dialect != .css, peek(at: 1) == UInt8(ascii: "/") {
                     skipLineComment()
+                } else if dialect != .css, canStartRegex {
+                    skipRegex()
                 } else {
+                    noteSignificant(b)
                     i += 1
                 }
             case UInt8(ascii: "\""), UInt8(ascii: "'"):
                 skipQuotedString(quote: b)
+                noteSignificant(b)
             case UInt8(ascii: "`"):
                 if dialect == .javascript {
                     skipTemplateLiteral()
+                    noteSignificant(UInt8(ascii: "`"))
                 } else {
+                    noteSignificant(b)
                     i += 1
                 }
             case UInt8(ascii: "#"):
                 if dialect == .swift, peek(at: 1) == UInt8(ascii: "\"") {
                     skipSwiftRawString()
+                    noteSignificant(UInt8(ascii: "\""))
                 } else if dialect == .css {
                     skipHashOrNumber()
+                    noteSignificant(b)
                 } else {
+                    noteSignificant(b)
                     i += 1
                 }
             case UInt8(ascii: "{"):
+                noteSignificant(b)
                 openBrace()
             case UInt8(ascii: "}"):
+                noteSignificant(b)
                 closeBraceOrInterpolation()
             case UInt8(ascii: "("):
+                noteSignificant(b)
                 i += 1
                 bumpSwiftInterpParen(delta: 1)
             case UInt8(ascii: ")"):
+                noteSignificant(b)
                 closeSwiftInterpParenOrAdvance()
             case 0x0A:
                 consumeNewline()
@@ -181,6 +198,9 @@ private struct Engine {
                 } else if b == UInt8(ascii: "@"), dialect == .css {
                     skipCSSAtRule()
                 } else {
+                    if !isHorizontalSpace(b) {
+                        noteSignificant(b)
+                    }
                     i += 1
                 }
             }
@@ -200,6 +220,23 @@ private struct Engine {
         let index = i + offset
         guard index < scanEnd, index < bytes.count else { return nil }
         return bytes[index]
+    }
+
+    private var canStartRegex: Bool {
+        if lastWasRegexPrefixKeyword { return true }
+        guard let last = lastSignificant else { return true }
+        if isIdentContinue(last) || isDigit(last) { return false }
+        switch last {
+        case UInt8(ascii: ")"), UInt8(ascii: "]"):
+            return false
+        default:
+            return true
+        }
+    }
+
+    mutating func noteSignificant(_ b: UInt8) {
+        lastSignificant = b
+        lastWasRegexPrefixKeyword = false
     }
 
     mutating func skipBOM() {
@@ -306,6 +343,50 @@ private struct Engine {
         }
         addDiagnostic(line: startLine, message: "Unclosed comment", severity: .error)
         addHighlight(start..<i, role: .comment)
+    }
+
+    /// `/…/` regex (JS/TS) or Swift regex literal. `{`/`}` inside must not
+    /// count as block delimiters (R13).
+    mutating func skipRegex() {
+        let start = i
+        let startLine = line
+        i += 1
+        var inClass = false
+        while let b = peek {
+            if b == 0x0A { break }
+            if b == UInt8(ascii: "\\") {
+                i += 1
+                if peek == 0x0A {
+                    consumeNewline()
+                } else if peek != nil {
+                    i += 1
+                }
+                continue
+            }
+            if inClass {
+                if b == UInt8(ascii: "]") { inClass = false }
+                i += 1
+                continue
+            }
+            if b == UInt8(ascii: "[") {
+                inClass = true
+                i += 1
+                continue
+            }
+            if b == UInt8(ascii: "/") {
+                i += 1
+                while let flag = peek, isRegexFlag(flag) {
+                    i += 1
+                }
+                addHighlight(start..<i, role: .string)
+                noteSignificant(UInt8(ascii: "/"))
+                return
+            }
+            i += 1
+        }
+        addDiagnostic(line: startLine, message: "Unclosed regular expression", severity: .error)
+        addHighlight(start..<i, role: .string)
+        noteSignificant(UInt8(ascii: "/"))
     }
 
     // MARK: Strings
@@ -586,6 +667,10 @@ private struct Engine {
         if keywords.contains(word) {
             addHighlight(start..<i, role: .keyword)
         }
+        if start < i {
+            noteSignificant(bytes[i - 1])
+            lastWasRegexPrefixKeyword = javascriptRegexPrefixKeywords.contains(word)
+        }
     }
 
     mutating func skipCSSAtRule() {
@@ -625,6 +710,9 @@ private struct Engine {
             break
         }
         addHighlight(start..<i, role: .number)
+        if start < i {
+            noteSignificant(bytes[i - 1])
+        }
     }
 
     mutating func skipHashOrNumber() {
@@ -756,9 +844,29 @@ private func isIdentContinue(_ b: UInt8) -> Bool {
     isIdentStart(b) || isDigit(b) || b == UInt8(ascii: "-")
 }
 
+private func isHorizontalSpace(_ b: UInt8) -> Bool {
+    b == 0x09 || b == 0x0D || b == UInt8(ascii: " ")
+}
+
+private func isRegexFlag(_ b: UInt8) -> Bool {
+    switch b {
+    case UInt8(ascii: "g"), UInt8(ascii: "i"), UInt8(ascii: "m"),
+         UInt8(ascii: "s"), UInt8(ascii: "u"), UInt8(ascii: "y"),
+         UInt8(ascii: "d"), UInt8(ascii: "v"):
+        true
+    default:
+        false
+    }
+}
+
 private let cssKeywords: Set<String> = [
     "important", "and", "or", "not", "only", "from", "to", "through",
     "inherit", "initial", "unset", "none", "auto",
+]
+
+private let javascriptRegexPrefixKeywords: Set<String> = [
+    "return", "typeof", "case", "throw", "new", "delete", "void",
+    "in", "instanceof", "else", "await", "yield", "of", "as",
 ]
 
 private let javascriptKeywords: Set<String> = [
