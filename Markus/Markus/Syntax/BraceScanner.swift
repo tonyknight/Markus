@@ -414,10 +414,12 @@ private struct Engine {
         for (offset, byte) in label.enumerated() {
             guard peek(at: offset) == byte else { return false }
         }
+        // PHP 7.3+: closer may be followed by `,` `)` or other
+        // non-identifier bytes (`foo(<<<SQL\n…\nSQL)`). Only a longer
+        // identifier (`SQLX`) is not a closer.
         let after = peek(at: label.count)
-        return after == nil
-            || after == 0x0A
-            || after == UInt8(ascii: ";")
+        if let after, isIdentContinue(after) { return false }
+        return true
     }
 
     mutating func skipBlockComment() {
