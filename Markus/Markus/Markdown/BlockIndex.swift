@@ -18,6 +18,7 @@ nonisolated struct FoldID: Hashable, Sendable, Codable {
         static let element = Kind(rawValue: "element")
         static let table = Kind(rawValue: "table")
         static let arrayTable = Kind(rawValue: "arrayTable")
+        static let brace = Kind(rawValue: "brace")
 
         init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
