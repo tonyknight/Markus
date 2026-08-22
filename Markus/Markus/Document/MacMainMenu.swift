@@ -12,6 +12,13 @@ enum MacMainMenuAction {
     static let performGoToLine = Selector(("performGoToLine:"))
     static let performFoldAll = Selector(("performFoldAll:"))
     static let performUnfoldAll = Selector(("performUnfoldAll:"))
+    static let setDocumentKindMarkdown = Selector(("setDocumentKindMarkdown:"))
+    static let setDocumentKindJSON = Selector(("setDocumentKindJSON:"))
+    static let setDocumentKindHTML = Selector(("setDocumentKindHTML:"))
+    static let setDocumentKindSVG = Selector(("setDocumentKindSVG:"))
+    static let setDocumentKindTOML = Selector(("setDocumentKindTOML:"))
+    static let pinDocumentKind = Selector(("pinDocumentKind:"))
+    static let unpinDocumentKind = Selector(("unpinDocumentKind:"))
     static let openRecentDocument = #selector(RecentDocumentsMenuDelegate.openRecentDocument(_:))
 }
 

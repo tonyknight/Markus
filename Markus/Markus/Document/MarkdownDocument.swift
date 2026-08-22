@@ -116,6 +116,34 @@ final class MarkdownDocumentViewController: NSHostingController<ContentView> {
     @objc func performUnfoldAll(_ sender: Any?) {
         EditorCommands.unfoldAll(on: host)
     }
+
+    @objc func setDocumentKindMarkdown(_ sender: Any?) {
+        host.setKind(.markdown)
+    }
+
+    @objc func setDocumentKindJSON(_ sender: Any?) {
+        host.setKind(.json)
+    }
+
+    @objc func setDocumentKindHTML(_ sender: Any?) {
+        host.setKind(.html)
+    }
+
+    @objc func setDocumentKindSVG(_ sender: Any?) {
+        host.setKind(.svg)
+    }
+
+    @objc func setDocumentKindTOML(_ sender: Any?) {
+        host.setKind(.toml)
+    }
+
+    @objc func pinDocumentKind(_ sender: Any?) {
+        host.pinKind()
+    }
+
+    @objc func unpinDocumentKind(_ sender: Any?) {
+        host.unpinKind()
+    }
 }
 
 final class MarkdownDocument: NSDocument {

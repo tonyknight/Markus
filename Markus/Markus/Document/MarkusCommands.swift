@@ -107,6 +107,36 @@ struct MarkusCommands: Commands {
             }
             .keyboardShortcut("u", modifiers: [.command, .shift])
         }
+
+        CommandMenu("Format") {
+            Menu("Document Kind") {
+                ForEach(DocumentKind.waveA, id: \.self) { kind in
+                    Button(kind.displayName) {
+                        Self.sendSetKind(kind)
+                    }
+                }
+            }
+            Divider()
+            Button("Pin Kind") {
+                NSApp.sendAction(MacMainMenuAction.pinDocumentKind, to: nil, from: nil)
+            }
+            Button("Unpin Kind") {
+                NSApp.sendAction(MacMainMenuAction.unpinDocumentKind, to: nil, from: nil)
+            }
+        }
+    }
+
+    private static func sendSetKind(_ kind: DocumentKind) {
+        let selector: Selector
+        switch kind {
+        case .markdown: selector = MacMainMenuAction.setDocumentKindMarkdown
+        case .json: selector = MacMainMenuAction.setDocumentKindJSON
+        case .html: selector = MacMainMenuAction.setDocumentKindHTML
+        case .svg: selector = MacMainMenuAction.setDocumentKindSVG
+        case .toml: selector = MacMainMenuAction.setDocumentKindTOML
+        default: return
+        }
+        NSApp.sendAction(selector, to: nil, from: nil)
     }
 }
 #endif
