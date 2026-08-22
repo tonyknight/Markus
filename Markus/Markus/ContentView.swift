@@ -118,12 +118,15 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(showsLockedWebPreview ? 0 : 1)
                 .allowsHitTesting(!showsLockedWebPreview)
-            if showsLockedWebPreview {
+            if host.session.kind.usesLockedWebPreview {
                 LockedHTMLPreviewRepresentable(
                     buffer: host.session.editor.string,
-                    kind: host.session.kind
+                    kind: host.session.kind,
+                    isVisible: showsLockedWebPreview
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(showsLockedWebPreview ? 1 : 0)
+                .allowsHitTesting(showsLockedWebPreview)
             }
         }
     }

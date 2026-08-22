@@ -42,6 +42,7 @@ enum LockedHTMLPreviewPolicy {
 struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
     var buffer: String
     var kind: DocumentKind
+    var isVisible: Bool
 
     func makeCoordinator() -> LockedHTMLPreviewCoordinator {
         LockedHTMLPreviewCoordinator()
@@ -49,18 +50,20 @@ struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let webView = makeLockedWebView(coordinator: context.coordinator)
-        context.coordinator.load(buffer, kind: kind, into: webView)
+        context.coordinator.load(buffer, kind: kind, into: webView, immediate: true)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.load(buffer, kind: kind, into: webView)
+        webView.isHidden = !isVisible
+        context.coordinator.load(buffer, kind: kind, into: webView, immediate: false)
     }
 }
 #else
 struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
     var buffer: String
     var kind: DocumentKind
+    var isVisible: Bool
 
     func makeCoordinator() -> LockedHTMLPreviewCoordinator {
         LockedHTMLPreviewCoordinator()
@@ -68,12 +71,13 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let webView = makeLockedWebView(coordinator: context.coordinator)
-        context.coordinator.load(buffer, kind: kind, into: webView)
+        context.coordinator.load(buffer, kind: kind, into: webView, immediate: true)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        context.coordinator.load(buffer, kind: kind, into: webView)
+        webView.isHidden = !isVisible
+        context.coordinator.load(buffer, kind: kind, into: webView, immediate: false)
     }
 }
 #endif
@@ -81,12 +85,41 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
 @MainActor
 final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var lastLoaded: String?
+    private var pendingHTML: String?
+    private var debounceTimer: Timer?
+    private static let debounceInterval: TimeInterval = 0.12
 
-    func load(_ buffer: String, kind: DocumentKind, into webView: WKWebView) {
+    func load(_ buffer: String, kind: DocumentKind, into webView: WKWebView, immediate: Bool) {
         let html = LockedHTMLPreviewPolicy.documentHTML(buffer: buffer, kind: kind)
+        guard html != lastLoaded else { return }
+        if immediate || lastLoaded == nil {
+            debounceTimer?.invalidate()
+            debounceTimer = nil
+            pendingHTML = nil
+            lastLoaded = html
+            webView.loadHTMLString(html, baseURL: nil)
+            return
+        }
+        pendingHTML = html
+        debounceTimer?.invalidate()
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.debounceInterval, repeats: false) { [weak self, weak webView] _ in
+            DispatchQueue.main.async {
+                self?.flush(into: webView)
+            }
+        }
+    }
+
+    private func flush(into webView: WKWebView?) {
+        debounceTimer = nil
+        guard let webView, let html = pendingHTML else { return }
+        pendingHTML = nil
         guard html != lastLoaded else { return }
         lastLoaded = html
         webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    deinit {
+        debounceTimer?.invalidate()
     }
 
     func webView(
