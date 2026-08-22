@@ -3,10 +3,10 @@ id: 20260822-06-toml-profile
 title: TOML profile
 type: feature
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-22
 updated: 2026-08-22
-closed:
+closed: 2026-08-22
 notes: 'model_tier: standard'
 parent:
 depends_on:
@@ -20,9 +20,9 @@ TOML tables and array-of-tables fold. Outline: table headers. Diagnostics on inv
 
 ## Acceptance criteria
 
-- [ ] `.toml` folds tables (R8).
-- [ ] Outline rows exist on the session (R9).
-- [ ] macOS Debug build succeeds.
+- [x] `.toml` folds tables (R8).
+- [x] Outline rows exist on the session (R9).
+- [x] macOS Debug build succeeds.
 
 ## Context
 
@@ -81,3 +81,14 @@ T01: TOMLScanner walks UTF-8 offsets; FoldID.Kind table/arrayTable; fold extent 
 
 ### 2026-08-22
 T02: TOMLSyntaxProfile wraps the scanner with TOMLScanBudget.default; profile(for: .toml) returns it. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Ticket left in-progress (no visual open of a .toml file; no xcodebuild test).
+
+## Review
+
+2026-08-22 — **Minor.** Controller may mark `done`.
+
+Commits `8fe2d2f` T01, `6319c7d` T02. Messages match `{ticket-id} {task-id}: {title}`. Plan files match the diff. R8/R9 look met in code: `[name]` / `[[name]]` at statement position fold `openerEnd..<nextHeaderLineStart` (or EOF); values after `=` are not headers; `Block.kind` is `.other`; outline rows per table header (level = dotted-key segments − 1); cheap diagnostics; session `outlineItems` / `diagnostics` flow through `SyntaxProfiles.profile(for: .toml)` → `FoldingSession.reparse`. Source-only chrome already from ticket 04. Notes claim macOS+iOS/iPad Debug builds.
+
+- Minor: `Engine.init` copies `Array(buffer.utf8)` before applying `maxBytes` (`TOMLScanner.swift:77-81`). Same pattern as JSON.
+- Minor: Space-separated datetimes (`1979-05-27 07:32:00Z`) stop at the space (`TOMLScanner.swift:446-454`, `200-204`). False diagnostic; later tables still fold.
+- Minor: Unclosed `[` array recovery walks to the next `]` and can skip later headers (`TOMLScanner.swift:547-559`). Invalid TOML; no crash.
+- Minor: No on-screen open of a `.toml` file (commit criteria).

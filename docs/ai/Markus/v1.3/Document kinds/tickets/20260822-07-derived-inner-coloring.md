@@ -3,10 +3,10 @@ id: 20260822-07-derived-inner-coloring
 title: Derived inner coloring
 type: feature
 priority: medium
-status: in-progress
+status: done
 created: 2026-08-22
 updated: 2026-08-22
-closed:
+closed: 2026-08-22
 notes: 'model_tier: standard'
 parent:
 depends_on:
@@ -20,8 +20,8 @@ Keyword / string / comment / number colors derived from existing `ThemeTokens` (
 
 ## Acceptance criteria
 
-- [ ] Non-Markdown Source shows inner colors so folded headers read as structure (R10).
-- [ ] Markdown Source unchanged (R4, R10).
+- [x] Non-Markdown Source shows inner colors so folded headers read as structure (R10).
+- [x] Markdown Source unchanged (R4, R10).
 - [x] macOS Debug build succeeds.
 
 ## Context
@@ -80,3 +80,11 @@ T01: CodeColorRoles maps keyword←link, string←fence, number←inlineCode, co
 
 ### 2026-08-22
 T02: applyStyling overlays analysis.highlightSpans on non-Markdown Source via CodeColorRoles and batched UTF8NSRange.nsRanges. Markdown Source stays body-only. Preview path unchanged. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Ticket left in-progress (no on-screen open of a .json/.html/.toml file; no xcodebuild test).
+
+## Review
+
+2026-08-22 — **Minor**. Controller may mark `done`.
+
+Commits: `36d7399` T01, `a44a8d4` T02. Spec R10/R4 and the plan hold: no Appearance wells; `CodeColorRoles` derives keyword←link, string←fence, number←inlineCode, comment←italic; Markdown Source stays body-only (`documentKind != .markdown`); Preview path untouched; scanners unchanged.
+
+- **Minor** — Ticket AC still unchecked; T02 notes no on-screen open of a `.json`/`.html`/`.toml` file. Wiring is sufficient for R10 (JSON keys as `.string`, HTML tags as `.keyword`, TOML table names as `.keyword` on opener lines). Residual: human glance at a fixture before release, not a code fix.

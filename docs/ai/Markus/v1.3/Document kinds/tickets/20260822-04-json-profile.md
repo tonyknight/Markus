@@ -3,10 +3,10 @@ id: 20260822-04-json-profile
 title: JSON profile
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-22
 updated: 2026-08-22
-closed:
+closed: 2026-08-22
 notes: 'model_tier: premium'
 parent:
 depends_on:
@@ -140,6 +140,10 @@ Commits `3dd2c96`, `e28c4c7`, `3619d78`, `1cba070`. Messages match `{ticket-id} 
 - Minor: Fold extent is `openerEnd..<closerEnd` at the closer token (`JSONScanner.swift:405-407`). Correct for `},` lines; a pretty-printed `}`-only closer leaves its trailing newline visible (blank line vs fence `toEndOfLine`).
 - Minor: Array outline rows are only emitted for nested `{`/`[` (`JSONScanner.swift:251-253`), not primitive elements. Compact JSON keys can share `sourceLine`, which the existing outline `ForEach` uses as `id` (`ContentView.swift:177`).
 - Minor: Object recovery that stops on `}` then `break`s reports "Unclosed object" and omits the fold (`JSONScanner.swift:171-178`, `233-234`). Invalid JSON, no crash; closed-but-invalid objects are dropped.
+
+2026-08-22 — **Minor** after T05. Controller may mark done.
+
+`df1edc8` `20260822-04 T05: Skip Markdown preview parse on non-Markdown kinds`. `FoldingSession.reparse` now runs `PreviewStructureCollector` / `previewSpans` only when `documentKind == .markdown`. JSON/HTML pay JSONScanBudget (or later XML budget) plus SourceMap, not cmark. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeeded. Remaining items from the first review stay Minor.
 
 ### 2026-08-22
 Debug: N2 fail was not the JSON scanner. `FoldingSession.reparse` always ran `PreviewStructureCollector` + `MarkdownParser.previewSpans` on the full buffer, including JSON. Adding T05 to skip that path when `documentKind != .markdown`.
