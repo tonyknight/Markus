@@ -38,7 +38,7 @@ struct ParseDiagnostic: Equatable, Sendable {
     var severity: Severity
 }
 
-/// Inner-color span. Roles derive from existing `ThemeTokens` later (ticket 07).
+/// Inner-color span. Roles map through `CodeColorRoles` from existing `ThemeTokens`.
 struct HighlightSpan: Equatable, Sendable {
     enum Role: String, Equatable, Sendable {
         case keyword

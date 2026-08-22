@@ -850,12 +850,17 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         switch mode {
         case .source:
             // Source is a 1:1 buffer view. H1–H6, emphasis, and callout
-            // colors are Preview-only (v1.2 architecture).
+            // colors are Preview-only (v1.2 architecture). Markdown
+            // Source stays body-only; non-Markdown Source overlays
+            // derived keyword/string/comment/number (R10).
             let source = [
                 NSAttributedString.Key.font: PlatformFont.monospaced(size: 14 * zoomScale),
                 NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(source, range: full)
+            if documentKind != .markdown {
+                applyCodeHighlightSpans(to: textStorage)
+            }
         case .preview:
             let body = [
                 NSAttributedString.Key.font: PlatformFont.body(size: 16 * zoomScale),
@@ -865,6 +870,32 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             MarkdownPreviewRenderer.apply(spans: parsedSpans, to: textStorage, tokens: tokens, zoomScale: zoomScale)
         }
         textStorage.endEditing()
+    }
+
+    /// Paints `analysis.highlightSpans` with `CodeColorRoles` derived
+    /// from the current theme. Byte ranges convert in one
+    /// `UTF8NSRange.nsRanges` pass (same as `MarkdownPreviewRenderer`)
+    /// so a large JSON file is not quadratic in span count. Scratch
+    /// attributed string + one swap, matching Preview at scale.
+    private func applyCodeHighlightSpans(to textStorage: NSTextStorage) {
+        let spans = analysis.highlightSpans
+        guard !spans.isEmpty else { return }
+        let buffer = textStorage.string
+        let nsRanges = UTF8NSRange.nsRanges(utf8Bytes: spans.map(\.bytes), in: buffer)
+        let roles = CodeColorRoles(tokens)
+        let mutable = NSMutableAttributedString(attributedString: textStorage)
+        for (span, nsRange) in zip(spans, nsRanges) {
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+            let color: PlatformColorType
+            switch span.role {
+            case .keyword: color = roles.keyword
+            case .string: color = roles.string
+            case .comment: color = roles.comment
+            case .number: color = roles.number
+            }
+            mutable.addAttribute(.foregroundColor, value: color, range: nsRange)
+        }
+        textStorage.setAttributedString(mutable)
     }
 
     private func invalidateLayout() {

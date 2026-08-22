@@ -12,8 +12,7 @@ parent:
 depends_on:
 - 20260822-02-syntaxprofile-and-fold-generalization
 subtasks: []
-plan_status: in-progress
-current_task: T02
+plan_status: done
 ---
 ## Description
 
@@ -23,7 +22,7 @@ Keyword / string / comment / number colors derived from existing `ThemeTokens` (
 
 - [ ] Non-Markdown Source shows inner colors so folded headers read as structure (R10).
 - [ ] Markdown Source unchanged (R4, R10).
-- [ ] macOS Debug build succeeds.
+- [x] macOS Debug build succeeds.
 
 ## Context
 
@@ -33,13 +32,13 @@ NO TDD. Verify by build.
 
 ## Subtasks
 
-- [ ] Derive CodeColorRoles from ThemeTokens.
-- [ ] Apply on non-Markdown Source only.
+- [x] Derive CodeColorRoles from ThemeTokens.
+- [x] Apply on non-Markdown Source only.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T02
+Status: done
+Current task: 
 
 ### T01: CodeColorRoles derived from ThemeTokens
 
@@ -68,7 +67,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -78,3 +77,6 @@ Wrote implementation plan T01–T02 (CodeColorRoles from ThemeTokens; apply high
 
 ### 2026-08-22
 T01: CodeColorRoles maps keyword←link, string←fence, number←inlineCode, comment←italic. No ThemeStore or Appearance changes. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
+
+### 2026-08-22
+T02: applyStyling overlays analysis.highlightSpans on non-Markdown Source via CodeColorRoles and batched UTF8NSRange.nsRanges. Markdown Source stays body-only. Preview path unchanged. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Ticket left in-progress (no on-screen open of a .json/.html/.toml file; no xcodebuild test).
