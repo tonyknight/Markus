@@ -9,12 +9,9 @@ import UniformTypeIdentifiers
 /// `DocumentHost` is set, fixes that without changing the host's published
 /// state shape.
 enum FileImporterChrome {
-    static var markdownContentTypes: [UTType] {
-        var types: [UTType] = [.plainText]
-        if let markdown = UTType(filenameExtension: "md") {
-            types.insert(markdown, at: 0)
-        }
-        return types
+    /// Wave A kinds plus plain text (unknown extensions still open as markdown).
+    static var documentContentTypes: [UTType] {
+        DocumentKind.waveA.map(\.contentType) + [.plainText]
     }
 
     @MainActor
@@ -31,7 +28,7 @@ enum FileImporterChrome {
 
     @MainActor
     static func allowedContentTypes(for host: DocumentHost) -> [UTType] {
-        host.isFolderImporterPresented ? FolderChrome.folderContentTypes : markdownContentTypes
+        host.isFolderImporterPresented ? FolderChrome.folderContentTypes : documentContentTypes
     }
 
     @MainActor
