@@ -173,6 +173,44 @@
 				<string>swift</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PHP Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.php-script</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>php</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Shell Script</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.shell-script</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>sh</string>
+				<string>bash</string>
+				<string>zsh</string>
+			</array>
+		</dict>
 	</array>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
@@ -308,6 +346,52 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>text/x-swift</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>PHP</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.php-script</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>php</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/php</string>
+					<string>application/x-php</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Shell Script</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.shell-script</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sh</string>
+					<string>bash</string>
+					<string>zsh</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/x-shellscript</string>
+					<string>application/x-sh</string>
 				</array>
 			</dict>
 		</dict>

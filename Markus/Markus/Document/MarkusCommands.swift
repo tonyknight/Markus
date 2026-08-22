@@ -63,6 +63,12 @@ struct MarkusCommands: Commands {
             Button("New Swift") {
                 _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.swift.typeName)
             }
+            Button("New PHP") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.php.typeName)
+            }
+            Button("New Shell") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.shell.typeName)
+            }
 
             Button("Open\u{2026}") {
                 NSApp.sendAction(#selector(NSDocumentController.openDocument(_:)), to: nil, from: nil)
@@ -163,7 +169,8 @@ struct MarkusCommands: Commands {
         case .javascript: selector = MacMainMenuAction.setDocumentKindJavaScript
         case .typescript: selector = MacMainMenuAction.setDocumentKindTypeScript
         case .swift: selector = MacMainMenuAction.setDocumentKindSwift
-        default: return
+        case .php: selector = MacMainMenuAction.setDocumentKindPHP
+        case .shell: selector = MacMainMenuAction.setDocumentKindShell
         }
         NSApp.sendAction(selector, to: nil, from: nil)
     }

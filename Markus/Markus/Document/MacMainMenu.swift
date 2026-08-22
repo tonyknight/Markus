@@ -21,6 +21,8 @@ enum MacMainMenuAction {
     static let setDocumentKindJavaScript = Selector(("setDocumentKindJavaScript:"))
     static let setDocumentKindTypeScript = Selector(("setDocumentKindTypeScript:"))
     static let setDocumentKindSwift = Selector(("setDocumentKindSwift:"))
+    static let setDocumentKindPHP = Selector(("setDocumentKindPHP:"))
+    static let setDocumentKindShell = Selector(("setDocumentKindShell:"))
     static let pinDocumentKind = Selector(("pinDocumentKind:"))
     static let unpinDocumentKind = Selector(("unpinDocumentKind:"))
     static let openRecentDocument = #selector(RecentDocumentsMenuDelegate.openRecentDocument(_:))

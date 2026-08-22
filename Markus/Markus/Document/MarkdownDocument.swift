@@ -161,6 +161,14 @@ final class MarkdownDocumentViewController: NSHostingController<ContentView> {
         host.setKind(.swift)
     }
 
+    @objc func setDocumentKindPHP(_ sender: Any?) {
+        host.setKind(.php)
+    }
+
+    @objc func setDocumentKindShell(_ sender: Any?) {
+        host.setKind(.shell)
+    }
+
     @objc func pinDocumentKind(_ sender: Any?) {
         host.pinKind()
     }

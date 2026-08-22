@@ -12,8 +12,7 @@ parent:
 depends_on:
 - 20260822-08-wave-b-brace-languages
 subtasks: []
-plan_status: in-progress
-current_task: T03
+plan_status: done
 ---
 ## Description
 
@@ -34,12 +33,12 @@ NO TDD. Verify by build.
 ## Subtasks
 
 - [x] PHP profile without HTML islands.
-- [ ] Shell kind + color + best-effort folds.
+- [x] Shell kind + color + best-effort folds.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: PHP brace dialect (no HTML islands) + profile
 
@@ -84,7 +83,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
-- [ ] done
+- [x] done
 
 ## Notes
 
@@ -98,3 +97,6 @@ T01: BraceDialect.php skips //, /* */, # (not #[]), strings, heredoc. No slash-r
 
 ### 2026-08-22
 T02: ShellScanner colors keywords/strings/# comments/numbers; best-effort { } folds skip quotes and ${}. No indent folds. Unmatched } ignored. Bound 2 MiB / 50 ms. ShellSyntaxProfile wired. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
+
+### 2026-08-22
+T03: Info.plist document types + imported UTIs for php/shell; shipped = waveA + brace + php + shell; New PHP/New Shell; Mac + iOS kind menus via shipped; selectors. Ticket left in-progress (no visual open of a .php/.sh file; no xcodebuild test). macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.
