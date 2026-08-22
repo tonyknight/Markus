@@ -1,17 +1,19 @@
 ---
 id: 20260822-07-derived-inner-coloring
-title: "Derived inner coloring"
+title: Derived inner coloring
 type: feature
 priority: medium
-status: todo
+status: in-progress
 created: 2026-08-22
 updated: 2026-08-22
 closed:
-notes: "model_tier: standard"
+notes: 'model_tier: standard'
 parent:
 depends_on:
 - 20260822-02-syntaxprofile-and-fold-generalization
 subtasks: []
+plan_status: in-progress
+current_task: T02
 ---
 ## Description
 
@@ -36,9 +38,43 @@ NO TDD. Verify by build.
 
 ## Implementation plan
 
-Status: draft
-Current task:
+Status: in-progress
+Current task: T02
+
+### T01: CodeColorRoles derived from ThemeTokens
+
+Add `CodeColorRoles` with keyword / string / comment / number, constructed from existing `ThemeTokens` (no new Appearance wells, no ThemeStore persistence, no Settings UI). Mapping: keyword ← `link`, string ← `fence`, number ← `inlineCode`, comment ← `italic`. `ThemeTokens` itself is unchanged. JSON/HTML/TOML scanners already emit spans for keys/tags/table names, strings, numbers, comments — do not change scanners in this task.
+
+Files: `Markus/Markus/Theme/CodeColorRoles.swift`
+
+Verify:
+```
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
+```
+- [ ] todo
+- [x] done
+### T02: Apply highlight spans on non-Markdown Source in applyStyling
+
+In `FoldingSession.applyStyling`, after painting Source with `tokens.body`, if `documentKind != .markdown`, overlay `analysis.highlightSpans` using `CodeColorRoles(tokens)`. Convert every span’s utf8 `bytes` to `NSRange` in one pass via `UTF8NSRange.nsRanges` (same as `MarkdownPreviewRenderer.apply` — do not call `nsRange` per span). Build on a scratch `NSMutableAttributedString` and swap once. Markdown Source stays 1:1 body. Preview path unchanged (Markdown substitution / HTML-SVG WKWebView). Missing roles: apply whatever spans exist.
+
+Files: `Markus/Markus/Editor/FoldingTextView.swift`, `Markus/Markus/Syntax/SyntaxProfile.swift`
+
+Verify:
+```
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
+xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
+```
+- [ ] todo
 
 ## Notes
 
 Append-only running log. Each entry dated.
+
+### 2026-08-22
+Wrote implementation plan T01–T02 (CodeColorRoles from ThemeTokens; apply highlight spans on non-Markdown Source via batched UTF8NSRange). NO TDD. Verify by xcodebuild build.
+
+### 2026-08-22
+T01: CodeColorRoles maps keyword←link, string←fence, number←inlineCode, comment←italic. No ThemeStore or Appearance changes. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
