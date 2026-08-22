@@ -149,6 +149,8 @@ final class FoldingTextLayoutFragment: NSTextLayoutFragment {
 @MainActor
 final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     let foldStore: FoldStore
+    var documentKind: DocumentKind = .markdown
+    private(set) var analysis: SyntaxAnalysis = .empty
     private(set) var blocks: [Block] = []
     private(set) var mode: EditorMode
     private(set) var tokens: ThemeTokens
@@ -274,11 +276,20 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// only need to re-render the cached structure (P3).
     /// `parsesPerformed` is the N8 counter proving that boundary holds.
     private func reparse(markdown: String) {
-        blocks = BlockIndex.build(markdown: markdown)
+        analysis = SyntaxProfiles.profile(for: documentKind).analyze(markdown)
+        blocks = analysis.foldables
         cachedSourceMap = SourceMap(markdown: markdown)
         cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
-        parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)
-        parsedSpans = MarkdownParser().previewSpans(markdown)
+        // Markdown Preview substitution is cmark on the full buffer.
+        // JSON/HTML/other kinds must not pay that cost (N2) and must
+        // not feed GFM structure into a non-Markdown document.
+        if documentKind == .markdown {
+            parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)
+            parsedSpans = MarkdownParser().previewSpans(markdown)
+        } else {
+            parsedPreviewBlocks = []
+            parsedSpans = []
+        }
         let nonFenceAnchors = parsedPreviewBlocks.compactMap { block -> Int? in
             if case .fenceDelimiter = block.kind { return nil }
             return block.lines.lowerBound
@@ -818,8 +829,12 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// paragraphs and re-query this delegate, which is the desired
     /// refresh on every mode/theme/zoom/fold change.
     private func rebuildSubstitutionIndex(textStorage: NSTextStorage) {
-        contentStorageDelegate.isPreviewMode = (mode == .preview)
-        guard mode == .preview else {
+        // HTML/SVG Preview is a WKWebView overlay (ticket 05), not GFM
+        // substitution. Keep substitution Markdown-only so flipping
+        // those kinds to Preview cannot treat tags as fences.
+        let markdownPreview = mode == .preview && documentKind == .markdown
+        contentStorageDelegate.isPreviewMode = markdownPreview
+        guard markdownPreview else {
             contentStorageDelegate.index = nil
             return
         }
@@ -835,12 +850,17 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         switch mode {
         case .source:
             // Source is a 1:1 buffer view. H1–H6, emphasis, and callout
-            // colors are Preview-only (v1.2 architecture).
+            // colors are Preview-only (v1.2 architecture). Markdown
+            // Source stays body-only; non-Markdown Source overlays
+            // derived keyword/string/comment/number (R10).
             let source = [
                 NSAttributedString.Key.font: PlatformFont.monospaced(size: 14 * zoomScale),
                 NSAttributedString.Key.foregroundColor: tokens.body,
             ]
             textStorage.setAttributes(source, range: full)
+            if documentKind != .markdown {
+                applyCodeHighlightSpans(to: textStorage)
+            }
         case .preview:
             let body = [
                 NSAttributedString.Key.font: PlatformFont.body(size: 16 * zoomScale),
@@ -850,6 +870,32 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             MarkdownPreviewRenderer.apply(spans: parsedSpans, to: textStorage, tokens: tokens, zoomScale: zoomScale)
         }
         textStorage.endEditing()
+    }
+
+    /// Paints `analysis.highlightSpans` with `CodeColorRoles` derived
+    /// from the current theme. Byte ranges convert in one
+    /// `UTF8NSRange.nsRanges` pass (same as `MarkdownPreviewRenderer`)
+    /// so a large JSON file is not quadratic in span count. Scratch
+    /// attributed string + one swap, matching Preview at scale.
+    private func applyCodeHighlightSpans(to textStorage: NSTextStorage) {
+        let spans = analysis.highlightSpans
+        guard !spans.isEmpty else { return }
+        let buffer = textStorage.string
+        let nsRanges = UTF8NSRange.nsRanges(utf8Bytes: spans.map(\.bytes), in: buffer)
+        let roles = CodeColorRoles(tokens)
+        let mutable = NSMutableAttributedString(attributedString: textStorage)
+        for (span, nsRange) in zip(spans, nsRanges) {
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+            let color: PlatformColorType
+            switch span.role {
+            case .keyword: color = roles.keyword
+            case .string: color = roles.string
+            case .comment: color = roles.comment
+            case .number: color = roles.number
+            }
+            mutable.addAttribute(.foregroundColor, value: color, range: nsRange)
+        }
+        textStorage.setAttributedString(mutable)
     }
 
     private func invalidateLayout() {
@@ -1402,6 +1448,12 @@ final class FoldingTextView: PlatformView {
     #endif
 
     var foldStore: FoldStore { session.foldStore }
+    var documentKind: DocumentKind {
+        get { session.documentKind }
+        set { session.documentKind = newValue }
+    }
+    var outlineItems: [OutlineItem] { session.analysis.outlineRows }
+    var diagnostics: [ParseDiagnostic] { session.analysis.diagnostics }
     var blocks: [Block] { session.blocks }
     var layoutHeight: CGFloat { session.layoutHeight }
     var collapsedFragmentCount: Int { session.collapsedFragmentCount }

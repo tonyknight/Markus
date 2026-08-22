@@ -256,7 +256,7 @@ final class DocumentHost: ObservableObject {
         if let macDocument {
             if let url = macDocument.fileURL ?? session.fileURL {
                 do {
-                    try macDocument.write(to: url, ofType: macDocument.fileType ?? "net.daringfireball.markdown")
+                    try macDocument.write(to: url, ofType: macDocument.fileType ?? session.kind.typeName)
                     errorMessage = nil
                     objectWillChange.send()
                 } catch {
@@ -296,8 +296,34 @@ final class DocumentHost: ObservableObject {
         objectWillChange.send()
     }
 
+    func setKind(_ kind: DocumentKind) {
+        session.setKind(kind)
+        #if os(macOS)
+        macDocument?.fileType = kind.typeName
+        #endif
+        objectWillChange.send()
+    }
+
+    func pinKind() {
+        session.pinKind()
+        objectWillChange.send()
+    }
+
+    func unpinKind() {
+        session.unpinKind()
+        #if os(macOS)
+        macDocument?.fileType = session.kind.typeName
+        #endif
+        objectWillChange.send()
+    }
+
     var outlineItems: [OutlineItem] {
-        OutlineJump.items(from: session.editor.blocks, markdown: session.editor.string)
+        session.outlineItems
+    }
+
+    /// Parse diagnostics from the active profile (v1.4 data hook; no inspector UI).
+    var diagnostics: [ParseDiagnostic] {
+        session.diagnostics
     }
 
     func jumpToOutlineItem(_ item: OutlineItem) {
@@ -358,6 +384,7 @@ final class DocumentHost: ObservableObject {
     }
 
     func toggleSourcePreview() {
+        guard session.kind.showsPreview else { return }
         setMode(mode == .source ? .preview : .source)
     }
 

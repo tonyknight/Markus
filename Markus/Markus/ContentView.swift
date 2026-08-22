@@ -90,8 +90,7 @@ struct ContentView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    SessionEditorRepresentable(session: host.session)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    editorSurface
                     #if os(macOS)
                     if MacOnlyChrome.hasMinimapInChrome {
                         MacMinimapRepresentable(editor: host.session.editor)
@@ -103,6 +102,34 @@ struct ContentView: View {
             }
         }
     }
+
+    /// Keep `SessionEditorRepresentable` mounted (v1.1 Settings lesson).
+    /// HTML/SVG Preview is a WKWebView overlay — not a branch that
+    /// destroys the NSView/UIView. Markdown Preview stays inside
+    /// FoldingTextView substitution.
+    private var showsLockedWebPreview: Bool {
+        host.session.kind.usesLockedWebPreview && host.session.mode == .preview
+    }
+
+    @ViewBuilder
+    private var editorSurface: some View {
+        ZStack {
+            SessionEditorRepresentable(session: host.session)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(showsLockedWebPreview ? 0 : 1)
+                .allowsHitTesting(!showsLockedWebPreview)
+            if host.session.kind.usesLockedWebPreview {
+                LockedHTMLPreviewRepresentable(
+                    buffer: host.session.editor.string,
+                    kind: host.session.kind,
+                    isVisible: showsLockedWebPreview
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(showsLockedWebPreview ? 1 : 0)
+                .allowsHitTesting(showsLockedWebPreview)
+            }
+        }
+    }
 }
 
 private struct DocumentToolbar: ToolbarContent {
@@ -110,13 +137,41 @@ private struct DocumentToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         #if os(macOS)
-        ToolbarItem(placement: ModeChrome.macToolbarPlacement) {
-            DocumentModePicker(host: host)
+        if host.session.kind.showsPreview {
+            ToolbarItem(placement: ModeChrome.macToolbarPlacement) {
+                DocumentModePicker(host: host)
+            }
         }
         #endif
         #if os(iOS)
-        ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
-            DocumentModePicker(host: host)
+        if host.session.kind.showsPreview {
+            ToolbarItem(placement: ModeChrome.iosToolbarPlacement) {
+                DocumentModePicker(host: host)
+            }
+        }
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                ForEach(DocumentKind.shipped, id: \.self) { kind in
+                    Button {
+                        host.setKind(kind)
+                    } label: {
+                        if host.session.kind == kind {
+                            Label(kind.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(kind.displayName)
+                        }
+                    }
+                }
+                Divider()
+                Button("Pin Kind") { host.pinKind() }
+                    .disabled(host.session.fileURL == nil)
+                Button("Unpin Kind") { host.unpinKind() }
+                    .disabled(!host.session.isKindPinned)
+            } label: {
+                Text(host.session.kind.displayName)
+            }
+            .disabled(!host.showsEditor)
+            .accessibilityIdentifier(ToolbarChrome.Identifier.kind)
         }
         ToolbarItemGroup(placement: .automatic) {
             Button("Open") { host.isImporterPresented = true }
@@ -156,11 +211,13 @@ private struct DocumentToolbar: ToolbarContent {
             .keyboardShortcut("o", modifiers: [.command, .shift])
             .accessibilityIdentifier(ToolbarChrome.Identifier.outline)
         }
-        ToolbarItem(placement: .automatic) {
-            Button("Toggle Mode") { EditorCommands.toggleSourcePreview(on: host) }
-                .keyboardShortcut("e", modifiers: [.command])
-                .accessibilityLabel("Toggle Source Preview")
-                .accessibilityIdentifier(ToolbarChrome.Identifier.toggleMode)
+        if host.session.kind.showsPreview {
+            ToolbarItem(placement: .automatic) {
+                Button("Toggle Mode") { EditorCommands.toggleSourcePreview(on: host) }
+                    .keyboardShortcut("e", modifiers: [.command])
+                    .accessibilityLabel("Toggle Source Preview")
+                    .accessibilityIdentifier(ToolbarChrome.Identifier.toggleMode)
+            }
         }
         ToolbarItemGroup(placement: .automatic) {
             Button("Find") { EditorCommands.presentFind(on: host) }
@@ -199,6 +256,7 @@ private struct DocumentToolbar: ToolbarContent {
 enum ToolbarChrome {
     enum Identifier {
         static let mode = "toolbar.mode"
+        static let kind = "toolbar.kind"
         static let open = "toolbar.open"
         static let openFolder = "toolbar.openFolder"
         static let save = "toolbar.save"

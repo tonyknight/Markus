@@ -19,7 +19,7 @@ enum MacWindowGeometry {
 
 final class MarkusDocumentController: NSDocumentController {
     override var defaultType: String? {
-        "net.daringfireball.markdown"
+        DocumentKind.markdown.typeName
     }
 
     override func documentClass(forType typeName: String) -> AnyClass? {
@@ -27,23 +27,31 @@ final class MarkusDocumentController: NSDocumentController {
     }
 
     override func typeForContents(of url: URL) throws -> String {
-        "net.daringfireball.markdown"
+        KindPin().resolvedKind(for: url).typeName
     }
 }
 
 enum MacDocumentLaunch {
     @MainActor
     static func openUntitledDocument() throws -> NSDocument {
+        try openUntitledDocument(ofType: nil)
+    }
+
+    @MainActor
+    static func openUntitledDocument(ofType typeName: String?) throws -> NSDocument {
         let controller = NSDocumentController.shared
+        let type = typeName ?? controller.defaultType ?? DocumentKind.markdown.typeName
+        let kind = DocumentKind.from(typeName: type)
         do {
-            let type = controller.defaultType ?? "net.daringfireball.markdown"
             let document = try controller.makeUntitledDocument(ofType: type)
             controller.addDocument(document)
+            (document as? MarkdownDocument)?.applyUntitledKind(kind)
             document.makeWindowControllers()
             document.showWindows()
             return document
         } catch {
             let document = MarkdownDocument()
+            document.applyUntitledKind(kind)
             document.makeWindowControllers()
             controller.addDocument(document)
             document.showWindows()
@@ -58,7 +66,7 @@ enum MacDocumentLaunch {
             existing.showWindows()
             return existing
         }
-        let type = controller.defaultType ?? "net.daringfireball.markdown"
+        let type = (try? controller.typeForContents(of: url)) ?? KindPin().resolvedKind(for: url).typeName
         do {
             let document = try controller.makeDocument(withContentsOf: url, ofType: type)
             controller.addDocument(document)
@@ -69,6 +77,7 @@ enum MacDocumentLaunch {
             let document = MarkdownDocument()
             try document.read(from: url, ofType: type)
             document.fileURL = url
+            document.fileType = type
             document.makeWindowControllers()
             controller.addDocument(document)
             document.showWindows()
@@ -114,6 +123,58 @@ final class MarkdownDocumentViewController: NSHostingController<ContentView> {
 
     @objc func performUnfoldAll(_ sender: Any?) {
         EditorCommands.unfoldAll(on: host)
+    }
+
+    @objc func setDocumentKindMarkdown(_ sender: Any?) {
+        host.setKind(.markdown)
+    }
+
+    @objc func setDocumentKindJSON(_ sender: Any?) {
+        host.setKind(.json)
+    }
+
+    @objc func setDocumentKindHTML(_ sender: Any?) {
+        host.setKind(.html)
+    }
+
+    @objc func setDocumentKindSVG(_ sender: Any?) {
+        host.setKind(.svg)
+    }
+
+    @objc func setDocumentKindTOML(_ sender: Any?) {
+        host.setKind(.toml)
+    }
+
+    @objc func setDocumentKindCSS(_ sender: Any?) {
+        host.setKind(.css)
+    }
+
+    @objc func setDocumentKindJavaScript(_ sender: Any?) {
+        host.setKind(.javascript)
+    }
+
+    @objc func setDocumentKindTypeScript(_ sender: Any?) {
+        host.setKind(.typescript)
+    }
+
+    @objc func setDocumentKindSwift(_ sender: Any?) {
+        host.setKind(.swift)
+    }
+
+    @objc func setDocumentKindPHP(_ sender: Any?) {
+        host.setKind(.php)
+    }
+
+    @objc func setDocumentKindShell(_ sender: Any?) {
+        host.setKind(.shell)
+    }
+
+    @objc func pinDocumentKind(_ sender: Any?) {
+        host.pinKind()
+    }
+
+    @objc func unpinDocumentKind(_ sender: Any?) {
+        host.unpinKind()
     }
 }
 
@@ -230,10 +291,31 @@ final class MarkdownDocument: NSDocument {
             throw DocumentSessionError.unreadable
         }
         MainActor.assumeIsolated {
+            session.markLoaded(markdown, kind: DocumentKind.from(typeName: typeName))
             session.editor.loadMarkdown(markdown)
-            session.markLoaded(markdown)
             host.objectWillChange.send()
         }
+    }
+
+    @MainActor
+    func applyUntitledKind(_ kind: DocumentKind) {
+        fileType = kind.typeName
+        session.setKind(kind)
+    }
+
+    nonisolated override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] {
+        MainActor.assumeIsolated {
+            let current = fileType ?? session.kind.typeName
+            let all = DocumentKind.shipped.map(\.typeName)
+            return [current] + all.filter { $0 != current }
+        }
+    }
+
+    nonisolated override func fileNameExtension(
+        forType typeName: String,
+        saveOperation: NSDocument.SaveOperationType
+    ) -> String? {
+        DocumentKind.from(typeName: typeName).defaultExtension
     }
 }
 

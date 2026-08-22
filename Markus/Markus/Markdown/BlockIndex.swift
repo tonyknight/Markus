@@ -1,9 +1,34 @@
 import Foundation
 
 nonisolated struct FoldID: Hashable, Sendable, Codable {
-    enum Kind: String, Hashable, Sendable, Codable {
-        case heading
-        case fence
+    /// Profile-defined fold kind. Encoded as a single JSON string so
+    /// v1.2 records (`"heading"`, `"fence"`) still load. Later profiles
+    /// add their own raw values (e.g. JSON object/array).
+    struct Kind: Hashable, Sendable, Codable, RawRepresentable {
+        var rawValue: String
+
+        init(rawValue: String) {
+            self.rawValue = rawValue
+        }
+
+        static let heading = Kind(rawValue: "heading")
+        static let fence = Kind(rawValue: "fence")
+        static let object = Kind(rawValue: "object")
+        static let array = Kind(rawValue: "array")
+        static let element = Kind(rawValue: "element")
+        static let table = Kind(rawValue: "table")
+        static let arrayTable = Kind(rawValue: "arrayTable")
+        static let brace = Kind(rawValue: "brace")
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            rawValue = try container.decode(String.self)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
+        }
     }
 
     var kind: Kind

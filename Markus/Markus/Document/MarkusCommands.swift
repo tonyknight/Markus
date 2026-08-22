@@ -39,6 +39,37 @@ struct MarkusCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: .command)
 
+            Button("New JSON") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.json.typeName)
+            }
+            Button("New HTML") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.html.typeName)
+            }
+            Button("New SVG") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.svg.typeName)
+            }
+            Button("New TOML") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.toml.typeName)
+            }
+            Button("New CSS") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.css.typeName)
+            }
+            Button("New JavaScript") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.javascript.typeName)
+            }
+            Button("New TypeScript") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.typescript.typeName)
+            }
+            Button("New Swift") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.swift.typeName)
+            }
+            Button("New PHP") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.php.typeName)
+            }
+            Button("New Shell") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.shell.typeName)
+            }
+
             Button("Open\u{2026}") {
                 NSApp.sendAction(#selector(NSDocumentController.openDocument(_:)), to: nil, from: nil)
             }
@@ -107,6 +138,41 @@ struct MarkusCommands: Commands {
             }
             .keyboardShortcut("u", modifiers: [.command, .shift])
         }
+
+        CommandMenu("Format") {
+            Menu("Document Kind") {
+                ForEach(DocumentKind.shipped, id: \.self) { kind in
+                    Button(kind.displayName) {
+                        Self.sendSetKind(kind)
+                    }
+                }
+            }
+            Divider()
+            Button("Pin Kind") {
+                NSApp.sendAction(MacMainMenuAction.pinDocumentKind, to: nil, from: nil)
+            }
+            Button("Unpin Kind") {
+                NSApp.sendAction(MacMainMenuAction.unpinDocumentKind, to: nil, from: nil)
+            }
+        }
+    }
+
+    private static func sendSetKind(_ kind: DocumentKind) {
+        let selector: Selector
+        switch kind {
+        case .markdown: selector = MacMainMenuAction.setDocumentKindMarkdown
+        case .json: selector = MacMainMenuAction.setDocumentKindJSON
+        case .html: selector = MacMainMenuAction.setDocumentKindHTML
+        case .svg: selector = MacMainMenuAction.setDocumentKindSVG
+        case .toml: selector = MacMainMenuAction.setDocumentKindTOML
+        case .css: selector = MacMainMenuAction.setDocumentKindCSS
+        case .javascript: selector = MacMainMenuAction.setDocumentKindJavaScript
+        case .typescript: selector = MacMainMenuAction.setDocumentKindTypeScript
+        case .swift: selector = MacMainMenuAction.setDocumentKindSwift
+        case .php: selector = MacMainMenuAction.setDocumentKindPHP
+        case .shell: selector = MacMainMenuAction.setDocumentKindShell
+        }
+        NSApp.sendAction(selector, to: nil, from: nil)
     }
 }
 #endif

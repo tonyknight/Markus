@@ -10,7 +10,9 @@ routing_cache:
   cursor:
     premium: cursor-grok-4.6-high
     standard: grok 4.6
-    economy: gemini-3.7-flash
+    economy: gemini-3.7-flash-high
+origin_branch: main
+worktree: true
 ---
 
 # Markus v1.3 — Document kinds
