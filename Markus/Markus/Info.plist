@@ -98,6 +98,81 @@
 				<string>toml</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>CSS Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.css</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>css</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>JavaScript Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.netscape.javascript-source</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>js</string>
+				<string>mjs</string>
+				<string>cjs</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>TypeScript Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.typescript.typescript</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>ts</string>
+				<string>tsx</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Swift Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.swift-source</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>swift</string>
+			</array>
+		</dict>
 	</array>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
@@ -144,6 +219,95 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>application/toml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CSS</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.css</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>css</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/css</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>JavaScript</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.netscape.javascript-source</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>js</string>
+					<string>mjs</string>
+					<string>cjs</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/javascript</string>
+					<string>application/javascript</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>TypeScript</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.typescript.typescript</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ts</string>
+					<string>tsx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/typescript</string>
+					<string>application/typescript</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Swift</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.swift-source</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>swift</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/x-swift</string>
 				</array>
 			</dict>
 		</dict>

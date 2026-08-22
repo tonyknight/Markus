@@ -151,7 +151,7 @@ private struct DocumentToolbar: ToolbarContent {
         }
         ToolbarItem(placement: .automatic) {
             Menu {
-                ForEach(DocumentKind.waveA, id: \.self) { kind in
+                ForEach(DocumentKind.shipped, id: \.self) { kind in
                     Button {
                         host.setKind(kind)
                     } label: {

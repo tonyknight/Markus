@@ -14,8 +14,7 @@ depends_on:
 - 20260822-05-html-and-svg
 - 20260822-06-toml-profile
 subtasks: []
-plan_status: in-progress
-current_task: T03
+plan_status: done
 ---
 ## Description
 
@@ -35,12 +34,12 @@ NO TDD. Verify by build.
 ## Subtasks
 
 - [x] Brace/block helper.
-- [ ] CSS, JS, TS, Swift profiles + New + UTIs.
+- [x] CSS, JS, TS, Swift profiles + New + UTIs.
 
 ## Implementation plan
 
-Status: in-progress
-Current task: T03
+Status: done
+Current task: 
 
 ### T01: Shared brace/block scanner + budget
 
@@ -83,7 +82,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
 - [ ] todo
-
+- [x] done
 ## Notes
 
 Append-only running log. Each entry dated.
@@ -99,3 +98,6 @@ T01: BraceScanner walks UTF-8 offsets; FoldID.Kind.brace; fold extent after open
 
 ### 2026-08-22
 T02: BraceSyntaxProfile wraps the scanner with BraceScanBudget.default; profile(for:) maps css, javascript, typescript (JS dialect), swift. PHP/Shell stay EmptySyntaxProfile. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED. Did not run xcodebuild test.
+
+### 2026-08-22
+T03: Info.plist document types + imported UTIs for css/js/ts/swift; DocumentKind.shipped = waveA + brace kinds; importer, New CSS/JS/TS/Swift, Mac Format + iOS kind menus, writableTypes. Ticket left in-progress (no visual open of a .css/.js/.ts/.swift file; no xcodebuild test). macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.

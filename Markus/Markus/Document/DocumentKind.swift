@@ -18,6 +18,12 @@ enum DocumentKind: String, CaseIterable, Hashable, Sendable {
 
     static let waveA: [DocumentKind] = [.markdown, .json, .html, .svg, .toml]
 
+    /// Wave A plus shipped Wave B brace languages. PHP and Shell stay off
+    /// this list until their ticket. Menus and the importer use `shipped`
+    /// so Wave A’s `waveA` list stays intact.
+    static let waveBBrace: [DocumentKind] = [.css, .javascript, .typescript, .swift]
+    static let shipped: [DocumentKind] = waveA + waveBBrace
+
     var displayName: String {
         switch self {
         case .markdown: "Markdown"

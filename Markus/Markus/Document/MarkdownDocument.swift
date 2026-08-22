@@ -145,6 +145,22 @@ final class MarkdownDocumentViewController: NSHostingController<ContentView> {
         host.setKind(.toml)
     }
 
+    @objc func setDocumentKindCSS(_ sender: Any?) {
+        host.setKind(.css)
+    }
+
+    @objc func setDocumentKindJavaScript(_ sender: Any?) {
+        host.setKind(.javascript)
+    }
+
+    @objc func setDocumentKindTypeScript(_ sender: Any?) {
+        host.setKind(.typescript)
+    }
+
+    @objc func setDocumentKindSwift(_ sender: Any?) {
+        host.setKind(.swift)
+    }
+
     @objc func pinDocumentKind(_ sender: Any?) {
         host.pinKind()
     }
@@ -282,7 +298,7 @@ final class MarkdownDocument: NSDocument {
     nonisolated override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] {
         MainActor.assumeIsolated {
             let current = fileType ?? session.kind.typeName
-            let all = DocumentKind.waveA.map(\.typeName)
+            let all = DocumentKind.shipped.map(\.typeName)
             return [current] + all.filter { $0 != current }
         }
     }

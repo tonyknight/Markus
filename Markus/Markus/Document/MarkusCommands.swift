@@ -51,6 +51,18 @@ struct MarkusCommands: Commands {
             Button("New TOML") {
                 _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.toml.typeName)
             }
+            Button("New CSS") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.css.typeName)
+            }
+            Button("New JavaScript") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.javascript.typeName)
+            }
+            Button("New TypeScript") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.typescript.typeName)
+            }
+            Button("New Swift") {
+                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.swift.typeName)
+            }
 
             Button("Open\u{2026}") {
                 NSApp.sendAction(#selector(NSDocumentController.openDocument(_:)), to: nil, from: nil)
@@ -123,7 +135,7 @@ struct MarkusCommands: Commands {
 
         CommandMenu("Format") {
             Menu("Document Kind") {
-                ForEach(DocumentKind.waveA, id: \.self) { kind in
+                ForEach(DocumentKind.shipped, id: \.self) { kind in
                     Button(kind.displayName) {
                         Self.sendSetKind(kind)
                     }
@@ -147,6 +159,10 @@ struct MarkusCommands: Commands {
         case .html: selector = MacMainMenuAction.setDocumentKindHTML
         case .svg: selector = MacMainMenuAction.setDocumentKindSVG
         case .toml: selector = MacMainMenuAction.setDocumentKindTOML
+        case .css: selector = MacMainMenuAction.setDocumentKindCSS
+        case .javascript: selector = MacMainMenuAction.setDocumentKindJavaScript
+        case .typescript: selector = MacMainMenuAction.setDocumentKindTypeScript
+        case .swift: selector = MacMainMenuAction.setDocumentKindSwift
         default: return
         }
         NSApp.sendAction(selector, to: nil, from: nil)

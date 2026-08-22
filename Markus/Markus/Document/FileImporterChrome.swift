@@ -9,9 +9,9 @@ import UniformTypeIdentifiers
 /// `DocumentHost` is set, fixes that without changing the host's published
 /// state shape.
 enum FileImporterChrome {
-    /// Wave A kinds plus plain text (unknown extensions still open as markdown).
+    /// Shipped kinds plus plain text (unknown extensions still open as markdown).
     static var documentContentTypes: [UTType] {
-        DocumentKind.waveA.map(\.contentType) + [.plainText]
+        DocumentKind.shipped.map(\.contentType) + [.plainText]
     }
 
     @MainActor
