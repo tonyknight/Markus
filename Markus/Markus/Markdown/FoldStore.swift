@@ -72,6 +72,8 @@ final class FoldStore {
     /// `kind` + `anchor`, replacing stale `startLine`s with the block's
     /// current one. A fold whose anchor no longer matches any block (its
     /// block was deleted) is dropped rather than left dangling (R17).
+    /// `kind` is a profile string; v1.2 Markdown `"heading"` / `"fence"`
+    /// records still match Markdown profile blocks.
     func repair(against blocks: [Block]) {
         var repaired: Set<FoldID> = []
         for id in foldedIDs {

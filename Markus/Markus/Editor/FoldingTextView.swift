@@ -149,6 +149,8 @@ final class FoldingTextLayoutFragment: NSTextLayoutFragment {
 @MainActor
 final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     let foldStore: FoldStore
+    var documentKind: DocumentKind = .markdown
+    private(set) var analysis: SyntaxAnalysis = .empty
     private(set) var blocks: [Block] = []
     private(set) var mode: EditorMode
     private(set) var tokens: ThemeTokens
@@ -274,7 +276,8 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// only need to re-render the cached structure (P3).
     /// `parsesPerformed` is the N8 counter proving that boundary holds.
     private func reparse(markdown: String) {
-        blocks = BlockIndex.build(markdown: markdown)
+        analysis = SyntaxProfiles.profile(for: documentKind).analyze(markdown)
+        blocks = analysis.foldables
         cachedSourceMap = SourceMap(markdown: markdown)
         cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
         parsedPreviewBlocks = PreviewStructureCollector.collect(markdown: markdown)

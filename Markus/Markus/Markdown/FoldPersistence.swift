@@ -12,6 +12,9 @@ final class FoldPersistence {
         self.defaults = defaults
     }
 
+    /// Restores the fold set for `url`. v1.2 records encode `FoldID.kind`
+    /// as the JSON strings `"heading"` and `"fence"`; generalized `Kind`
+    /// still decodes those values so Markdown folds survive relaunch (R4).
     func load(for url: URL) -> Set<FoldID> {
         Set(loadAll()[Self.key(for: url)] ?? [])
     }
