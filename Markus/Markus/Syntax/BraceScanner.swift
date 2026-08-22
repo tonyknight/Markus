@@ -36,6 +36,9 @@ enum BraceDialect: Equatable, Sendable {
     case javascript
     /// Skip `//`, nested `/* */`, strings. Fold `{` for type/func/closure.
     case swift
+    /// Function/class/block `{` only. No HTML-island or `<?php` folds.
+    /// Skip `//`, `/* */`, `#` comments, strings, and heredoc/nowdoc.
+    case php
 }
 
 struct BraceScanResult: Equatable, Sendable {
@@ -45,10 +48,11 @@ struct BraceScanResult: Equatable, Sendable {
     var highlightSpans: [HighlightSpan]
 }
 
-/// Shared brace/block scanner for CSS, JavaScript/TypeScript, and Swift.
+/// Shared brace/block scanner for CSS, JavaScript/TypeScript, Swift, and PHP.
 /// Folds `{…}` that span past the opener line (opener stays visible).
 /// `Block.kind` is `.other` so Markdown Preview substitution never treats
-/// these as fences. `FoldID.Kind` is `.brace`. JSX tags are not fold units.
+/// these as fences. `FoldID.Kind` is `.brace`. JSX tags and PHP HTML
+/// islands / `<?php` openers are not fold units.
 enum BraceScanner {
     static func scan(
         _ buffer: String,
@@ -145,7 +149,7 @@ private struct Engine {
                     skipBlockComment()
                 } else if dialect != .css, peek(at: 1) == UInt8(ascii: "/") {
                     skipLineComment()
-                } else if dialect != .css, canStartRegex {
+                } else if dialect == .javascript || dialect == .swift, canStartRegex {
                     skipRegex()
                 } else {
                     noteSignificant(b)
@@ -158,6 +162,9 @@ private struct Engine {
                 if dialect == .javascript {
                     skipTemplateLiteral()
                     noteSignificant(UInt8(ascii: "`"))
+                } else if dialect == .php {
+                    skipQuotedString(quote: b)
+                    noteSignificant(b)
                 } else {
                     noteSignificant(b)
                     i += 1
@@ -169,6 +176,22 @@ private struct Engine {
                 } else if dialect == .css {
                     skipHashOrNumber()
                     noteSignificant(b)
+                } else if dialect == .php {
+                    if peek(at: 1) == UInt8(ascii: "[") {
+                        noteSignificant(b)
+                        i += 1
+                    } else {
+                        skipHashComment()
+                    }
+                } else {
+                    noteSignificant(b)
+                    i += 1
+                }
+            case UInt8(ascii: "<"):
+                if dialect == .php,
+                   peek(at: 1) == UInt8(ascii: "<"),
+                   peek(at: 2) == UInt8(ascii: "<") {
+                    skipPHPHeredoc()
                 } else {
                     noteSignificant(b)
                     i += 1
@@ -313,6 +336,88 @@ private struct Engine {
             i += 1
         }
         addHighlight(start..<i, role: .comment)
+    }
+
+    /// PHP `#` line comment. `#[` attributes are not comments (caller checks).
+    mutating func skipHashComment() {
+        let start = i
+        i += 1
+        while let b = peek, b != 0x0A {
+            i += 1
+        }
+        addHighlight(start..<i, role: .comment)
+    }
+
+    /// PHP heredoc / nowdoc. Body is a string so `{` inside HTML islands
+    /// copied into `<<<HTML` is not a fold unit.
+    mutating func skipPHPHeredoc() {
+        let start = i
+        let startLine = line
+        i += 3
+        while let b = peek, isHorizontalSpace(b) {
+            i += 1
+        }
+        var quote: UInt8?
+        if peek == UInt8(ascii: "'") || peek == UInt8(ascii: "\"") {
+            quote = peek
+            i += 1
+        }
+        let labelStart = i
+        while let b = peek, isIdentContinue(b) {
+            i += 1
+        }
+        let label = Array(bytes[labelStart..<i])
+        if let quote {
+            guard peek == quote else {
+                addHighlight(start..<i, role: .string)
+                noteSignificant(UInt8(ascii: "\""))
+                return
+            }
+            i += 1
+        }
+        guard !label.isEmpty else {
+            noteSignificant(UInt8(ascii: "<"))
+            return
+        }
+        while let b = peek, b != 0x0A {
+            i += 1
+        }
+        if peek == 0x0A {
+            consumeNewline()
+        }
+        while !atEnd {
+            while let b = peek, isHorizontalSpace(b) {
+                i += 1
+            }
+            if matchPHPHeredocCloser(label) {
+                i += label.count
+                if peek == UInt8(ascii: ";") {
+                    i += 1
+                }
+                addHighlight(start..<i, role: .string)
+                noteSignificant(UInt8(ascii: "\""))
+                return
+            }
+            while let b = peek, b != 0x0A {
+                i += 1
+            }
+            if peek == 0x0A {
+                consumeNewline()
+            }
+        }
+        addDiagnostic(line: startLine, message: "Unclosed string", severity: .error)
+        addHighlight(start..<i, role: .string)
+        noteSignificant(UInt8(ascii: "\""))
+    }
+
+    func matchPHPHeredocCloser(_ label: [UInt8]) -> Bool {
+        for (offset, byte) in label.enumerated() {
+            guard peek(at: offset) == byte else { return false }
+        }
+        let after = peek(at: label.count)
+        return after == nil
+            || after == 0x0A
+            || after == UInt8(ascii: ";")
     }
 
     mutating func skipBlockComment() {
@@ -734,6 +839,8 @@ private struct Engine {
             javascriptKeywords
         case .swift:
             swiftKeywords
+        case .php:
+            phpKeywords
         }
     }
 
@@ -892,4 +999,17 @@ private let swiftKeywords: Set<String> = [
     "try", "typealias", "var", "where", "while", "async", "await",
     "some", "any", "consuming", "borrowing", "isolated", "nonisolated",
     "each", "package", "macro",
+]
+
+private let phpKeywords: Set<String> = [
+    "abstract", "and", "array", "as", "break", "callable", "case", "catch",
+    "class", "clone", "const", "continue", "declare", "default", "die", "do",
+    "echo", "else", "elseif", "empty", "enddeclare", "endfor", "endforeach",
+    "endif", "endswitch", "endwhile", "eval", "exit", "extends", "final",
+    "finally", "fn", "for", "foreach", "function", "global", "goto", "if",
+    "implements", "include", "include_once", "instanceof", "insteadof",
+    "interface", "isset", "list", "match", "namespace", "new", "or", "print",
+    "private", "protected", "public", "readonly", "require", "require_once",
+    "return", "static", "switch", "throw", "trait", "try", "unset", "use",
+    "var", "while", "xor", "yield", "true", "false", "null", "self", "parent",
 ]

@@ -4,8 +4,8 @@ import Foundation
 /// (v1.4) diagnostics / inner-color spans. Markdown wraps today’s
 /// `BlockIndex`; JSON uses `JSONSyntaxProfile`; HTML and SVG share
 /// `HTMLSyntaxProfile`; TOML uses `TOMLSyntaxProfile`; CSS / JS / TS /
-/// Swift use `BraceSyntaxProfile`. PHP and Shell stay empty until
-/// their ticket.
+/// Swift / PHP use `BraceSyntaxProfile`. Shell stays empty until
+/// its ticket.
 protocol SyntaxProfile: Sendable {
     func analyze(_ buffer: String) -> SyntaxAnalysis
 }
@@ -78,6 +78,8 @@ enum SyntaxProfiles {
             BraceSyntaxProfile.javascript
         case .swift:
             BraceSyntaxProfile.swift
+        case .php:
+            BraceSyntaxProfile.php
         default:
             EmptySyntaxProfile()
         }
