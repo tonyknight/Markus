@@ -18,6 +18,10 @@ struct MarkusApp: App {
         // A real `Window`, not `Settings`. SwiftUI's Settings scene is a
         // non-resizable panel; `windowResizability` does not give it
         // edge handles. Gear, Markus → Settings…, and ⌘, open this id.
+        //
+        // This is the only SwiftUI window scene, so it would otherwise
+        // open at launch. `MarkusAppDelegate` closes that unsolicited
+        // presentation; `isRestorable = false` stops session restore.
         Window("Settings", id: SettingsWindowChrome.windowID) {
             SettingsWindowView()
         }

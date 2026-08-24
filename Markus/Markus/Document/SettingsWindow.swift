@@ -37,6 +37,27 @@ enum SettingsWindowChrome {
     static func open(_ openWindow: OpenWindowAction) {
         openWindow(id: windowID)
     }
+
+    @MainActor
+    static func applyWindowPolicy(_ window: NSWindow) {
+        window.identifier = NSUserInterfaceItemIdentifier(windowID)
+        window.isRestorable = false
+    }
+
+    @MainActor
+    static func isSettingsWindow(_ window: NSWindow) -> Bool {
+        if window.identifier?.rawValue == windowID { return true }
+        return window.title == "Settings" && window.windowController == nil
+    }
+
+    /// Close Settings if SwiftUI presented it as the primary scene at
+    /// launch. Menu / gear / ⌘, still call `open`.
+    @MainActor
+    static func closeIfUnsolicited() {
+        for window in NSApp.windows where isSettingsWindow(window) {
+            window.close()
+        }
+    }
 }
 
 /// Warp-style Preferences root: category list on the left, detail on the
@@ -191,6 +212,7 @@ private final class SettingsWindowResizeHookView: NSView {
 
     func enableResize() {
         guard let window else { return }
+        SettingsWindowChrome.applyWindowPolicy(window)
         if !window.styleMask.contains(.resizable) {
             window.styleMask.insert(.resizable)
         }

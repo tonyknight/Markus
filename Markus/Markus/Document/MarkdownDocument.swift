@@ -337,6 +337,7 @@ final class MarkdownDocument: NSDocument {
 
 final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
     private let documentController = MarkusDocumentController()
+    private var launchSettingsObserver: NSObjectProtocol?
 
     // The File/Edit menu content lives in `MarkusCommands` (SwiftUI
     // `Commands`, attached via `.commands { }` on `MarkusApp`'s Settings
@@ -350,8 +351,32 @@ final class MarkusAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
         _ = documentController
+        SettingsWindowChrome.closeIfUnsolicited()
+        launchSettingsObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow else { return }
+            if SettingsWindowChrome.isSettingsWindow(window) {
+                window.close()
+            }
+        }
         if documentController.documents.isEmpty {
             _ = try? MacDocumentLaunch.openUntitledDocument()
+        }
+        DispatchQueue.main.async { [weak self] in
+            SettingsWindowChrome.closeIfUnsolicited()
+            DispatchQueue.main.async {
+                self?.stopLaunchSettingsObserver()
+            }
+        }
+    }
+
+    private func stopLaunchSettingsObserver() {
+        if let launchSettingsObserver {
+            NotificationCenter.default.removeObserver(launchSettingsObserver)
+            self.launchSettingsObserver = nil
         }
     }
 
