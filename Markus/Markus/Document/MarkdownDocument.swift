@@ -317,6 +317,11 @@ final class MarkdownDocument: NSDocument {
     func applyUntitledKind(_ kind: DocumentKind) {
         fileType = kind.typeName
         session.setKind(kind)
+        // Untitled is for typing. Markdown otherwise keeps the Editor
+        // default (Preview), and Preview has no caret — File → New
+        // Markdown looked broken while JSON/HTML worked (those kinds
+        // already force Source). Existing files still honor the default.
+        session.setMode(.source)
     }
 
     nonisolated override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] {
