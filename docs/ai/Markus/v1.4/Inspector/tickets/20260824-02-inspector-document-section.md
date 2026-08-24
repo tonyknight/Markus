@@ -3,10 +3,10 @@ id: 20260824-02-inspector-document-section
 title: Inspector Document section
 type: feature
 priority: high
-status: todo
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: Filename, kind, UTF-8, line count
 parent:
 depends_on:
@@ -14,8 +14,8 @@ depends_on:
 subtasks:
 - id: T01
   title: Document metadata and kind controls
-  status: todo
-plan_status: approved
+  status: done
+plan_status: done
 current_task: T01
 ---
 ## Description
@@ -24,11 +24,11 @@ Fill the Document section: filename (or Untitled), current `DocumentKind`, UTF-8
 
 ## Acceptance criteria
 
-- [ ] Filename reflects the open file or Untitled.
-- [ ] Kind picker lists `DocumentKind.shipped` and calls `setKind`.
-- [ ] Pin/Unpin match v1.3 (pin needs a file URL; unpin disabled when not pinned).
-- [ ] Line count is derived from the buffer; encoding label is UTF-8.
-- [ ] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
+- [x] Filename reflects the open file or Untitled.
+- [x] Kind picker lists `DocumentKind.shipped` and calls `setKind`.
+- [x] Pin/Unpin match v1.3 (pin needs a file URL; unpin disabled when not pinned).
+- [x] Line count is derived from the buffer; encoding label is UTF-8.
+- [x] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
 
 ## Context
 
@@ -38,7 +38,7 @@ NO TDD. Gate is xcodebuild Debug build.
 
 ## Subtasks
 
-- [ ] T01 Document metadata and kind controls.
+- [x] T01 Document metadata and kind controls.
 
 ## Implementation plan
 
@@ -52,8 +52,17 @@ Replace the Document placeholder in `InspectorPane`. Line count: split on newlin
 Files: `Markus/Markus/Inspector/InspectorPane.swift`, possibly a `InspectorDocumentSection.swift`
 
 Verify: same three `xcodebuild` Debug builds as ticket 01.
-- [ ] done
+- [x] done
 
 ## Notes
 
 - 2026-08-24: Ticket created. Depends on 01.
+- 2026-08-24: Document section shows name, kind picker, Pin/Unpin, UTF-8, line count. Debug builds succeeded.
+
+## Review
+
+- Date: 2026-08-24
+- Verdict: Minors only
+- Findings:
+  - Document section uses `setKind` / `pinKind` / `unpinKind` and `DocumentKind.shipped`. Pin disabled without a file URL.
+  - Kind picker hides its label visually (`.labelsHidden()`) but keeps an accessibility label.

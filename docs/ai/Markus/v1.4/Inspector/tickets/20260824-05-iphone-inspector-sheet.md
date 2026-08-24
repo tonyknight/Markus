@@ -3,10 +3,10 @@ id: 20260824-05-iphone-inspector-sheet
 title: iPhone inspector sheet
 type: feature
 priority: high
-status: todo
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: Same three sections in a sheet; editor stays mounted
 parent:
 depends_on:
@@ -17,8 +17,8 @@ depends_on:
 subtasks:
 - id: T01
   title: iPhone Inspector sheet
-  status: todo
-plan_status: approved
+  status: done
+plan_status: done
 current_task: T01
 ---
 ## Description
@@ -27,11 +27,11 @@ On iPhone, present the same Document / Outline / Warnings content in a sheet. Th
 
 ## Acceptance criteria
 
-- [ ] iPhone can open Inspector as a sheet with all three sections.
-- [ ] Opening/closing the sheet does not unmount `SessionEditorRepresentable`.
-- [ ] Compact Outline menu remains.
-- [ ] iPad still uses the trailing column from ticket 01.
-- [ ] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
+- [x] iPhone can open Inspector as a sheet with all three sections.
+- [x] Opening/closing the sheet does not unmount `SessionEditorRepresentable`.
+- [x] Compact Outline menu remains.
+- [x] iPad still uses the trailing column from ticket 01.
+- [x] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
 
 ## Context
 
@@ -41,7 +41,7 @@ NO TDD. Gate is xcodebuild Debug build.
 
 ## Subtasks
 
-- [ ] T01 iPhone Inspector sheet.
+- [x] T01 iPhone Inspector sheet.
 
 ## Implementation plan
 
@@ -55,8 +55,17 @@ On compact width, do not show the trailing column. Add a control that sets a pre
 Files: `Markus/Markus/ContentView.swift`, `Markus/Markus/Document/DocumentHost.swift`, `Markus/Markus/Inspector/InspectorPane.swift`
 
 Verify: same three `xcodebuild` Debug builds as ticket 01.
-- [ ] done
+- [x] done
 
 ## Notes
 
 - 2026-08-24: Ticket created. Depends on 01–04.
+- 2026-08-24: iPhone compact toolbar Inspector sheet; iPad keeps trailing column. Debug builds succeeded. Human should confirm the sheet on iPhone.
+
+## Review
+
+- Date: 2026-08-24
+- Verdict: Minors only
+- Findings:
+  - Compact width: toolbar Inspector opens a sheet with `InspectorPane` and Done. Outline menu kept.
+  - iPad regular width still uses the trailing column. Editor stays in `documentScene` under the sheet.

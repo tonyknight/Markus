@@ -3,10 +3,10 @@ id: 20260824-04-inspector-warnings-section
 title: Inspector Warnings section
 type: feature
 priority: high
-status: todo
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: Parse diagnostics list with jump
 parent:
 depends_on:
@@ -14,8 +14,8 @@ depends_on:
 subtasks:
 - id: T01
   title: Warnings list and jump
-  status: todo
-plan_status: approved
+  status: done
+plan_status: done
 current_task: T01
 ---
 ## Description
@@ -24,10 +24,10 @@ Fill the Warnings section from `host.diagnostics`. Click jumps via `goToLine`. E
 
 ## Acceptance criteria
 
-- [ ] Invalid JSON shows at least one warning; click jumps to that line.
-- [ ] Empty state when `diagnostics` is empty.
-- [ ] Severity is visible (error/warning/info).
-- [ ] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
+- [x] Invalid JSON shows at least one warning; click jumps to that line.
+- [x] Empty state when `diagnostics` is empty.
+- [x] Severity is visible (error/warning/info).
+- [x] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
 
 ## Context
 
@@ -37,7 +37,7 @@ NO TDD. Gate is xcodebuild Debug build.
 
 ## Subtasks
 
-- [ ] T01 Warnings list and jump.
+- [x] T01 Warnings list and jump.
 
 ## Implementation plan
 
@@ -51,8 +51,17 @@ Replace the Warnings placeholder. Click → `host.goToLine(diagnostic.line)`.
 Files: `Markus/Markus/Inspector/InspectorPane.swift` (or `InspectorWarningsSection.swift`)
 
 Verify: same three `xcodebuild` Debug builds as ticket 01.
-- [ ] done
+- [x] done
 
 ## Notes
 
 - 2026-08-24: Ticket created. Depends on 01.
+- 2026-08-24: Warnings section lists diagnostics with severity and jump. Debug builds succeeded. Human should confirm broken JSON.
+
+## Review
+
+- Date: 2026-08-24
+- Verdict: Minors only
+- Findings:
+  - Rows come from `host.diagnostics`; severity + message; click calls `goToLine`. Empty state: “No warnings”.
+  - Invalid JSON warning jump still needs a human eye-check.

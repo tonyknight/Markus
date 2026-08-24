@@ -16,6 +16,8 @@ origin_branch: main
 worktree: true
 ---
 
+<!-- Board closed 2026-08-24. Tickets 01–05 done. Implementation on bora/markus-v1-4-inspector. -->
+
 # Markus v1.4 — Inspector
 
 v1.3 gives Markus document kinds and folding for a small language list. Navigation still lives in a toolbar Outline menu (headings only) and a left library folder tree. CotEditor’s right-hand inspector — document metadata, a hierarchical outline, and warnings — is the product reference for this release. We implement our own pane on the existing ribbon/split, not theirs.

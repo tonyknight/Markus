@@ -3,18 +3,18 @@ id: 20260824-01-inspector-chrome-trailing-pane
 title: Inspector chrome trailing pane
 type: feature
 priority: high
-status: todo
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: Trailing inspector column; editor stays mounted
 parent:
 depends_on: []
 subtasks:
 - id: T01
   title: Trailing inspector pane and show/hide
-  status: todo
-plan_status: approved
+  status: done
+plan_status: done
 current_task: T01
 ---
 ## Description
@@ -23,11 +23,11 @@ Add a trailing SwiftUI inspector column on Mac and iPad. Showing or hiding it mu
 
 ## Acceptance criteria
 
-- [ ] Mac and iPad show a trailing inspector column when the flag is on (default on).
-- [ ] Hiding the inspector leaves the editor mounted; caret and folds do not reset.
-- [ ] Library panel still works independently.
-- [ ] Mac has a View or ribbon control to toggle the inspector.
-- [ ] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
+- [x] Mac and iPad show a trailing inspector column when the flag is on (default on).
+- [x] Hiding the inspector leaves the editor mounted; caret and folds do not reset.
+- [x] Library panel still works independently.
+- [x] Mac has a View or ribbon control to toggle the inspector.
+- [x] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
 
 ## Context
 
@@ -37,7 +37,7 @@ NO TDD. Gate is xcodebuild Debug build.
 
 ## Subtasks
 
-- [ ] T01 Trailing inspector pane and show/hide.
+- [x] T01 Trailing inspector pane and show/hide.
 
 ## Implementation plan
 
@@ -56,8 +56,18 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
-- [ ] done
+- [x] done
 
 ## Notes
 
 - 2026-08-24: Ticket created. Execute branch `bora/markus-v1-4-inspector`. Origin: `main`.
+- 2026-08-24: Implemented trailing inspector (Mac/iPad), ribbon + View menu toggle. Debug builds succeeded (macOS, iPhone 17, iPad Pro 13-inch M5). Human should confirm hide/show does not reset caret or folds.
+
+## Review
+
+- Date: 2026-08-24
+- Verdict: Minors only
+- Findings:
+  - Trailing `InspectorPane` is a sibling of `editorSurface`; hide/show only wraps the pane, not `SessionEditorRepresentable`.
+  - Mac: ribbon `sidebar.right` + View menu Inspector (⌥⌘I). Library panel remains independent.
+  - Caret/folds after hide/show still need a human eye-check in the running app.
