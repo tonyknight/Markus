@@ -26,7 +26,8 @@ enum UTF8NSRange {
         let lower = utf8.index(utf8.startIndex, offsetBy: utf8Bytes.lowerBound)
         let upper = utf8.index(utf8.startIndex, offsetBy: utf8Bytes.upperBound)
         guard let stringLower = String.Index(lower, within: string),
-              let stringUpper = String.Index(upper, within: string)
+              let stringUpper = String.Index(upper, within: string),
+              stringLower <= stringUpper
         else {
             return NSRange(location: NSNotFound, length: 0)
         }
@@ -277,7 +278,10 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// `parsesPerformed` is the N8 counter proving that boundary holds.
     private func reparse(markdown: String) {
         analysis = SyntaxProfiles.profile(for: documentKind).analyze(markdown)
-        blocks = analysis.foldables
+        // Folding is already kind-flexible: each SyntaxProfile feeds
+        // FoldStore. Drop any block whose byte/line extents would be
+        // unsafe to turn into Range (defense if a scanner slips).
+        blocks = analysis.foldables.filter(Self.hasOrderedExtents)
         cachedSourceMap = SourceMap(markdown: markdown)
         cachedUTF16LineOffsets = UTF16LineOffsets(markdown: markdown)
         // Markdown Preview substitution is cmark on the full buffer.
@@ -298,6 +302,15 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         previewBlockAnchorLines = Set(nonFenceAnchors).union(foldableStartLines)
         previewBlockAnchorLinesSorted = previewBlockAnchorLines.sorted()
         parsesPerformed += 1
+    }
+
+    /// `Range` traps if lower > upper. Scanners should never emit that;
+    /// skip the block if they do so opening HTML/SVG/JSON cannot crash.
+    private static func hasOrderedExtents(_ block: Block) -> Bool {
+        if block.bytes.lowerBound > block.bytes.upperBound { return false }
+        if block.lines.lowerBound > block.lines.upperBound { return false }
+        if let extent = block.foldExtent, extent.lowerBound > extent.upperBound { return false }
+        return true
     }
 
     /// Resolves `line` to the nearest source line at or after it that
@@ -707,9 +720,10 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
         let lineRanges = previewSelectionSourceLineRanges(forUTF16Range: selection)
         guard !lineRanges.isEmpty else { return nil }
 
-        let byteRanges = lineRanges.map { lines -> Range<Int> in
+        let byteRanges = lineRanges.compactMap { lines -> Range<Int>? in
             let start = sourceMap.offset(ofLine: lines.lowerBound)
             let end = sourceMap.endOffset(ofLine: lines.upperBound - 1)
+            guard start <= end else { return nil }
             return start..<end
         }.sorted { $0.lowerBound < $1.lowerBound }
 
@@ -1182,7 +1196,10 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
         for line in lineRangeToScan {
             sourceLinesScannedLastGutterCompute += 1
-            let bytes = sourceMap.offset(ofLine: line)..<sourceMap.endOffset(ofLine: line)
+            let lower = sourceMap.offset(ofLine: line)
+            let upper = sourceMap.endOffset(ofLine: line)
+            guard lower <= upper else { continue }
+            let bytes = lower..<upper
             let lineRange = UTF8NSRange.nsRange(utf8Bytes: bytes, in: string)
             guard lineRange.location != NSNotFound else { continue }
             if isHidden(lineRange: lineRange, hidden: hidden) { continue }
