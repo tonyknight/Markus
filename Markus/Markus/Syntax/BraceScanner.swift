@@ -308,8 +308,8 @@ private struct Engine {
     mutating func finishBrace(_ open: BraceOpen) {
         let closerEnd = i
         let openerEnd = endOffset(ofLine: open.openerLine)
-        let proposed = openerEnd..<closerEnd
-        guard !proposed.isEmpty, openerEnd < closerEnd else { return }
+        guard let proposed = Block.extentAfterOpenerLine(openerEnd: openerEnd, closerEnd: closerEnd) else { return }
+        guard open.openerOffset <= closerEnd else { return }
         guard foldables.count < budget.maxFoldables else {
             markTruncated()
             return

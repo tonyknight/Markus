@@ -10,8 +10,17 @@ import UniformTypeIdentifiers
 /// state shape.
 enum FileImporterChrome {
     /// Shipped kinds plus plain text (unknown extensions still open as markdown).
+    /// `public.markdown` is the system UTI macOS tags `.md` with — include
+    /// it explicitly so the Open panel is not limited to our imported
+    /// Daring Fireball UTI. `UTType.markdown` is not available on the
+    /// macOS 14 / iOS 17 SDK this app targets.
     static var documentContentTypes: [UTType] {
-        DocumentKind.shipped.map(\.contentType) + [.plainText]
+        var types = DocumentKind.shipped.map(\.contentType)
+        if let publicMarkdown = UTType("public.markdown"),
+           !types.contains(where: { $0.identifier == publicMarkdown.identifier }) {
+            types.insert(publicMarkdown, at: 0)
+        }
+        return types + [.plainText]
     }
 
     @MainActor

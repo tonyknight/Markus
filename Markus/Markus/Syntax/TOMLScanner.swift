@@ -493,8 +493,8 @@ private struct Engine {
                 closerLine = max(header.openerLine, line)
             }
             let openerEnd = endOffset(ofLine: header.openerLine)
-            let proposed = openerEnd..<nextStart
-            guard !proposed.isEmpty, openerEnd < nextStart else { continue }
+            guard let proposed = Block.extentAfterOpenerLine(openerEnd: openerEnd, closerEnd: nextStart) else { continue }
+            guard header.openerOffset <= nextStart else { continue }
             let opening = openingLineText(start: header.openerLineStart, line: header.openerLine)
             let column = header.openerOffset - header.openerLineStart
             let anchor = FoldAnchor.digest("\(opening)\n\(column)")

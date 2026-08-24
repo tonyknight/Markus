@@ -59,6 +59,15 @@ nonisolated struct Block: Equatable, Sendable {
     var bytes: Range<Int>
     var lines: Range<Int>
     var foldExtent: Range<Int>?
+
+    /// Fold interior after the opener line. Same-line or inverted
+    /// bounds return nil. Never forms `lower..<upper` when `lower > upper`
+    /// — that traps (`Range requires lowerBound <= upperBound`).
+    static func extentAfterOpenerLine(openerEnd: Int, closerEnd: Int) -> Range<Int>? {
+        guard openerEnd <= closerEnd else { return nil }
+        let proposed = openerEnd..<closerEnd
+        return proposed.isEmpty ? nil : proposed
+    }
 }
 
 nonisolated enum BlockIndex: Sendable {
@@ -90,13 +99,17 @@ nonisolated enum BlockIndex: Sendable {
                     return false
                 }
                 let upper = next?.bytes.lowerBound ?? markdown.utf8.count
-                let proposed = parsedBlock.bytes.upperBound..<upper
-                foldExtent = proposed.isEmpty ? nil : proposed
+                foldExtent = Block.extentAfterOpenerLine(
+                    openerEnd: parsedBlock.bytes.upperBound,
+                    closerEnd: upper
+                )
             case .fencedCode:
                 foldKind = .fence
                 let openerEnd = sourceMap.endOffset(ofLine: parsedBlock.lines.lowerBound)
-                let proposed = openerEnd..<parsedBlock.bytes.upperBound
-                foldExtent = proposed.isEmpty ? nil : proposed
+                foldExtent = Block.extentAfterOpenerLine(
+                    openerEnd: openerEnd,
+                    closerEnd: parsedBlock.bytes.upperBound
+                )
             case .other:
                 preconditionFailure("filtered out")
             }
@@ -157,6 +170,7 @@ struct SourceMap: Sendable {
     func byteRange(startLine: Int, endLine: Int) -> Range<Int> {
         let lower = offset(ofLine: startLine)
         let upper = endOffset(ofLine: endLine)
+        guard lower <= upper else { return lower..<lower }
         return lower..<upper
     }
 
