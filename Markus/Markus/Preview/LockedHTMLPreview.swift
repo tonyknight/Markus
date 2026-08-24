@@ -20,9 +20,34 @@ enum LockedHTMLPreviewPolicy {
     /// a file sandbox.
     static func documentHTML(buffer: String, kind: DocumentKind) -> String {
         if kind == .svg {
-            return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head><body style=\"margin:0\">\(buffer)</body></html>"
+            return wrappedSVG(buffer)
         }
         return buffer
+    }
+
+    /// Inline the SVG in an HTML shell. Strip `<?xml …?>` and an SVG
+    /// `<!DOCTYPE …>` first — WebKit can fail the WebContent process
+    /// when those sit inside `<body>`.
+    static func wrappedSVG(_ buffer: String) -> String {
+        let svg = stripLeadingXMLProlog(buffer)
+        return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head><body style=\"margin:0\">\(svg)</body></html>"
+    }
+
+    static func stripLeadingXMLProlog(_ buffer: String) -> String {
+        var remainder = buffer
+        while true {
+            let trimmed = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = trimmed.lowercased()
+            if lower.hasPrefix("<?xml"), let end = trimmed.range(of: "?>") {
+                remainder = String(trimmed[end.upperBound...])
+                continue
+            }
+            if lower.hasPrefix("<!doctype"), let end = trimmed.range(of: ">") {
+                remainder = String(trimmed[end.upperBound...])
+                continue
+            }
+            return trimmed
+        }
     }
 
     static func allows(_ url: URL?) -> Bool {

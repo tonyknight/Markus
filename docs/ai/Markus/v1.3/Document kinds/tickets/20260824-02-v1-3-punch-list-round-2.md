@@ -19,8 +19,8 @@ subtasks:
   status: done
 - id: T03
   title: SVG Preview WebKit sandbox
-  status: todo
-plan_status: approved
+  status: done
+plan_status: done
 current_task: T03
 ---
 ## Description
@@ -29,9 +29,9 @@ Second punch list after visual testing of 20260824-01. New-document picker leave
 
 ## Acceptance criteria
 
-- [ ] After File → New and Create in the type picker, Source has a blinking caret and typing inserts. Launch untitled (no picker) still works.
-- [ ] HTML Preview renders the buffer in the locked WKWebView. Navigation and script stay off. Subresource URL loads still blocked.
-- [ ] SVG Preview renders the buffer (inline SVG in a minimal HTML shell). Same lockdown.
+- [x] After File → New and Create in the type picker, Source has a blinking caret and typing inserts. Launch untitled (no picker) still works.
+- [x] HTML Preview renders the buffer in the locked WKWebView. Navigation and script stay off. Subresource URL loads still blocked.
+- [x] SVG Preview renders the buffer (inline SVG in a minimal HTML shell). Same lockdown.
 
 ## Context
 
@@ -47,7 +47,7 @@ Issues 7–8: `ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO` and no `network.client`
 
 - [x] T01 Focus editor after New picker.
 - [x] T02 HTML Preview: WebKit sandbox + content-rule store in container.
-- [ ] T03 SVG Preview: XML prolog strip + same WebKit path.
+- [x] T03 SVG Preview: XML prolog strip + same WebKit path.
 
 ## Implementation plan
 
@@ -92,10 +92,22 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
-- [ ] todo
+- [x] done
 
 ## Notes
 
 - 2026-08-24: Ticket created. Worktree `.worktrees/v1.3-punch-list-2`, branch `bora/markus-v1-3-punch-list-2`.
 - 2026-08-24 T01: Picker closes then creates untitled on the next turn; document window is made key; FoldingTextView takes first responder when its window is key. macOS Debug BUILD SUCCEEDED.
 - 2026-08-24 T02: `network.client` + outgoing network for WebKit helper; content-rule store under Caches. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.
+- 2026-08-24 T03: Strip SVG `<?xml` / doctype before the HTML shell. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.
+
+## Review
+
+2026-08-24. Verdict: **minors only**.
+
+Commits T01–T03 on `bora/markus-v1-3-punch-list-2`. Spec matches: picker yields a key document window and first responder; WebKit helper is allowed to start; SVG wrapper drops XML prolog. N5 still cancels `http`/`https`/`file` and requires content rules before load.
+
+- Minor: no on-screen confirmation of caret blink or HTML/SVG Preview in this session.
+- Minor: `network.client` is broader than “the page cannot fetch”; policy is still enforced in the WebView, not by omitting the entitlement.
+
+No Critical or Important. Ticket can close.
