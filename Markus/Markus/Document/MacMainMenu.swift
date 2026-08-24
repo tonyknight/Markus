@@ -25,6 +25,7 @@ enum MacMainMenuAction {
     static let setDocumentKindShell = Selector(("setDocumentKindShell:"))
     static let pinDocumentKind = Selector(("pinDocumentKind:"))
     static let unpinDocumentKind = Selector(("unpinDocumentKind:"))
+    static let performToggleInspector = Selector(("performToggleInspector:"))
     static let openRecentDocument = #selector(RecentDocumentsMenuDelegate.openRecentDocument(_:))
 }
 

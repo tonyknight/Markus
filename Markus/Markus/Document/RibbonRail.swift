@@ -43,6 +43,16 @@ struct RibbonRailView: View {
             .accessibilityLabel("Toggle Library")
             .accessibilityIdentifier(RibbonRailChrome.Identifier.hamburger)
 
+            Button {
+                host.toggleInspector()
+            } label: {
+                Image(systemName: "sidebar.right")
+                    .imageScale(.large)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Toggle Inspector")
+            .accessibilityIdentifier("ribbon.inspector")
+
             Spacer()
 
             Button {

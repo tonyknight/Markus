@@ -12,6 +12,16 @@ enum EditorCommands {
     }
 
     @MainActor
+    static func toggleInspector(on host: DocumentHost) {
+        host.toggleInspector()
+    }
+
+    @MainActor
+    static func presentInspectorSheet(on host: DocumentHost) {
+        host.presentInspectorSheet()
+    }
+
+    @MainActor
     static func toggleSourcePreview(on host: DocumentHost) {
         host.toggleSourcePreview()
     }

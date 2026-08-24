@@ -13,6 +13,10 @@ final class DocumentHost: ObservableObject {
     @Published var isFolderImporterPresented = false
     @Published var isSettingsPresented = false
     @Published var isLibraryPanelOpen = false
+    /// Trailing inspector column (Mac / iPad). Default on.
+    @Published var isInspectorPresented = true
+    /// iPhone sheet. Default off until the user opens Inspector.
+    @Published var isInspectorSheetPresented = false
     @Published var isOutlinePresented = false
     @Published var isFindPresented = false
     @Published var isGoToLinePresented = false
@@ -380,6 +384,16 @@ final class DocumentHost: ObservableObject {
     /// whether to show the tree or an empty state for that case.
     func toggleLibraryPanel() {
         isLibraryPanelOpen.toggle()
+        objectWillChange.send()
+    }
+
+    func toggleInspector() {
+        isInspectorPresented.toggle()
+        objectWillChange.send()
+    }
+
+    func presentInspectorSheet() {
+        isInspectorSheetPresented = true
         objectWillChange.send()
     }
 

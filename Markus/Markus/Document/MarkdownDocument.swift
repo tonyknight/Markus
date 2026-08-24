@@ -192,6 +192,10 @@ final class MarkdownDocumentViewController: NSHostingController<ContentView> {
     @objc func unpinDocumentKind(_ sender: Any?) {
         host.unpinKind()
     }
+
+    @objc func performToggleInspector(_ sender: Any?) {
+        host.toggleInspector()
+    }
 }
 
 final class MarkdownDocument: NSDocument {

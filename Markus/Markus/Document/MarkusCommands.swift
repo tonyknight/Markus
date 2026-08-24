@@ -108,6 +108,13 @@ struct MarkusCommands: Commands {
             .keyboardShortcut("u", modifiers: [.command, .shift])
         }
 
+        CommandGroup(after: .sidebar) {
+            Button("Inspector") {
+                NSApp.sendAction(MacMainMenuAction.performToggleInspector, to: nil, from: nil)
+            }
+            .keyboardShortcut("i", modifiers: [.command, .option])
+        }
+
         CommandMenu("Format") {
             Menu("Document Kind") {
                 ForEach(DocumentKind.shipped, id: \.self) { kind in

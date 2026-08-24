@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var host: DocumentHost
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         // macOS Settings is a separate window (ticket 01). Always keep
@@ -46,6 +47,20 @@ struct ContentView: View {
                 }
                 .sheet(isPresented: $host.isGoToLinePresented) {
                     GoToLineSheet(host: host)
+                }
+                .sheet(isPresented: $host.isInspectorSheetPresented) {
+                    NavigationStack {
+                        InspectorPane(host: host)
+                            .navigationTitle("Inspector")
+                            #if os(iOS)
+                            .navigationBarTitleDisplayMode(.inline)
+                            #endif
+                            .toolbar {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Done") { host.isInspectorSheetPresented = false }
+                                }
+                            }
+                    }
                 }
                 .alert("Open Failed", isPresented: Binding(
                     get: { host.errorMessage != nil },
@@ -91,6 +106,10 @@ struct ContentView: View {
             } else {
                 HStack(spacing: 0) {
                     editorSurface
+                    if showsTrailingInspector {
+                        InspectorPane(host: host)
+                            .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+                    }
                     #if os(macOS)
                     if MacOnlyChrome.hasMinimapInChrome {
                         MacMinimapRepresentable(editor: host.session.editor)
@@ -103,7 +122,15 @@ struct ContentView: View {
         }
     }
 
-    /// Keep `SessionEditorRepresentable` mounted (v1.1 Settings lesson).
+    /// Trailing column on Mac and iPad. iPhone uses the inspector sheet.
+    private var showsTrailingInspector: Bool {
+        guard host.isInspectorPresented else { return false }
+        #if os(macOS)
+        return true
+        #else
+        return horizontalSizeClass == .regular
+        #endif
+    }
     /// HTML/SVG Preview is a WKWebView overlay — not a branch that
     /// destroys the NSView/UIView. Markdown Preview stays inside
     /// FoldingTextView substitution.
@@ -137,6 +164,7 @@ struct ContentView: View {
 
 private struct DocumentToolbar: ToolbarContent {
     @ObservedObject var host: DocumentHost
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some ToolbarContent {
         #if os(macOS)
@@ -213,6 +241,12 @@ private struct DocumentToolbar: ToolbarContent {
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
             .accessibilityIdentifier(ToolbarChrome.Identifier.outline)
+        }
+        if horizontalSizeClass == .compact {
+            ToolbarItem(placement: .automatic) {
+                Button("Inspector") { EditorCommands.presentInspectorSheet(on: host) }
+                    .accessibilityIdentifier("toolbar.inspector")
+            }
         }
         if host.session.kind.showsPreview {
             ToolbarItem(placement: .automatic) {
