@@ -39,37 +39,6 @@ struct MarkusCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: .command)
 
-            Button("New JSON") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.json.typeName)
-            }
-            Button("New HTML") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.html.typeName)
-            }
-            Button("New SVG") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.svg.typeName)
-            }
-            Button("New TOML") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.toml.typeName)
-            }
-            Button("New CSS") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.css.typeName)
-            }
-            Button("New JavaScript") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.javascript.typeName)
-            }
-            Button("New TypeScript") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.typescript.typeName)
-            }
-            Button("New Swift") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.swift.typeName)
-            }
-            Button("New PHP") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.php.typeName)
-            }
-            Button("New Shell") {
-                _ = try? MacDocumentLaunch.openUntitledDocument(ofType: DocumentKind.shell.typeName)
-            }
-
             Button("Open\u{2026}") {
                 NSApp.sendAction(#selector(NSDocumentController.openDocument(_:)), to: nil, from: nil)
             }

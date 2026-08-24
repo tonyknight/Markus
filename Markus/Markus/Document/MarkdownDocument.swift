@@ -29,6 +29,13 @@ final class MarkusDocumentController: NSDocumentController {
     override func typeForContents(of url: URL) throws -> String {
         KindPin().resolvedKind(for: url).typeName
     }
+
+    /// ⌘N / File → New shows the type picker. Launch untitled (empty
+    /// docs at startup) still calls `MacDocumentLaunch.openUntitledDocument()`
+    /// directly and stays Markdown with no picker.
+    override func newDocument(_ sender: Any?) {
+        NewDocumentKindPicker.present()
+    }
 }
 
 enum MacDocumentLaunch {
