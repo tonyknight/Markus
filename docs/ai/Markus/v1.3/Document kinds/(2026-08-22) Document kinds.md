@@ -3,7 +3,7 @@ hierarchy:
 - Markus
 - v1.3
 - Document kinds
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-24
 focus: "Open JSON, HTML, and a short language list with Markus folding — not a CotEditor clone"
 routing: true
 routing_cache:
@@ -143,3 +143,7 @@ v1.3 produces outline items and parse diagnostics as **data**. v1.4 Inspector is
 - ~~Does Wave B ship in v1.3 or wait until the JSON/HTML kernel is proven?~~ **Decided 2026-08-22:** Wave B (CSS, JS, TS, Swift, PHP; Shell last) ships in **v1.3 if the Wave A kernel is stable**. If JSON/HTML/SVG/TOML folding + kind assignment is not solid, Wave B slips to a follow-on briefing rather than stretching a broken kernel.
 - ~~Is kind override persisted per file (bookmark/sidecar) or session-only?~~ **Decided 2026-08-22:** Extension/UTI chooses the kind by default. An override is persisted per file **only when the user explicitly pins** a kind. Unpinning returns to extension/UTI.
 - ~~Default for untitled documents: always Markdown, or last-used kind?~~ **Decided 2026-08-22:** Untitled / File → New is always Markdown. Creating a JSON (or other) file is an explicit New of that kind, not a remembered last type.
+
+## Board
+
+**Closed 2026-08-24.** Wave A kinds, Wave B folds, punch-list, and HTML Preview (in-app scheme so WebContent can render user folders) are on local `main`. HTML/SVG Preview is a full WebKit render, not a locked buffer. Not pushed to origin.

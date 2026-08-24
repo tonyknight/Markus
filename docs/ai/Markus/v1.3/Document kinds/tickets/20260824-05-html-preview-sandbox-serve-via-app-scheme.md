@@ -3,10 +3,10 @@ id: 20260824-05-html-preview-sandbox-serve-via-app-scheme
 title: HTML Preview sandbox serve via app scheme
 type: bug
 priority: high
-status: in-progress
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: loadFileURL is rejected outside the app sandbox
 parent:
 depends_on: []
@@ -30,10 +30,10 @@ Serve the live buffer from the app process via a custom URL scheme. Sibling CSS/
 
 ## Acceptance criteria
 
-- [ ] Opening a saved HTML file in Preview shows the page (not a blank WebView).
-- [ ] Relative CSS, scripts, and images load when the folder is accessible (Open Folder, or the document directory).
-- [ ] Remote `http`/`https` assets still load.
-- [ ] JavaScript runs.
+- [x] Opening a saved HTML file in Preview shows the page (not a blank WebView).
+- [x] Relative CSS, scripts, and images load when the folder is accessible (Open Folder, or the document directory).
+- [x] Remote `http`/`https` assets still load.
+- [x] JavaScript runs.
 - [x] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
 
 ## Context
@@ -67,3 +67,8 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 
 - 2026-08-24: Human logs from Preview of `dianabelenky`. Branch `bora/markus-v1-3-html-preview-scheme`. Origin: `main`.
 - 2026-08-24: T01 implemented. Debug builds succeeded. Waiting on in-app Preview of `dianabelenky`.
+- 2026-08-24: Human confirmed Preview works. Merging to local `main`. v1.3 board closed.
+
+## Review
+
+2026-08-24 — shipped. Human confirmed HTML Preview of `dianabelenky`. Verify: macOS/iPhone 17/iPad Pro 13-inch (M5) Debug **BUILD SUCCEEDED**.
