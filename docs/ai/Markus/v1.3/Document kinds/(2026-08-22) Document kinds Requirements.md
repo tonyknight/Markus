@@ -15,7 +15,7 @@ Architecture: **C spine unchanged, document model extended.** SwiftUI chrome, Ma
 
 ## Overview
 
-v1.3 is a **document-kind** release. Markus stops treating every file as Markdown. It detects JSON, HTML, SVG, TOML (Wave A) from UTI/extension, folds their real structure, and lets the user pin a kind when the extension is wrong. HTML and SVG also get a locked-down WebView preview. Wave B (CSS, JS, TS, Swift, PHP; Shell last) ships in this release **only if** Wave A’s kernel is solid; otherwise those tickets slip rather than stretching a broken kernel.
+v1.3 is a **document-kind** release. Markus stops treating every file as Markdown. It detects JSON, HTML, SVG, TOML (Wave A) from UTI/extension, folds their real structure, and lets the user pin a kind when the extension is wrong. HTML and SVG also get a full WKWebView Preview (script on, local folder, http(s) assets). Wave B (CSS, JS, TS, Swift, PHP; Shell last) ships in this release **only if** Wave A’s kernel is solid; otherwise those tickets slip rather than stretching a broken kernel.
 
 v1.4 Inspector is **not** this board. Profiles must still emit outline rows and parse diagnostics as data so that board can consume them.
 
@@ -59,7 +59,7 @@ Quality of this release is judged by **running the app** (open a `.json`, fold, 
 | Profiles | Pluggable `SyntaxProfile` per `DocumentKind`. Markdown profile = today’s cmark path. |
 | Wave A | JSON, HTML, SVG, TOML. **Release bar.** |
 | Wave B | CSS, JS/TS, Swift, PHP; Shell last. **In v1.3 if Wave A kernel is stable**; otherwise slip those tickets. |
-| HTML/SVG Preview | WKWebView (or `WebView` equivalent) of the current buffer. Not `PreviewSubstitution`. Not for JSON/TOML. |
+| HTML/SVG Preview | Full WKWebView render of the current buffer (`loadFileURL` + live buffer). Not `PreviewSubstitution`. Not for JSON/TOML. |
 | WebView policy | No script execution, no network. Load from the buffer string, not an unconstrained `file://` sandbox escape. |
 | Kind detection | Extension/UTI by default. |
 | Kind pin | Persist per file **only** when the user explicitly pins. Unpin → follow extension/UTI again. |
@@ -109,7 +109,7 @@ Minimum OS unchanged: macOS 14, iOS 17, iPadOS 17.
 
 7. **JSON profile.** Parse objects and arrays. Fold from after the opening `{`/`[` through the matching closer (opener line stays visible, same idea as fence folds). Invalid JSON: no crash, empty or partial folds, at least one diagnostic. Save writes the buffer as UTF-8 text (we do not pretty-print unless the user typed it).
 
-8. **HTML + SVG profile.** One tokenizer. Fold elements with a matching end tag (and paired SVG). Void/self-closing tags are not foldable. Outline: tag name (+ id/class if cheap). Preview: WKWebView loads the buffer; JavaScript off; no network. Navigate in-page is not a browser chrome project — no URL bar.
+8. **HTML + SVG profile.** One tokenizer. Fold elements with a matching end tag (and paired SVG). Void/self-closing tags are not foldable. Outline: tag name (+ id/class if cheap). Preview: WKWebView full render of the current buffer (script on, sibling files via `loadFileURL`/`allowingReadAccessTo`, http(s) subresources). In-page navigation stays in that WebView — no URL bar.
 
 9. **TOML profile.** Fold tables and array-of-tables. Outline: table headers.
 
@@ -137,7 +137,7 @@ Detection       pin ?? map(extension/UTI) ?? markdown
 
 Editor surfaces
   markdown:  Source = 1:1 buffer; Preview = GFM substitution
-  html/svg:  Source = 1:1 + folds + color; Preview = locked WKWebView
+  html/svg:  Source = 1:1 + folds + color; Preview = full WKWebView render
   json/toml/Wave B: Source only
 
 CodeColorRoles  keyword, string, comment, number             // derived from ThemeTokens
@@ -151,7 +151,7 @@ Disk files remain plain text. Kind pin and folds stay in app storage, not in the
 
 **Open `notes.md`.** Markdown as today. Preview substitution, heading/fence folds, Settings unchanged.
 
-**Open `page.html`.** HTML profile, element folds, Source first. Preview shows locked WebView of the buffer. Edits in Source; Preview refreshes on commit of the buffer (debounce is an implementation detail; must not lose the session).
+**Open `page.html`.** HTML profile, element folds, Source first. Preview is a full WebKit render of the current buffer (CSS, JS, images, fonts, relative and http(s) assets). Edits in Source; Preview refreshes on commit of the buffer (debounce is an implementation detail; must not lose the session).
 
 **File → New.** Markdown untitled. File → New JSON: untitled, kind json, Source, no pin until saved+pinned.
 
@@ -167,7 +167,7 @@ Disk files remain plain text. Kind pin and folds stay in app storage, not in the
 - **R4.** Markdown documents keep v1.2 Preview substitution, GFM, heading and fence folds, and Settings behavior.
 - **R5.** JSON: objects and arrays fold; invalid JSON does not crash; the buffer round-trips to disk as UTF-8 text.
 - **R6.** HTML and SVG share one XML/HTML folding engine; elements with matching end tags fold; Source is 1:1 with folds.
-- **R7.** HTML and SVG Preview is a locked-down WebView of the current buffer (no script, no network). Switching Source/Preview does not unmount the document session or lose folds.
+- **R7.** HTML and SVG Preview is a full WebKit render of the current buffer (script on, local folder, http(s) subresources). Switching Source/Preview does not unmount the document session or lose folds. Not a URL-bar browser.
 - **R8.** TOML tables (and array-of-tables) fold.
 - **R9.** Each shipped kind exposes outline rows and parse diagnostics on the session for v1.4. Markdown headings remain outline-jumpable.
 - **R10.** Non-Markdown Source uses derived inner colors (keyword, string, comment, number) so folded headers read as structure. Markdown Source stays 1:1 body styling.
@@ -181,7 +181,7 @@ Disk files remain plain text. Kind pin and folds stay in app storage, not in the
 - **N2.** Folding and coloring must not freeze typing on a large JSON file (multi‑MB). Work is incremental or bounded; same spirit as v1.1 span budgets.
 - **N3.** Shared-layer edits compile for macOS, iOS, and iPadOS.
 - **N4.** No new unit-test suite work is required to close a ticket. Do not add tests that cannot fail, and do not block on `xcodebuild test`.
-- **N5.** WebView must not run page script or fetch the network. Treat the buffer as untrusted.
+- **N5.** **Product override (2026-08-24):** HTML/SVG Preview is a full render of the user’s own page, not an untrusted sandbox. Script, sibling files, and http(s) subresources are in. Do not re-lock Preview. Not a URL-bar browser (`target=_blank` stays in the same WebView).
 - **N6.** Files on disk stay the user’s bytes (UTF-8 text). No silent pretty-print or recode on save.
 
 ## Acceptance criteria
@@ -190,7 +190,7 @@ Disk files remain plain text. Kind pin and folds stay in app storage, not in the
 - [ ] A `.md` file is indistinguishable from v1.2 in Preview, heading/fence folds, and Settings.
 - [ ] File → New is Markdown; File → New JSON creates a JSON untitled.
 - [ ] Pinning HTML on a mislabeled file survives relaunch; unpinning follows the extension again.
-- [ ] An `.html` / `.svg` file folds elements in Source and shows a script-free WebView in Preview; the editor session stays mounted.
+- [ ] An `.html` / `.svg` file folds elements in Source and shows a full WebView render in Preview; the editor session stays mounted.
 - [ ] A `.toml` file folds tables.
 - [ ] Outline items and at least one diagnostic on broken JSON are available on the session (even if nothing displays them yet).
 - [ ] Finder/Open (or the in-app importer) accepts the shipped extensions.
@@ -235,7 +235,7 @@ Each item becomes one ticket after this file is approved. The implementation pla
 2. **SyntaxProfile and fold generalization** — protocol; `FoldID` beyond heading/fence; Markdown profile wraps today’s index; `repair` still loads old Markdown folds; outline/diagnostics fields on the session. (R4, R9)
 3. **Kind assignment and New** — Document Kind menu, Pin/Unpin persistence, File → New stays Markdown, explicit New JSON/HTML/SVG/TOML (Wave B New items when those kinds ship). Compact iOS control. (R2, R3, R12)
 4. **JSON profile** — parser, object/array folds, outline rows, diagnostics on invalid input, Source-only, UTF-8 save. (R5, R9, N2, N6)
-5. **HTML and SVG** — shared XML/HTML folds, outline, diagnostics; Source 1:1; locked WKWebView Preview; session stays mounted. (R6, R7, N5)
+5. **HTML and SVG** — shared XML/HTML folds, outline, diagnostics; Source 1:1; full WKWebView Preview; session stays mounted. (R6, R7, N5)
 6. **TOML profile** — table / array-of-tables folds, outline, diagnostics. (R8, R9)
 7. **Derived inner coloring** — keyword/string/comment/number from `ThemeTokens` on non-Markdown Source. Markdown Source unchanged. (R10)
 8. **Wave B brace languages** — CSS, JavaScript, TypeScript, Swift folds + New items + UTIs. Slip the whole ticket if Wave A is not solid. (R13)
@@ -247,7 +247,7 @@ Do not create tickets for v1.4 inspector chrome, LSP, or CotEditor imports.
 
 ## Risks and assumptions
 
-- **WKWebView + sandbox.** Loading HTML that references local images/scripts can become a file-access hole. N5 wins: buffer-only, no network, no script. Broken relative images in Preview are acceptable.
+- **WKWebView + sandbox.** Preview uses `loadFileURL` + `allowingReadAccessTo` so sibling CSS/JS/images load. That is the intended Safari-like hole for the user’s own page. Not a URL-bar browser.
 - **JSON vs HTML parsers on huge files.** N2: debounce or bound work; do not parse on every keystroke if that janks.
 - **FoldID migration.** Extending `Kind` must not drop persisted Markdown heading/fence folds.
 - **`MarkdownDocument` name.** Keeping the class name while it opens JSON is awkward but avoids a risky rename. Rename is out of scope unless it is cheap on the kernel ticket.
@@ -257,4 +257,4 @@ Do not create tickets for v1.4 inspector chrome, LSP, or CotEditor imports.
 
 ## Open questions
 
-None blocking. If Wave B slips, that is an execute decision recorded on tickets 8–9, not a new briefing. Overrides (drop TOML, add XML-as-kind, allow JS in WebView) can land as edits here before tickets.
+None blocking. If Wave B slips, that is an execute decision recorded on tickets 8–9, not a new briefing. N5 was overridden 2026-08-24: HTML Preview is a full render.

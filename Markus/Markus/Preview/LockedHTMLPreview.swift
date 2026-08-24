@@ -1,34 +1,20 @@
 import SwiftUI
 import WebKit
 
-/// Policy for the HTML/SVG Preview WebView (R7).
-///
-/// Product override (punch list round 3): HTML Preview is a working
-/// preview of the buffer — CSS, JS, and images load. Relative URLs
-/// resolve against the document's directory when the file is on disk.
-/// Link clicks, forms, popups, and main-frame navigations stay blocked
-/// so Preview is not a browser.
-///
-/// SVG Preview stays locked: no script, no network, `baseURL` nil (N5).
+/// HTML/SVG Preview. Product override of N5: render the current buffer
+/// the way Safari would — JavaScript on, local folder access, CSS/JS/
+/// images/fonts, http(s) subresources. Not a URL-bar browser: popups
+/// are folded back into this WebView.
 enum LockedHTMLPreviewPolicy {
     static func makeConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         return configuration
     }
 
-    static func enableScript(for kind: DocumentKind) -> Bool {
-        kind == .html
-    }
-
-    static func baseURL(for kind: DocumentKind, fileURL: URL?) -> URL? {
-        guard kind == .html, let fileURL else { return nil }
-        return fileURL.deletingLastPathComponent()
-    }
-
-    /// `loadHTMLString` document plus a minimal SVG wrapper.
+    /// Current buffer plus a minimal SVG wrapper.
     static func documentHTML(buffer: String, kind: DocumentKind) -> String {
         if kind == .svg {
             return wrappedSVG(buffer)
@@ -61,108 +47,28 @@ enum LockedHTMLPreviewPolicy {
         }
     }
 
-    /// SVG: only about/data. HTML: subresources may be http(s)/file/data.
-    static func allows(_ url: URL?, kind: DocumentKind) -> Bool {
-        guard let url else { return false }
+    static func allows(_ url: URL?) -> Bool {
+        guard let url else { return true }
         let scheme = (url.scheme ?? "").lowercased()
-        if kind == .html {
-            switch scheme {
-            case "http", "https", "file", "data", "about", "blob", "":
-                return true
-            default:
-                return false
-            }
-        }
         switch scheme {
-        case "http", "https", "file", "ftp", "ws", "wss":
-            return false
-        case "about", "data", "":
+        case "http", "https", "file", "data", "about", "blob", "ws", "wss", "":
             return true
         default:
             return false
         }
     }
-}
 
-/// Compiles once and attaches to the `WKUserContentController` that was
-/// passed into `WKWebView(frame:configuration:)` — not to
-/// `webView.configuration`, which is a copy (N5).
-enum LockedHTMLPreviewNetworkBlocker {
-    static let identifier = "markus.locked-html-preview"
-
-    /// Blanket block of every subresource URL. Main-frame `loadHTMLString`
-    /// is not a URL fetch; document navigations stay on the delegate.
-    static let encodedRules = """
-    [{"trigger":{"url-filter":".*","resource-type":["image","style-sheet","script","font","raw","svg-document","media","popup","ping","fetch","websocket"]},"action":{"type":"block"}}]
-    """
-
-    /// Fallback if a WebKit build rejects a resource-type token.
-    static let encodedRulesFallback = """
-    [{"trigger":{"url-filter":".*"},"action":{"type":"block"}}]
-    """
-
-    private static var cached: WKContentRuleList?
-    private static var compiling = false
-    private static var waiters: [(WKContentRuleList?) -> Void] = []
-
-    static func prepare(_ completion: @escaping (WKContentRuleList?) -> Void) {
-        if let cached {
-            completion(cached)
-            return
-        }
-        waiters.append(completion)
-        guard !compiling else { return }
-        compiling = true
-        guard let store = contentRuleStore() else {
-            finish(nil)
-            return
-        }
-        store.lookUpContentRuleList(forIdentifier: identifier) { list, _ in
-            if let list {
-                finish(list)
-                return
-            }
-            store.compileContentRuleList(
-                forIdentifier: identifier,
-                encodedContentRuleList: encodedRules
-            ) { list, _ in
-                if let list {
-                    finish(list)
-                    return
-                }
-                store.compileContentRuleList(
-                    forIdentifier: identifier + ".fallback",
-                    encodedContentRuleList: encodedRulesFallback
-                ) { list, _ in
-                    finish(list)
-                }
-            }
-        }
-    }
-
-    private static func contentRuleStore() -> WKContentRuleListStore? {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        let url = caches.appendingPathComponent("MarkusContentRules", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return WKContentRuleListStore(url: url)
-    }
-
-    private static func finish(_ list: WKContentRuleList?) {
-        cached = list
-        compiling = false
-        let pending = waiters
-        waiters = []
-        DispatchQueue.main.async {
-            for waiter in pending {
-                waiter(list)
-            }
-        }
+    /// `document.write` payload. JSON-encode so quotes and newlines
+    /// cannot break the script.
+    static func documentWriteJavaScript(_ html: String) -> String? {
+        guard let data = try? JSONEncoder().encode(html),
+              let json = String(data: data, encoding: .utf8)
+        else { return nil }
+        return "document.open('text/html','replace');document.write(\(json));document.close();"
     }
 }
 
-/// WKWebView of the current buffer. Navigation and script are locked.
-/// The representable must not replace `SessionEditorRepresentable`.
+/// WKWebView of the current buffer. Must not replace `SessionEditorRepresentable`.
 #if os(macOS)
 struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
     var buffer: String
@@ -175,7 +81,7 @@ struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        makeLockedWebView(coordinator: context.coordinator)
+        makePreviewWebView(coordinator: context.coordinator)
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
@@ -195,7 +101,7 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        makeLockedWebView(coordinator: context.coordinator)
+        makePreviewWebView(coordinator: context.coordinator)
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
@@ -207,30 +113,22 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
 
 @MainActor
 final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    /// Same controller the WKWebView was created with. Do not add
+    /// scripts via `webView.configuration` — that value is a copy.
+    let userContentController = WKUserContentController()
+
     private var lastLoaded: String?
     private var pendingHTML: String?
     private var pendingKind: DocumentKind = .html
     private var pendingFileURL: URL?
     private var debounceTimer: Timer?
-    private var svgRulesReady = false
-    private var svgBlockerInstalled = false
     private var isVisible = false
     private weak var webView: WKWebView?
-    private weak var contentController: WKUserContentController?
-    private var svgRuleList: WKContentRuleList?
+    private var accessingDirectory: URL?
+    private var hasNavigatedAway = false
+    private var isInjectingLiveHTML = false
+    private var establishedFilePath: String?
     private static let debounceInterval: TimeInterval = 0.12
-
-    func attach(webView: WKWebView, contentController: WKUserContentController) {
-        self.webView = webView
-        self.contentController = contentController
-        LockedHTMLPreviewNetworkBlocker.prepare { [weak self] list in
-            guard let self else { return }
-            self.svgRuleList = list
-            self.svgRulesReady = list != nil
-            self.installSVGBlockerIfNeeded()
-            self.flushIfNeeded()
-        }
-    }
 
     func load(
         _ buffer: String,
@@ -240,13 +138,16 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         isVisible: Bool
     ) {
         self.webView = webView
+        let becameVisible = isVisible && !self.isVisible
         self.isVisible = isVisible
         pendingKind = kind
         pendingFileURL = fileURL
-        webView.configuration.defaultWebpagePreferences.allowsContentJavaScript =
-            LockedHTMLPreviewPolicy.enableScript(for: kind)
         pendingHTML = LockedHTMLPreviewPolicy.documentHTML(buffer: buffer, kind: kind)
-        installSVGBlockerIfNeeded()
+        if becameVisible {
+            hasNavigatedAway = false
+            lastLoaded = nil
+            establishedFilePath = nil
+        }
         if isVisible {
             debounceTimer?.invalidate()
             debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.debounceInterval, repeats: false) { [weak self] _ in
@@ -261,27 +162,94 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         flushIfNeeded()
     }
 
-    private func installSVGBlockerIfNeeded() {
-        guard pendingKind == .svg, !svgBlockerInstalled,
-              let contentController, let svgRuleList else { return }
-        contentController.add(svgRuleList)
-        svgBlockerInstalled = true
-    }
-
     private func flushIfNeeded() {
-        if pendingKind == .svg, !svgRulesReady { return }
         guard isVisible, let webView, let html = pendingHTML else { return }
-        let base = LockedHTMLPreviewPolicy.baseURL(for: pendingKind, fileURL: pendingFileURL)
-        let key = "\(pendingKind.rawValue)\n\(base?.path ?? "")\n\(html)"
+        if hasNavigatedAway { return }
+        let key = "\(pendingKind.rawValue)\n\(pendingFileURL?.path ?? "")\n\(html)"
         guard key != lastLoaded else { return }
         debounceTimer?.invalidate()
         debounceTimer = nil
         lastLoaded = key
-        webView.loadHTMLString(html, baseURL: base)
+        loadIntoWebView(html, fileURL: pendingFileURL, webView: webView)
+    }
+
+    private func loadIntoWebView(
+        _ html: String,
+        fileURL: URL?,
+        webView: WKWebView
+    ) {
+        guard let fileURL else {
+            releaseDirectoryAccess()
+            establishedFilePath = nil
+            userContentController.removeAllUserScripts()
+            webView.loadHTMLString(html, baseURL: nil)
+            return
+        }
+
+        let path = fileURL.standardizedFileURL.path
+        if establishedFilePath == path, webView.url?.isFileURL == true {
+            injectLiveHTML(html, into: webView)
+            return
+        }
+
+        beginDirectoryAccess(for: fileURL)
+        installLiveHTMLUserScript(html)
+        establishedFilePath = path
+        webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
+    }
+
+    /// Replace the on-disk document with the live buffer *before* page
+    /// scripts run. Origin and folder access stay on the opened file,
+    /// so relative CSS/JS/images resolve like Safari.
+    private func installLiveHTMLUserScript(_ html: String) {
+        userContentController.removeAllUserScripts()
+        guard let js = LockedHTMLPreviewPolicy.documentWriteJavaScript(html) else { return }
+        userContentController.addUserScript(
+            WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        )
+    }
+
+    private func injectLiveHTML(_ html: String, into webView: WKWebView) {
+        guard let js = LockedHTMLPreviewPolicy.documentWriteJavaScript(html) else { return }
+        isInjectingLiveHTML = true
+        webView.evaluateJavaScript(js) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.isInjectingLiveHTML = false
+            }
+        }
+    }
+
+    private func beginDirectoryAccess(for fileURL: URL) {
+        releaseDirectoryAccess()
+        _ = fileURL.startAccessingSecurityScopedResource()
+        let directory = fileURL.deletingLastPathComponent()
+        if directory.startAccessingSecurityScopedResource() {
+            accessingDirectory = directory
+        }
+    }
+
+    private func releaseDirectoryAccess() {
+        if let accessingDirectory {
+            accessingDirectory.stopAccessingSecurityScopedResource()
+            self.accessingDirectory = nil
+        }
     }
 
     deinit {
         debounceTimer?.invalidate()
+        if let accessingDirectory {
+            accessingDirectory.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        didFinish navigation: WKNavigation!
+    ) {
+        userContentController.removeAllUserScripts()
+        if isInjectingLiveHTML {
+            isInjectingLiveHTML = false
+        }
     }
 
     func webView(
@@ -289,24 +257,11 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        if navigationAction.navigationType == .linkActivated
-            || navigationAction.navigationType == .formSubmitted
-            || navigationAction.navigationType == .formResubmitted
-            || navigationAction.navigationType == .backForward
-            || navigationAction.navigationType == .reload {
-            decisionHandler(.cancel)
-            return
+        if navigationAction.navigationType == .linkActivated {
+            hasNavigatedAway = true
+            userContentController.removeAllUserScripts()
         }
-        if pendingKind == .html,
-           navigationAction.targetFrame?.isMainFrame == true,
-           navigationAction.navigationType == .other {
-            let scheme = (navigationAction.request.url?.scheme ?? "").lowercased()
-            if scheme == "http" || scheme == "https" {
-                decisionHandler(.cancel)
-                return
-            }
-        }
-        guard LockedHTMLPreviewPolicy.allows(navigationAction.request.url, kind: pendingKind) else {
+        guard LockedHTMLPreviewPolicy.allows(navigationAction.request.url) else {
             decisionHandler(.cancel)
             return
         }
@@ -318,7 +273,7 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        guard LockedHTMLPreviewPolicy.allows(navigationResponse.response.url, kind: pendingKind) else {
+        guard LockedHTMLPreviewPolicy.allows(navigationResponse.response.url) else {
             decisionHandler(.cancel)
             return
         }
@@ -331,22 +286,26 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        nil
+        hasNavigatedAway = true
+        userContentController.removeAllUserScripts()
+        if let url = navigationAction.request.url {
+            webView.load(URLRequest(url: url))
+        }
+        return nil
     }
 }
 
-private func makeLockedWebView(coordinator: LockedHTMLPreviewCoordinator) -> WKWebView {
+private func makePreviewWebView(coordinator: LockedHTMLPreviewCoordinator) -> WKWebView {
     let configuration = LockedHTMLPreviewPolicy.makeConfiguration()
-    let contentController = configuration.userContentController
+    configuration.userContentController = coordinator.userContentController
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = coordinator
     webView.uiDelegate = coordinator
-    webView.allowsBackForwardNavigationGestures = false
+    webView.allowsBackForwardNavigationGestures = true
     #if os(macOS)
     webView.allowsMagnification = true
     #else
     webView.isOpaque = true
     #endif
-    coordinator.attach(webView: webView, contentController: contentController)
     return webView
 }
