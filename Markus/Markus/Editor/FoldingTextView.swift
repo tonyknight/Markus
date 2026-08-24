@@ -1707,6 +1707,7 @@ final class FoldingTextView: PlatformView {
     var canvasBackground: PlatformColorType { session.tokens.background }
     #if os(macOS)
     var ignoresHits = false
+    private var keyWindowObserver: NSObjectProtocol?
     #endif
 
     func configureAsThemeProxy() {
@@ -1818,6 +1819,37 @@ final class FoldingTextView: PlatformView {
     override func layout() {
         super.layout()
         updateTextContainerForGutter()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let keyWindowObserver {
+            NotificationCenter.default.removeObserver(keyWindowObserver)
+            self.keyWindowObserver = nil
+        }
+        guard let window else { return }
+        keyWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.becomeKeyEditorIfNeeded()
+        }
+        becomeKeyEditorIfNeeded()
+    }
+
+    /// After File → New via the type picker, the picker panel was key.
+    /// The new document window can appear without this view ever becoming
+    /// first responder, so the caret never blinks and typing beeps.
+    /// Do not steal from a field editor (Find, Go to Line, alerts).
+    private func becomeKeyEditorIfNeeded() {
+        guard !ignoresHits, session.mode == .source else { return }
+        guard let window, window.isKeyWindow else { return }
+        if window.firstResponder === self { return }
+        if let current = window.firstResponder, current is NSText {
+            return
+        }
+        window.makeFirstResponder(self)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -2229,6 +2261,9 @@ final class FoldingTextView: PlatformView {
     deinit {
         caretBlinkTimer?.invalidate()
         reparseDebounceTimer?.invalidate()
+        if let keyWindowObserver {
+            NotificationCenter.default.removeObserver(keyWindowObserver)
+        }
     }
     #endif
 
