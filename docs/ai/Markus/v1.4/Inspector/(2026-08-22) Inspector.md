@@ -12,6 +12,8 @@ routing_cache:
     standard: grok 4.6
     economy: gemini-3.7-flash
 depends_on: Markus/v1.3/Document kinds
+origin_branch: main
+worktree: true
 ---
 
 # Markus v1.4 — Inspector
