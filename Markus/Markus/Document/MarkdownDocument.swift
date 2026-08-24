@@ -55,6 +55,7 @@ enum MacDocumentLaunch {
             (document as? MarkdownDocument)?.applyUntitledKind(kind)
             document.makeWindowControllers()
             document.showWindows()
+            activate(document)
             return document
         } catch {
             let document = MarkdownDocument()
@@ -62,8 +63,16 @@ enum MacDocumentLaunch {
             document.makeWindowControllers()
             controller.addDocument(document)
             document.showWindows()
+            activate(document)
             return document
         }
+    }
+
+    @MainActor
+    static func activate(_ document: NSDocument) {
+        guard let window = document.windowControllers.first?.window else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @MainActor

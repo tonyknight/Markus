@@ -2,7 +2,7 @@
 import AppKit
 import SwiftUI
 
-/// File → New type picker. A small floating panel centered on the screen
+/// File → New type picker. A small panel centered on the screen
 /// with a dropdown of shipped kinds. Default is Markdown.
 enum NewDocumentKindPicker {
     @MainActor
@@ -28,8 +28,6 @@ enum NewDocumentKindPicker {
             defer: false
         )
         panel.title = "New Document"
-        panel.isFloatingPanel = true
-        panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
 
@@ -37,7 +35,12 @@ enum NewDocumentKindPicker {
             rootView: NewDocumentKindPickerView(
                 onCreate: { kind in
                     close()
-                    _ = try? MacDocumentLaunch.openUntitledDocument(ofType: kind.typeName)
+                    // The picker was key. Creating the untitled in the
+                    // same turn leaves the new window without key status
+                    // and FoldingTextView never becomes first responder.
+                    DispatchQueue.main.async {
+                        _ = try? MacDocumentLaunch.openUntitledDocument(ofType: kind.typeName)
+                    }
                 },
                 onCancel: { close() }
             )
@@ -52,6 +55,7 @@ enum NewDocumentKindPicker {
 
     @MainActor
     private static func close() {
+        panel?.orderOut(nil)
         panel?.close()
         panel = nil
     }
