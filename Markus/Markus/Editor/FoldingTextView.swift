@@ -170,6 +170,11 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     /// on every draw.
     private var cachedSourceMap: SourceMap?
     private var cachedUTF16LineOffsets: UTF16LineOffsets?
+    /// Packed layout height. Invalidated with layout; rebuilt lazily so
+    /// scroll/gutter paint does not walk every TextKit fragment (Swift
+    /// files were hitching on an M3 Max from `packedLayoutHeight` on
+    /// every draw).
+    private var cachedPackedHeight: CGFloat?
     /// The parsed (cmark-free) preview structure and raw-buffer spans,
     /// rebuilt only where the source text actually changes — never on
     /// a fold toggle, theme change, zoom step, mode switch, or resize
@@ -456,9 +461,10 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     }
 
     func ensureLayout() {
-        guard let layoutManager else { return }
-        layoutManager.ensureLayout(for: layoutManager.documentRange)
-        recountCollapsedFragments()
+        // Do not `ensureLayout(for: documentRange)` — that lays out the
+        // entire buffer on every fold and freezes large Swift files.
+        // Visible fragments layout during draw (P1). Height is cached.
+        cachedPackedHeight = nil
     }
 
     func syncBlocksFromStorage() {
@@ -479,7 +485,10 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
     }
 
     var layoutHeight: CGFloat {
-        packedLayoutHeight()
+        if let cachedPackedHeight { return cachedPackedHeight }
+        let height = packedLayoutHeight()
+        cachedPackedHeight = height
+        return height
     }
 
     /// `visibleRect`, when non-nil, bounds the underlying line scan to
@@ -888,16 +897,16 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
 
     /// Paints `analysis.highlightSpans` with `CodeColorRoles` derived
     /// from the current theme. Byte ranges convert in one
-    /// `UTF8NSRange.nsRanges` pass (same as `MarkdownPreviewRenderer`)
-    /// so a large JSON file is not quadratic in span count. Scratch
-    /// attributed string + one swap, matching Preview at scale.
+    /// `UTF8NSRange.nsRanges` pass. Attributes are applied in place —
+    /// copying the whole attributed string then swapping it back
+    /// invalidates TextKit layout for every character (too slow on
+    /// large Swift files).
     private func applyCodeHighlightSpans(to textStorage: NSTextStorage) {
         let spans = analysis.highlightSpans
         guard !spans.isEmpty else { return }
         let buffer = textStorage.string
         let nsRanges = UTF8NSRange.nsRanges(utf8Bytes: spans.map(\.bytes), in: buffer)
         let roles = CodeColorRoles(tokens)
-        let mutable = NSMutableAttributedString(attributedString: textStorage)
         for (span, nsRange) in zip(spans, nsRanges) {
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let color: PlatformColorType
@@ -907,12 +916,12 @@ final class FoldingSession: NSObject, NSTextLayoutManagerDelegate {
             case .comment: color = roles.comment
             case .number: color = roles.number
             }
-            mutable.addAttribute(.foregroundColor, value: color, range: nsRange)
+            textStorage.addAttribute(.foregroundColor, value: color, range: nsRange)
         }
-        textStorage.setAttributedString(mutable)
     }
 
     private func invalidateLayout() {
+        cachedPackedHeight = nil
         guard let layoutManager else { return }
         layoutManager.invalidateLayout(for: layoutManager.documentRange)
     }
@@ -2123,7 +2132,12 @@ final class FoldingTextView: PlatformView {
     /// `FoldingSession.drawFragments`, ticket 10's own precedent for
     /// testing a per-frame draw method's bounded cost).
     func drawGutter(in context: CGContext, visibleRect: CGRect) {
-        let gutterRect = CGRect(x: 0, y: 0, width: gutterWidth, height: max(bounds.height, layoutHeight))
+        let gutterRect = CGRect(
+            x: 0,
+            y: visibleRect.minY,
+            width: gutterWidth,
+            height: max(visibleRect.height, 1)
+        )
         context.saveGState()
         #if os(macOS)
         NSColor.controlBackgroundColor.withAlphaComponent(0.35).setFill()
