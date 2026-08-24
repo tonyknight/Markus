@@ -3,10 +3,10 @@ id: 20260824-02-v1-3-punch-list-round-2
 title: v1.3 punch list round 2
 type: bug
 priority: high
-status: in-progress
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: Focus after New picker; HTML/SVG Preview WebKit sandbox
 parent:
 depends_on: []
