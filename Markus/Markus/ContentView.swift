@@ -123,6 +123,8 @@ struct ContentView: View {
                     buffer: host.session.editor.string,
                     kind: host.session.kind,
                     fileURL: host.session.fileURL,
+                    resourceRoot: host.folderSession?.rootURL
+                        ?? host.session.fileURL?.deletingLastPathComponent(),
                     isVisible: showsLockedWebPreview
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
