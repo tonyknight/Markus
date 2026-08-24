@@ -3,7 +3,7 @@ hierarchy:
 - Markus
 - v1.3
 - Document kinds
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-24
 focus: "DocumentKind kernel; Wave A folding; HTML/SVG WebView; Wave B if kernel is solid; verify by build"
 ---
 
@@ -24,7 +24,7 @@ Quality of this release is judged by **running the app** (open a `.json`, fold, 
 ## Goals
 
 - `DocumentKind` besides Markdown, from UTI/extension, with an explicit pin to override.
-- File → New remains Markdown. Other kinds are created with an explicit New command.
+- File → New is one command. A centered type picker defaults to Markdown; the user can choose any shipped kind. Per-kind New menu items are not used.
 - Same `FoldStore` / TextKit 2 collapse for kind-specific ranges; persistence and repair as today.
 - Wave A: JSON, HTML, SVG, TOML — open, save, detect, fold, outline data, diagnostics data.
 - HTML/SVG: Source + folds **and** a rendered WebView Preview (not Markdown substitution).
@@ -63,7 +63,7 @@ Quality of this release is judged by **running the app** (open a `.json`, fold, 
 | WebView policy | No script execution, no network. Load from the buffer string, not an unconstrained `file://` sandbox escape. |
 | Kind detection | Extension/UTI by default. |
 | Kind pin | Persist per file **only** when the user explicitly pins. Unpin → follow extension/UTI again. |
-| File → New | Always Markdown. Other kinds: explicit **New JSON** (etc.), not last-used kind. |
+| File → New | One **New** (⌘N) plus a centered type picker, default Markdown. Not one menu item per kind. Launch untitled (no picker) stays Markdown. |
 | Parser — JSON | Dedicated JSON parser (Foundation or equivalent). Not tree-sitter. |
 | Parser — HTML/SVG | Shared XML/HTML tokenizer; SVG is not a second engine. |
 | Parser — Wave B | Brace/block matcher or tree-sitter — chosen on the Wave B ticket if the kernel is ready. PHP does **not** fold HTML islands in this release. |
@@ -105,7 +105,7 @@ Minimum OS unchanged: macOS 14, iOS 17, iPadOS 17.
 
 5. **Kind assignment UI (Mac).** Format (or File) menu: **Document Kind** list, **Pin Kind** / **Unpin Kind**. No inspector pane. iOS: a compact control (toolbar or existing sheet) that can set and pin kind; not a new Settings window.
 
-6. **New document commands.** File → New stays Markdown (⌘N). Additional items: New JSON, New HTML, New SVG, New TOML, and Wave B kinds if shipped. iOS file creation follows the same rule (new untitled = Markdown unless the user picked another kind).
+6. **New document commands.** File → New (⌘N) is one command. A centered type picker defaults to Markdown and can create any shipped kind. Launch untitled with no picker stays Markdown. iOS new untitled stays Markdown unless the user picked another kind.
 
 7. **JSON profile.** Parse objects and arrays. Fold from after the opening `{`/`[` through the matching closer (opener line stays visible, same idea as fence folds). Invalid JSON: no crash, empty or partial folds, at least one diagnostic. Save writes the buffer as UTF-8 text (we do not pretty-print unless the user typed it).
 

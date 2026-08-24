@@ -136,6 +136,10 @@ enum DocumentKind: String, CaseIterable, Hashable, Sendable {
         for kind in allCases {
             map[kind.typeName] = kind
         }
+        // macOS often tags `.md` as `public.markdown`, not our imported
+        // `net.daringfireball.markdown`. Keep both so Open and UTI
+        // lookup accept the system type.
+        map["public.markdown"] = .markdown
         return map
     }()
 
