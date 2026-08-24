@@ -12,9 +12,14 @@ struct FolderTreeNode: Equatable, Identifiable {
 }
 
 enum MarkdownFolderTree {
-    static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
+    static let markdownExtensions: Set<String> = Set(DocumentKind.markdown.filenameExtensions)
 
-    /// Builds the Markdown folder tree rooted at `root`.
+    static let shippedExtensions: Set<String> = Set(
+        DocumentKind.shipped.flatMap(\.filenameExtensions)
+    )
+
+    /// Builds the folder tree rooted at `root`, listing shipped document
+    /// kinds (Markdown plus JSON/HTML/SVG/TOML/Wave B).
     ///
     /// `listDirectoryContents` is how a directory's entries are obtained.
     /// It defaults to `defaultListDirectoryContents`, which enumerates via
@@ -54,7 +59,7 @@ enum MarkdownFolderTree {
                 let nested = children(of: url, listDirectoryContents: listDirectoryContents)
                 guard !nested.isEmpty else { continue }
                 nodes.append(FolderTreeNode(name: name, url: url, isDirectory: true, children: nested))
-            } else if isMarkdownFile(name) {
+            } else if isShippedDocumentFile(name) {
                 nodes.append(FolderTreeNode(name: name, url: url, isDirectory: false, children: []))
             }
         }
@@ -73,8 +78,8 @@ enum MarkdownFolderTree {
         return url.hasDirectoryPath
     }
 
-    private static func isMarkdownFile(_ name: String) -> Bool {
+    private static func isShippedDocumentFile(_ name: String) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
-        return markdownExtensions.contains(ext)
+        return shippedExtensions.contains(ext)
     }
 }

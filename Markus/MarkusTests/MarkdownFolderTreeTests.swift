@@ -8,6 +8,7 @@ struct MarkdownFolderTreeTests {
             .appendingPathComponent("markus-tree-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try Data("# Notes\n".utf8).write(to: root.appendingPathComponent("notes.md"))
+        try Data("{}\n".utf8).write(to: root.appendingPathComponent("data.json"))
         try Data("plain\n".utf8).write(to: root.appendingPathComponent("ignore.txt"))
         try Data("# Hidden\n".utf8).write(to: root.appendingPathComponent(".hidden.md"))
 
@@ -22,16 +23,20 @@ struct MarkdownFolderTreeTests {
         try FileManager.default.createDirectory(at: onlyOther, withIntermediateDirectories: true)
         try Data("nope\n".utf8).write(to: onlyOther.appendingPathComponent("photo.png"))
 
+        let jsonOnly = root.appendingPathComponent("json-only", isDirectory: true)
+        try FileManager.default.createDirectory(at: jsonOnly, withIntermediateDirectories: true)
+        try Data("{}\n".utf8).write(to: jsonOnly.appendingPathComponent("config.json"))
+
         return root
     }
 
-    @Test func buildsMarkdownOnlyNestedTreeFromFixture() throws {
+    @Test func buildsShippedKindNestedTreeFromFixture() throws {
         let root = try makeFixture()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let tree = MarkdownFolderTree.build(root: root)
         let names = tree.map(\.name).sorted()
-        #expect(names == ["notes.md", "sub"])
+        #expect(names == ["data.json", "json-only", "notes.md", "sub"])
         #expect(!names.contains("ignore.txt"))
         #expect(!names.contains(".hidden.md"))
         #expect(!names.contains("empty"))
@@ -46,6 +51,25 @@ struct MarkdownFolderTreeTests {
         let notes = try #require(tree.first { $0.name == "notes.md" })
         #expect(!notes.isDirectory)
         #expect(notes.url.lastPathComponent == "notes.md")
+
+        let jsonOnly = try #require(tree.first { $0.name == "json-only" })
+        #expect(jsonOnly.isDirectory)
+        #expect(jsonOnly.children.map(\.name) == ["config.json"])
+    }
+
+    @Test func includesJSONHTMLAndSVGAlongsideMarkdown() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markus-tree-kinds-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("# A\n".utf8).write(to: root.appendingPathComponent("a.md"))
+        try Data("{}\n".utf8).write(to: root.appendingPathComponent("b.json"))
+        try Data("<p></p>\n".utf8).write(to: root.appendingPathComponent("c.html"))
+        try Data("<svg></svg>\n".utf8).write(to: root.appendingPathComponent("d.svg"))
+        try Data("skip\n".utf8).write(to: root.appendingPathComponent("e.txt"))
+
+        let names = MarkdownFolderTree.build(root: root).map(\.name).sorted()
+        #expect(names == ["a.md", "b.json", "c.html", "d.svg"])
     }
 
     @Test func buildDrivesFromInjectedURLBasedListerRatherThanReadingTheRealFilesystemDirectly() throws {
