@@ -16,12 +16,12 @@ subtasks:
   status: done
 - id: T02
   title: HTML Preview WebKit sandbox
-  status: todo
+  status: done
 - id: T03
   title: SVG Preview WebKit sandbox
   status: todo
 plan_status: approved
-current_task: T02
+current_task: T03
 ---
 ## Description
 
@@ -46,7 +46,7 @@ Issues 7–8: `ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO` and no `network.client`
 ## Subtasks
 
 - [x] T01 Focus editor after New picker.
-- [ ] T02 HTML Preview: WebKit sandbox + content-rule store in container.
+- [x] T02 HTML Preview: WebKit sandbox + content-rule store in container.
 - [ ] T03 SVG Preview: XML prolog strip + same WebKit path.
 
 ## Implementation plan
@@ -78,7 +78,7 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=macOS
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build
 xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -configuration Debug build
 ```
-- [ ] todo
+- [x] done
 
 ### T03: SVG Preview wrapper
 
@@ -98,3 +98,4 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 
 - 2026-08-24: Ticket created. Worktree `.worktrees/v1.3-punch-list-2`, branch `bora/markus-v1-3-punch-list-2`.
 - 2026-08-24 T01: Picker closes then creates untitled on the next turn; document window is made key; FoldingTextView takes first responder when its window is key. macOS Debug BUILD SUCCEEDED.
+- 2026-08-24 T02: `network.client` + outgoing network for WebKit helper; content-rule store under Caches. macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug BUILD SUCCEEDED.

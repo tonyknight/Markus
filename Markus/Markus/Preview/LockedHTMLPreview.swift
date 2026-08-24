@@ -2,7 +2,10 @@ import SwiftUI
 import WebKit
 
 /// Policy for the HTML/SVG Preview WebView (R7, N5): no script, no
-/// network, no unconstrained `file://` sandbox. The buffer is untrusted.
+/// fetching of the page over the network, no unconstrained `file://`.
+/// The Mac sandbox still needs `network.client` so WebKit can spawn
+/// its WebContent helper for `loadHTMLString` — that is not a license
+/// to load `http`/`https`/`file` (the delegate and content rules stop those).
 enum LockedHTMLPreviewPolicy {
     static func makeConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
@@ -65,7 +68,7 @@ enum LockedHTMLPreviewNetworkBlocker {
         waiters.append(completion)
         guard !compiling else { return }
         compiling = true
-        guard let store = WKContentRuleListStore.default() else {
+        guard let store = contentRuleStore() else {
             finish(nil)
             return
         }
@@ -90,6 +93,14 @@ enum LockedHTMLPreviewNetworkBlocker {
                 }
             }
         }
+    }
+
+    private static func contentRuleStore() -> WKContentRuleListStore? {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let url = caches.appendingPathComponent("MarkusContentRules", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return WKContentRuleListStore(url: url)
     }
 
     private static func finish(_ list: WKContentRuleList?) {
