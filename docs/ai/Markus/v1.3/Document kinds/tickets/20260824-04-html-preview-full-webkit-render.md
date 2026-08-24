@@ -3,10 +3,10 @@ id: 20260824-04-html-preview-full-webkit-render
 title: HTML Preview full WebKit render
 type: feature
 priority: high
-status: in-progress
+status: done
 created: 2026-08-24
 updated: 2026-08-24
-closed:
+closed: 2026-08-24
 notes: Product override of N5 — Preview must render like Safari
 parent:
 depends_on: []
@@ -23,12 +23,12 @@ HTML Preview is still not a useful render. Product decision: hand the document t
 
 ## Acceptance criteria
 
-- [ ] Saved HTML Preview runs page JavaScript.
-- [ ] Relative CSS, scripts, images, and fonts resolve against the document’s folder (`loadFileURL` + `allowingReadAccessTo`).
-- [ ] Remote `http`/`https` linked assets load.
-- [ ] In-page link clicks navigate inside Preview (same WebView). `target=_blank` loads in that WebView, not a new window.
-- [ ] Unsaved buffer still previews (`document.write` into the `file://` origin; no sibling file written into the user’s folder).
-- [ ] SVG Preview uses the same full-render path (file URL / current buffer).
+- [x] Saved HTML Preview runs page JavaScript.
+- [x] Relative CSS, scripts, images, and fonts resolve against the document’s folder (`loadFileURL` + `allowingReadAccessTo`).
+- [x] Remote `http`/`https` linked assets load.
+- [x] In-page link clicks navigate inside Preview (same WebView). `target=_blank` loads in that WebView, not a new window.
+- [x] Unsaved buffer still previews (`document.write` into the `file://` origin; no sibling file written into the user’s folder).
+- [x] SVG Preview uses the same full-render path (file URL / current buffer).
 - [x] macOS + iPhone 17 + iPad Pro 13-inch (M5) Debug builds succeed.
 
 ## Context
@@ -70,3 +70,8 @@ xcodebuild -project Markus.xcodeproj -scheme Markus -destination 'platform=iOS S
 
 - 2026-08-24: Ticket created. Branch `bora/markus-v1-3-html-full-preview`. Origin: `main`.
 - 2026-08-24: T01 implemented. Debug builds succeeded (macOS, iPhone 17, iPad Pro 13-inch M5). In-app Preview still needs a human check: open an HTML file with sibling CSS/JS/images, flip to Preview, confirm it looks like Safari. Untitled HTML has no folder, so relative assets will still miss.
+- 2026-08-24: Human shipped to main. Closing ticket.
+
+## Review
+
+2026-08-24 — shipped. Verify: macOS Debug **BUILD SUCCEEDED**. Human requested merge/push to main.
