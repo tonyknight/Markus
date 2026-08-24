@@ -1,11 +1,15 @@
 import SwiftUI
 import WebKit
 
-/// Policy for the HTML/SVG Preview WebView (R7, N5): no script, no
-/// fetching of the page over the network, no unconstrained `file://`.
-/// The Mac sandbox still needs `network.client` so WebKit can spawn
-/// its WebContent helper for `loadHTMLString` — that is not a license
-/// to load `http`/`https`/`file` (the delegate and content rules stop those).
+/// Policy for the HTML/SVG Preview WebView (R7).
+///
+/// Product override (punch list round 3): HTML Preview is a working
+/// preview of the buffer — CSS, JS, and images load. Relative URLs
+/// resolve against the document's directory when the file is on disk.
+/// Link clicks, forms, popups, and main-frame navigations stay blocked
+/// so Preview is not a browser.
+///
+/// SVG Preview stays locked: no script, no network, `baseURL` nil (N5).
 enum LockedHTMLPreviewPolicy {
     static func makeConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
@@ -15,9 +19,16 @@ enum LockedHTMLPreviewPolicy {
         return configuration
     }
 
-    /// `loadHTMLString` document plus a minimal SVG wrapper. `baseURL` is
-    /// always `nil` at the load site so relative URLs cannot resolve to
-    /// a file sandbox.
+    static func enableScript(for kind: DocumentKind) -> Bool {
+        kind == .html
+    }
+
+    static func baseURL(for kind: DocumentKind, fileURL: URL?) -> URL? {
+        guard kind == .html, let fileURL else { return nil }
+        return fileURL.deletingLastPathComponent()
+    }
+
+    /// `loadHTMLString` document plus a minimal SVG wrapper.
     static func documentHTML(buffer: String, kind: DocumentKind) -> String {
         if kind == .svg {
             return wrappedSVG(buffer)
@@ -50,9 +61,18 @@ enum LockedHTMLPreviewPolicy {
         }
     }
 
-    static func allows(_ url: URL?) -> Bool {
+    /// SVG: only about/data. HTML: subresources may be http(s)/file/data.
+    static func allows(_ url: URL?, kind: DocumentKind) -> Bool {
         guard let url else { return false }
         let scheme = (url.scheme ?? "").lowercased()
+        if kind == .html {
+            switch scheme {
+            case "http", "https", "file", "data", "about", "blob", "":
+                return true
+            default:
+                return false
+            }
+        }
         switch scheme {
         case "http", "https", "file", "ftp", "ws", "wss":
             return false
@@ -147,6 +167,7 @@ enum LockedHTMLPreviewNetworkBlocker {
 struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
     var buffer: String
     var kind: DocumentKind
+    var fileURL: URL?
     var isVisible: Bool
 
     func makeCoordinator() -> LockedHTMLPreviewCoordinator {
@@ -159,13 +180,14 @@ struct LockedHTMLPreviewRepresentable: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         webView.isHidden = !isVisible
-        context.coordinator.load(buffer, kind: kind, into: webView, isVisible: isVisible)
+        context.coordinator.load(buffer, kind: kind, fileURL: fileURL, into: webView, isVisible: isVisible)
     }
 }
 #else
 struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
     var buffer: String
     var kind: DocumentKind
+    var fileURL: URL?
     var isVisible: Bool
 
     func makeCoordinator() -> LockedHTMLPreviewCoordinator {
@@ -178,7 +200,7 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         webView.isHidden = !isVisible
-        context.coordinator.load(buffer, kind: kind, into: webView, isVisible: isVisible)
+        context.coordinator.load(buffer, kind: kind, fileURL: fileURL, into: webView, isVisible: isVisible)
     }
 }
 #endif
@@ -187,27 +209,44 @@ struct LockedHTMLPreviewRepresentable: UIViewRepresentable {
 final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var lastLoaded: String?
     private var pendingHTML: String?
+    private var pendingKind: DocumentKind = .html
+    private var pendingFileURL: URL?
     private var debounceTimer: Timer?
-    private var rulesReady = false
+    private var svgRulesReady = false
+    private var svgBlockerInstalled = false
     private var isVisible = false
     private weak var webView: WKWebView?
+    private weak var contentController: WKUserContentController?
+    private var svgRuleList: WKContentRuleList?
     private static let debounceInterval: TimeInterval = 0.12
 
     func attach(webView: WKWebView, contentController: WKUserContentController) {
         self.webView = webView
-        LockedHTMLPreviewNetworkBlocker.prepare { [weak self, weak contentController] list in
-            guard let self, let contentController, let list else { return }
-            contentController.add(list)
-            self.rulesReady = true
+        self.contentController = contentController
+        LockedHTMLPreviewNetworkBlocker.prepare { [weak self] list in
+            guard let self else { return }
+            self.svgRuleList = list
+            self.svgRulesReady = list != nil
+            self.installSVGBlockerIfNeeded()
             self.flushIfNeeded()
         }
     }
 
-    func load(_ buffer: String, kind: DocumentKind, into webView: WKWebView, isVisible: Bool) {
+    func load(
+        _ buffer: String,
+        kind: DocumentKind,
+        fileURL: URL?,
+        into webView: WKWebView,
+        isVisible: Bool
+    ) {
         self.webView = webView
         self.isVisible = isVisible
-        let html = LockedHTMLPreviewPolicy.documentHTML(buffer: buffer, kind: kind)
-        pendingHTML = html
+        pendingKind = kind
+        pendingFileURL = fileURL
+        webView.configuration.defaultWebpagePreferences.allowsContentJavaScript =
+            LockedHTMLPreviewPolicy.enableScript(for: kind)
+        pendingHTML = LockedHTMLPreviewPolicy.documentHTML(buffer: buffer, kind: kind)
+        installSVGBlockerIfNeeded()
         if isVisible {
             debounceTimer?.invalidate()
             debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.debounceInterval, repeats: false) { [weak self] _ in
@@ -222,13 +261,23 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         flushIfNeeded()
     }
 
+    private func installSVGBlockerIfNeeded() {
+        guard pendingKind == .svg, !svgBlockerInstalled,
+              let contentController, let svgRuleList else { return }
+        contentController.add(svgRuleList)
+        svgBlockerInstalled = true
+    }
+
     private func flushIfNeeded() {
-        guard rulesReady, isVisible, let webView, let html = pendingHTML else { return }
-        guard html != lastLoaded else { return }
+        if pendingKind == .svg, !svgRulesReady { return }
+        guard isVisible, let webView, let html = pendingHTML else { return }
+        let base = LockedHTMLPreviewPolicy.baseURL(for: pendingKind, fileURL: pendingFileURL)
+        let key = "\(pendingKind.rawValue)\n\(base?.path ?? "")\n\(html)"
+        guard key != lastLoaded else { return }
         debounceTimer?.invalidate()
         debounceTimer = nil
-        lastLoaded = html
-        webView.loadHTMLString(html, baseURL: nil)
+        lastLoaded = key
+        webView.loadHTMLString(html, baseURL: base)
     }
 
     deinit {
@@ -248,7 +297,16 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
             decisionHandler(.cancel)
             return
         }
-        guard LockedHTMLPreviewPolicy.allows(navigationAction.request.url) else {
+        if pendingKind == .html,
+           navigationAction.targetFrame?.isMainFrame == true,
+           navigationAction.navigationType == .other {
+            let scheme = (navigationAction.request.url?.scheme ?? "").lowercased()
+            if scheme == "http" || scheme == "https" {
+                decisionHandler(.cancel)
+                return
+            }
+        }
+        guard LockedHTMLPreviewPolicy.allows(navigationAction.request.url, kind: pendingKind) else {
             decisionHandler(.cancel)
             return
         }
@@ -260,7 +318,7 @@ final class LockedHTMLPreviewCoordinator: NSObject, WKNavigationDelegate, WKUIDe
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        guard LockedHTMLPreviewPolicy.allows(navigationResponse.response.url) else {
+        guard LockedHTMLPreviewPolicy.allows(navigationResponse.response.url, kind: pendingKind) else {
             decisionHandler(.cancel)
             return
         }

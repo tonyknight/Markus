@@ -122,6 +122,7 @@ struct ContentView: View {
                 LockedHTMLPreviewRepresentable(
                     buffer: host.session.editor.string,
                     kind: host.session.kind,
+                    fileURL: host.session.fileURL,
                     isVisible: showsLockedWebPreview
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
