@@ -279,8 +279,8 @@ private struct Engine {
     mutating func finishElement(_ opener: OpenElement) {
         let closerEnd = i
         let openerEnd = endOffset(ofLine: opener.openerLine)
-        let proposed = openerEnd..<closerEnd
-        guard !proposed.isEmpty, openerEnd < closerEnd else { return }
+        guard let proposed = Block.extentAfterOpenerLine(openerEnd: openerEnd, closerEnd: closerEnd) else { return }
+        guard opener.openerOffset <= closerEnd else { return }
         guard foldables.count < budget.maxFoldables else {
             markTruncated()
             return

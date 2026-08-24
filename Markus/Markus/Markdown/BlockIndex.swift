@@ -59,6 +59,15 @@ nonisolated struct Block: Equatable, Sendable {
     var bytes: Range<Int>
     var lines: Range<Int>
     var foldExtent: Range<Int>?
+
+    /// Fold interior after the opener line. Same-line or inverted
+    /// bounds return nil. Never forms `lower..<upper` when `lower > upper`
+    /// — that traps (`Range requires lowerBound <= upperBound`).
+    static func extentAfterOpenerLine(openerEnd: Int, closerEnd: Int) -> Range<Int>? {
+        guard openerEnd <= closerEnd else { return nil }
+        let proposed = openerEnd..<closerEnd
+        return proposed.isEmpty ? nil : proposed
+    }
 }
 
 nonisolated enum BlockIndex: Sendable {
